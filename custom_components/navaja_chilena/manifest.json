@@ -1,0 +1,14 @@
+{
+  "domain": "navaja_chilena",
+  "name": "Navaja Chilena",
+  "version": "2025.1.5",
+  "documentation": "https://github.com/duvob90/navaja_chilena",
+  "issue_tracker": "https://github.com/duvob90/navaja_chilena/issues",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": [
+    "@duvob90"
+  ],
+  "config_flow": true,
+  "iot_class": "cloud_polling"
+}
