@@ -1,4 +1,4 @@
-![Navaja Chilena](assets/logo.png)
+
 
 # Navaja Chilena — Home Assistant Custom Integration
 
@@ -198,7 +198,3 @@ Ve a **Settings → Devices & Services → Navaja Chilena → Configure** y ver�
 > Al guardar, la integración se recarga automáticamente para **crear/eliminar sensores** según corresponda.
 
 
----
-### Nota sobre el autor mostrado en HACS
-HACS toma el autor principalmente desde el **dueño del repositorio en GitHub** y el campo `codeowners` del `manifest.json`.  
-Para que se muestre **duvob90**, sube este repo al usuario/organización **duvob90** en GitHub y verifica que `codeowners` sea `["@duvob90"]`.
