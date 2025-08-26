@@ -4,12 +4,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import timedelta
-from typing import Any
+from typing import Any, Iterable
 
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.util import dt as dt_util
 
 from .const import (
     UPDATE_INTERVAL_SECONDS,
@@ -18,6 +19,68 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _try_float(v) -> float | None:
+    try:
+        if v is None:
+            return None
+        if isinstance(v, (int, float)):
+            return float(v)
+        s = str(v).strip().replace(",", ".")
+        return float(s)
+    except Exception:
+        return None
+
+
+def _first(items: Iterable[Any]) -> Any | None:
+    for it in items:
+        if it is not None:
+            return it
+    return None
+
+
+def _fmt_eta(obj: dict) -> str | None:
+    """Construye una ETA legible desde múltiples formatos (XOR y variantes)."""
+    # 1) Campo ya listo
+    txt = _first([obj.get("arrival_estimation"), obj.get("eta_text"), obj.get("eta")])
+    if isinstance(txt, str) and txt.strip():
+        return txt.strip()
+
+    # 2) Rangos numéricos (a/b, min/max, etc.)
+    for a_key, b_key in (("a", "b"), ("min", "max"), ("min_arrival", "max_arrival"), ("min_arrive", "max_arrive")):
+        a = _try_float(obj.get(a_key))
+        b = _try_float(obj.get(b_key))
+        if a is not None and b is not None:
+            return f"Entre {int(a):02d} Y {int(b):02d} min."
+
+    # 3) Strings tipo "06-08", "6 a 8", "6–8"
+    raw = _first([obj.get("arrives_in"), obj.get("time"), obj.get("window"), obj.get("range")])
+    if isinstance(raw, str):
+        s = raw.lower().replace("min.", "").replace("min", "").strip()
+        for sep in ("-", "–", "—", " a ", " y "):
+            if sep in s:
+                p = [x.strip() for x in s.split(sep)]
+                if len(p) >= 2 and p[0].isdigit() and p[1].isdigit():
+                    return f"Entre {int(p[0]):02d} Y {int(p[1]):02d} min."
+
+    # 4) Timestamp → minutos
+    ts = _first([obj.get("datetime"), obj.get("timestamp"), obj.get("hora"), obj.get("time_at")])
+    if isinstance(ts, str) and ts:
+        try:
+            target = dt_util.parse_datetime(ts)
+            if target:
+                mins = max(0, int((target - dt_util.utcnow()).total_seconds() / 60))
+                return f"{mins} min"
+        except Exception:
+            pass
+
+    # 5) Número suelto
+    m = _try_float(_first([obj.get("minutes"), obj.get("minutos")]))
+    if m is not None:
+        return f"{int(m)} min"
+
+    return None
 
 
 class NavajaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -33,9 +96,8 @@ class NavajaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         session = async_get_clientsession(self.hass)
 
-        # Paraderos desde opciones o datos
         stops_str = self.entry.options.get(CONF_STOP_IDS, self.entry.data.get(CONF_STOP_IDS, ""))
-        stop_ids = [s.strip() for s in stops_str.split(",") if s.strip()]
+        stop_ids = [s.strip().upper() for s in stops_str.split(",") if s.strip()]
 
         async def fetch_json(url: str) -> Any:
             try:
@@ -62,7 +124,7 @@ class NavajaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             serie = usd_json.get("serie")
             if isinstance(serie, list) and serie:
                 usd_val = serie[0].get("valor")
-            if usd_val is None and "dolar" in usd_json and isinstance(usd_json["dolar"], dict):
+            if usd_val is None and isinstance(usd_json.get("dolar"), dict):
                 usd_val = usd_json["dolar"].get("valor")
 
         # ---- UF ----
@@ -71,35 +133,44 @@ class NavajaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             serie = uf_json.get("serie")
             if isinstance(serie, list) and serie:
                 uf_val = serie[0].get("valor")
-            if uf_val is None and "uf" in uf_json and isinstance(uf_json["uf"], dict):
+            if uf_val is None and isinstance(uf_json.get("uf"), dict):
                 uf_val = uf_json["uf"].get("valor")
 
-        # ---- Metro por línea ----
-        metro_lines: dict[str, str] = {}
+        # ---- Metro ---- (default Operativa)
+        metro_lines: dict[str, str] = {f"L{i}": "Operativa" for i in (1, 2, 3, 4, 5, 6)}
+        metro_lines["L4A"] = "Operativa"
+
+        def _lid(name: Any) -> str | None:
+            if not name:
+                return None
+            lid = str(name).upper().replace(" ", "")
+            if lid.startswith("LINEA"):
+                lid = "L" + lid.split("LINEA", 1)[1]
+            return lid
+
         if isinstance(metro_json, dict):
             lines = metro_json.get("lineas") or metro_json.get("lines") or metro_json.get("data")
             if isinstance(lines, list):
                 for ln in lines:
                     if not isinstance(ln, dict):
                         continue
-                    name = ln.get("nombre") or ln.get("name") or ln.get("linea") or ln.get("id")
+                    lid = _lid(ln.get("nombre") or ln.get("name") or ln.get("linea") or ln.get("id"))
                     status = ln.get("estado") or ln.get("status") or ln.get("detalle") or ln.get("state")
-                    if name:
-                        name_str = str(name).upper().replace(" ", "")
-                        metro_lines[name_str] = status or "N/A"
+                    if lid:
+                        metro_lines[lid] = status or "Operativa"
             else:
                 for k, v in metro_json.items():
-                    if isinstance(v, (str, int)) and str(k).upper().startswith("L"):
-                        metro_lines[str(k).upper()] = str(v)
+                    if str(k).upper().startswith("L"):
+                        metro_lines[str(k).upper()] = str(v or "Operativa")
         elif isinstance(metro_json, list):
             for ln in metro_json:
                 if isinstance(ln, dict):
-                    name = ln.get("nombre") or ln.get("name") or ln.get("linea") or ln.get("id")
+                    lid = _lid(ln.get("nombre") or ln.get("name") or ln.get("linea") or ln.get("id"))
                     status = ln.get("estado") or ln.get("status") or ln.get("detalle") or ln.get("state")
-                    if name:
-                        metro_lines[str(name).upper().replace(" ", "")] = status or "N/A"
+                    if lid:
+                        metro_lines[lid] = status or "Operativa"
 
-        # Incidencias/estaciones afectadas (si la API lo entrega)
+        # Incidencias por línea
         metro_details: dict[str, dict[str, Any]] = {}
         if isinstance(metro_json, dict):
             lines = metro_json.get("lineas") or metro_json.get("lines") or metro_json.get("data")
@@ -107,12 +178,11 @@ class NavajaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 for ln in lines:
                     if not isinstance(ln, dict):
                         continue
-                    name = ln.get("nombre") or ln.get("name") or ln.get("linea") or ln.get("id")
-                    if not name:
+                    lid = _lid(ln.get("nombre") or ln.get("name") or ln.get("linea") or ln.get("id"))
+                    if not lid:
                         continue
-                    lid = str(name).upper().replace(" ", "")
-                    affected = []
-                    details = []
+                    affected: list[str] = []
+                    details: list[str] = []
                     for key in ("incidencias", "incidents", "issues"):
                         val = ln.get(key)
                         if isinstance(val, list):
@@ -142,26 +212,18 @@ class NavajaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         }
 
         # ---- Sismos ----
-        sismo_state = None
+        sismo_state = "N/A"
         sismo_attr: dict[str, Any] = {}
         if isinstance(sismos_json, list) and sismos_json:
             last = sismos_json[0]
-            mag = last.get("Magnitud") or last.get("magnitud")
-            ref = last.get("RefGeografica") or last.get("Referencia") or last.get("ref")
-            fecha = last.get("Fecha") or last.get("fecha")
-            prof = last.get("Profundidad") or last.get("profundidad")
-            lat = last.get("Latitud") or last.get("lat") or last.get("Latitude")
-            lon = last.get("Longitud") or last.get("lon") or last.get("Longitude")
-            try:
-                lat = float(str(lat).replace(",", ".")) if lat is not None else None
-            except Exception:
-                lat = None
-            try:
-                lon = float(str(lon).replace(",", ".")) if lon is not None else None
-            except Exception:
-                lon = None
-
-            sismo_state = mag
+            mag = _first([last.get("Magnitud"), last.get("magnitud"), last.get("Mag")])
+            num_mag = _try_float(mag)
+            ref = _first([last.get("RefGeografica"), last.get("Referencia"), last.get("ref")])
+            fecha = _first([last.get("Fecha"), last.get("fecha"), last.get("time")])
+            prof = _first([last.get("Profundidad"), last.get("profundidad")])
+            lat = _try_float(_first([last.get("Latitud"), last.get("lat"), last.get("Latitude")]))
+            lon = _try_float(_first([last.get("Longitud"), last.get("lon"), last.get("Longitude")]))
+            sismo_state = f"M {num_mag:.1f}" if num_mag is not None else str(mag or "N/A")
             sismo_attr = {
                 "referencia": ref,
                 "fecha": fecha,
@@ -174,19 +236,17 @@ class NavajaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         bus_data: dict[str, Any] = {}
         for sid, t in bus_tasks.items():
             js = await t
-            stops_entry = {"name": None, "arrivals": []}
+            out = {"name": None, "arrivals": []}
             if isinstance(js, dict):
-                stops_entry["name"] = js.get("name") or js.get("stop") or js.get("title") or sid
-                buses = js.get("buses") or js.get("services") or js.get("arrivals") or []
+                out["name"] = _first([js.get("name"), js.get("stop"), js.get("title")]) or sid
+                buses = js.get("buses") or js.get("services") or js.get("arrivals") or js.get("next_buses") or []
                 if isinstance(buses, list):
                     for b in buses[:8]:
-                        route = b.get("route") or b.get("servicio") or b.get("service") or b.get("id") or ""
-                        when = b.get("time") or b.get("arrives_in") or b.get("minutes") or b.get("timestamp") or b.get("datetime")
-                        head = b.get("headsign") or b.get("destination") or b.get("destino") or ""
-                        if isinstance(when, (int, float)):
-                            when = f"{int(when)} min"
-                        stops_entry["arrivals"].append({"route": route, "eta": when, "dest": head})
-            bus_data[sid] = stops_entry
+                        route = _first([b.get("route"), b.get("servicio"), b.get("service"), b.get("route_id"), b.get("id")]) or ""
+                        head = _first([b.get("headsign"), b.get("destination"), b.get("destino")]) or ""
+                        eta_txt = _fmt_eta(b)
+                        out["arrivals"].append({"route": route, "eta": eta_txt, "dest": head})
+            bus_data[sid] = out
 
         return {
             "usd": usd_val,
