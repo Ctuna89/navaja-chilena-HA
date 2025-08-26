@@ -1,21 +1,15 @@
 # Author: duvob90
 from __future__ import annotations
 
-from typing import Any
+import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
-from .coordinator import NavajaCoordinator
-# Si tienes panel.py para la UI de paraderos
-try:
-    from .panel import register_views
-    _HAS_PANEL = True
-except Exception:
-    _HAS_PANEL = False
 
+_LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 
@@ -25,24 +19,27 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up integration from a config entry."""
+    """Set up Navaja Chilena from a config entry."""
+    # ⬇️ Importamos aquí para no bloquear el import de config_flow
+    from .coordinator import NavajaCoordinator
+
     coordinator = NavajaCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "coordinator": coordinator,
-        "entry": entry,
-    }
+    hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator, "entry": entry}
 
-    # Registrar UI/endpoint si existe
-    if _HAS_PANEL:
+    # UI/endpoint opcional (también import perezoso)
+    try:
+        from .panel import register_views
         register_views(hass)
+    except Exception as e:
+        _LOGGER.debug("Panel opcional no cargado: %s", e)
 
-    # ✅ API correcta en HA 2024+/2025
+    # Cargar plataformas
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Recargar al cambiar opciones (recrea sensores de paraderos)
+    # Recargar si cambian opciones
     entry.async_on_unload(entry.add_update_listener(async_update_listener))
     return True
 
