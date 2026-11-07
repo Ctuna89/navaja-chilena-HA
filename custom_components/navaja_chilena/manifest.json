@@ -1,14 +1,12 @@
 {
   "domain": "navaja_chilena",
   "name": "Navaja Chilena",
-  "version": "2025.1.5",
-  "documentation": "https://github.com/duvob90/navaja_chilena",
-  "issue_tracker": "https://github.com/duvob90/navaja_chilena/issues",
-  "requirements": [],
-  "dependencies": [],
-  "codeowners": [
-    "@duvob90"
-  ],
+  "codeowners": ["@Ctuna89"],
   "config_flow": true,
-  "iot_class": "cloud_polling"
+  "documentation": "https://github.com/Ctuna89/navaja-chilena-HA",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/Ctuna89/navaja-chilena-HA/issues",
+  "requirements": [],
+  "version": "2.0.0"
 }
