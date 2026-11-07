@@ -224,3 +224,204 @@ def parse_stop(code: str, data: Any) -> StopInfo:
 
 async def fetch_stop(session: aiohttp.ClientSession, code: str) -> StopInfo:
     return parse_stop(code, await _get_json(session, STOP_URL.format(code=code)))
+
+
+# --------------------------------------------------------------------- Sismos
+
+from datetime import date  # noqa: E402
+import unicodedata  # noqa: E402
+
+from .const import AIR_URL, HOLIDAYS_URLS, PHARMACY_URL, QUAKES_URL  # noqa: E402
+
+
+def _num(value: Any) -> float | None:
+    """Extrae el primer número de un valor como '4.2 Ml' o '-33,4'."""
+    if value is None:
+        return None
+    m = re.search(r"-?\d+(?:[.,]\d+)?", str(value))
+    return float(m.group().replace(",", ".")) if m else None
+
+
+def _pick(item: dict, *keys: str) -> Any:
+    lower = {k.lower(): v for k, v in item.items()}
+    for key in keys:
+        if key.lower() in lower:
+            return lower[key.lower()]
+    return None
+
+
+@dataclass(frozen=True)
+class Quake:
+    """Un sismo reportado por el Centro Sismológico Nacional."""
+
+    magnitude: float
+    latitude: float | None
+    longitude: float | None
+    depth_km: float | None
+    reference: str | None
+    date: str | None
+
+
+def parse_quakes(data: Any) -> list[Quake]:
+    """Interpreta la lista de sismos (más reciente primero)."""
+    if isinstance(data, dict):
+        data = data.get("data") or data.get("sismos") or []
+    if not isinstance(data, list):
+        raise NavajaApiError("Respuesta de sismos inesperada")
+    quakes: list[Quake] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        mag = _num(_pick(item, "Magnitud", "magnitude", "mag"))
+        if mag is None:
+            continue
+        quakes.append(
+            Quake(
+                magnitude=mag,
+                latitude=_num(_pick(item, "Latitud", "latitude", "lat")),
+                longitude=_num(_pick(item, "Longitud", "longitude", "lon", "lng")),
+                depth_km=_num(_pick(item, "Profundidad", "depth")),
+                reference=_pick(item, "RefGeografica", "referencia", "reference"),
+                date=_pick(item, "Fecha", "fecha", "date"),
+            )
+        )
+    if not quakes:
+        raise NavajaApiError("La respuesta no contiene sismos")
+    # Si hay fecha ISO-like ordenable, deja el más reciente primero.
+    quakes.sort(key=lambda q: q.date or "", reverse=True)
+    return quakes
+
+
+async def fetch_quakes(session: aiohttp.ClientSession) -> list[Quake]:
+    return parse_quakes(await _get_json(session, QUAKES_URL))
+
+
+# -------------------------------------------------------------------- Feriados
+
+
+@dataclass(frozen=True)
+class Holiday:
+    date: date
+    name: str
+    kind: str | None
+    inalienable: bool
+
+
+def parse_holidays(data: Any) -> list[Holiday]:
+    """Acepta el formato del gobierno (lista) y el de boostr ({'data': [...]})."""
+    if isinstance(data, dict):
+        data = data.get("data")
+    if not isinstance(data, list):
+        raise NavajaApiError("Respuesta de feriados inesperada")
+    out: list[Holiday] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        raw = _pick(item, "fecha", "date")
+        try:
+            d = date.fromisoformat(str(raw)[:10])
+        except ValueError:
+            continue
+        inal = _pick(item, "irrenunciable", "inalienable")
+        out.append(
+            Holiday(
+                date=d,
+                name=str(_pick(item, "nombre", "title", "name") or "Feriado"),
+                kind=_pick(item, "tipo", "type"),
+                inalienable=str(inal).lower() in {"1", "true"},
+            )
+        )
+    if not out:
+        raise NavajaApiError("La respuesta no contiene feriados")
+    return sorted(out, key=lambda h: h.date)
+
+
+async def fetch_holidays(session: aiohttp.ClientSession, year: int) -> list[Holiday]:
+    last: Exception | None = None
+    for url in HOLIDAYS_URLS:
+        try:
+            return parse_holidays(await _get_json(session, url.format(year=year)))
+        except NavajaApiError as err:
+            last = err
+    raise NavajaApiError(f"No se pudieron obtener feriados {year}: {last}")
+
+
+def next_holiday(holidays: list[Holiday], today: date) -> Holiday | None:
+    return next((h for h in holidays if h.date >= today), None)
+
+
+# ------------------------------------------------------- Calidad del aire y UV
+
+
+@dataclass(frozen=True)
+class AirQuality:
+    pm2_5: float | None
+    pm10: float | None
+    aqi: float | None
+    uv_index: float | None
+
+
+def parse_air(data: Any) -> AirQuality:
+    """Interpreta la respuesta de Open-Meteo Air Quality."""
+    cur = data.get("current") if isinstance(data, dict) else None
+    if not isinstance(cur, dict):
+        raise NavajaApiError("Respuesta de calidad del aire inesperada")
+    return AirQuality(
+        pm2_5=_num(cur.get("pm2_5")),
+        pm10=_num(cur.get("pm10")),
+        aqi=_num(cur.get("us_aqi")),
+        uv_index=_num(cur.get("uv_index")),
+    )
+
+
+async def fetch_air(session: aiohttp.ClientSession, lat: float, lon: float) -> AirQuality:
+    return parse_air(await _get_json(session, AIR_URL.format(lat=lat, lon=lon)))
+
+
+# ------------------------------------------------------------------ Farmacias
+
+
+def _fold(text: Any) -> str:
+    """Minúsculas y sin tildes, para comparar nombres de comuna."""
+    s = unicodedata.normalize("NFKD", str(text or ""))
+    return "".join(c for c in s if not unicodedata.combining(c)).strip().lower()
+
+
+@dataclass(frozen=True)
+class Pharmacy:
+    name: str
+    address: str
+    phone: str | None
+    opens: str | None
+    closes: str | None
+    latitude: float | None
+    longitude: float | None
+
+
+def parse_pharmacies(data: Any, comuna: str) -> list[Pharmacy]:
+    """Filtra por comuna los locales de turno del MINSAL."""
+    if not isinstance(data, list):
+        raise NavajaApiError("Respuesta de farmacias inesperada")
+    wanted = _fold(comuna)
+    out: list[Pharmacy] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        if _fold(item.get("comuna_nombre")) != wanted:
+            continue
+        out.append(
+            Pharmacy(
+                name=str(item.get("local_nombre") or "").strip(),
+                address=str(item.get("local_direccion") or "").strip(),
+                phone=item.get("local_telefono"),
+                opens=item.get("funcionamiento_hora_apertura"),
+                closes=item.get("funcionamiento_hora_cierre"),
+                latitude=_num(item.get("local_lat")),
+                longitude=_num(item.get("local_lng")),
+            )
+        )
+    return out
+
+
+async def fetch_pharmacies(session: aiohttp.ClientSession, comuna: str) -> list[Pharmacy]:
+    return parse_pharmacies(await _get_json(session, PHARMACY_URL), comuna)

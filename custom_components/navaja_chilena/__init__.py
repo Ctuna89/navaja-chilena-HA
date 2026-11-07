@@ -9,9 +9,21 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from .api import parse_stop_codes
-from .const import CONF_INDICATORS, CONF_METRO, CONF_STOPS
+from .const import (
+    CONF_AIR,
+    CONF_HOLIDAYS,
+    CONF_INDICATORS,
+    CONF_METRO,
+    CONF_PHARMACY_COMUNA,
+    CONF_QUAKES,
+    CONF_STOPS,
+)
 from .coordinator import (
     NavajaCoordinator,
+    air_coordinator,
+    holidays_coordinator,
+    pharmacy_coordinator,
+    quakes_coordinator,
     indicators_coordinator,
     metro_coordinator,
     stops_coordinator,
@@ -25,6 +37,11 @@ class RuntimeData:
     indicators: NavajaCoordinator | None = None
     metro: NavajaCoordinator | None = None
     stops: NavajaCoordinator | None = None
+    quakes: NavajaCoordinator | None = None
+    holidays: NavajaCoordinator | None = None
+    air: NavajaCoordinator | None = None
+    pharmacy: NavajaCoordinator | None = None
+    pharmacy_comuna: str = ""
     indicator_codes: list[str] = field(default_factory=list)
 
 
@@ -49,6 +66,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     if stops:
         data.stops = stops_coordinator(hass, stops)
         await data.stops.async_config_entry_first_refresh()
+
+    if opts.get(CONF_QUAKES):
+        data.quakes = quakes_coordinator(hass)
+        await data.quakes.async_config_entry_first_refresh()
+    if opts.get(CONF_HOLIDAYS):
+        data.holidays = holidays_coordinator(hass)
+        await data.holidays.async_config_entry_first_refresh()
+    if opts.get(CONF_AIR):
+        data.air = air_coordinator(hass)
+        await data.air.async_config_entry_first_refresh()
+    comuna = (opts.get(CONF_PHARMACY_COMUNA) or "").strip()
+    if comuna:
+        data.pharmacy_comuna = comuna
+        data.pharmacy = pharmacy_coordinator(hass, comuna)
+        await data.pharmacy.async_config_entry_first_refresh()
 
     entry.runtime_data = data
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

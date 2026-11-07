@@ -64,3 +64,61 @@ def stops_coordinator(hass: HomeAssistant, codes: list[str]) -> NavajaCoordinato
         return result
 
     return NavajaCoordinator(hass, "paraderos", STOPS_INTERVAL, fetch)
+
+
+# ------------------------------------------------------------ Módulos extra
+from homeassistant.util import dt as dt_util  # noqa: E402
+
+from .const import (  # noqa: E402
+    AIR_INTERVAL,
+    HOLIDAYS_INTERVAL,
+    HOLIDAYS_REFETCH,
+    PHARMACY_INTERVAL,
+    QUAKES_INTERVAL,
+)
+
+
+def quakes_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
+    return NavajaCoordinator(hass, "sismos", QUAKES_INTERVAL, api.fetch_quakes)
+
+
+def air_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
+    async def fetch(session: Any) -> api.AirQuality:
+        return await api.fetch_air(session, hass.config.latitude, hass.config.longitude)
+
+    return NavajaCoordinator(hass, "aire", AIR_INTERVAL, fetch)
+
+
+def pharmacy_coordinator(hass: HomeAssistant, comuna: str) -> NavajaCoordinator:
+    async def fetch(session: Any) -> list[api.Pharmacy]:
+        return await api.fetch_pharmacies(session, comuna)
+
+    return NavajaCoordinator(hass, "farmacias", PHARMACY_INTERVAL, fetch)
+
+
+def holidays_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
+    """Descarga feriados del año actual y siguiente (cacheados 12 h).
+
+    El coordinador corre cada hora solo para recalcular "próximo feriado".
+    """
+    cache: dict[str, Any] = {"at": None, "year": None, "data": []}
+
+    async def fetch(session: Any) -> dict[str, Any]:
+        now = dt_util.now()
+        stale = (
+            cache["at"] is None
+            or cache["year"] != now.year
+            or now - cache["at"] > HOLIDAYS_REFETCH
+        )
+        if stale:
+            data = await api.fetch_holidays(session, now.year)
+            try:
+                data += await api.fetch_holidays(session, now.year + 1)
+            except api.NavajaApiError:
+                pass  # el año siguiente suele publicarse tarde
+            cache.update(at=now, year=now.year, data=data)
+        today = now.date()
+        nxt = api.next_holiday(cache["data"], today)
+        return {"next": nxt, "today": today, "is_holiday_today": bool(nxt and nxt.date == today)}
+
+    return NavajaCoordinator(hass, "feriados", HOLIDAYS_INTERVAL, fetch)

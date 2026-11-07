@@ -12,8 +12,12 @@ from homeassistant.helpers import selector
 
 from .api import parse_stop_codes
 from .const import (
+    CONF_AIR,
+    CONF_HOLIDAYS,
     CONF_INDICATORS,
     CONF_METRO,
+    CONF_PHARMACY_COMUNA,
+    CONF_QUAKES,
     CONF_STOPS,
     DEFAULT_INDICATORS,
     DOMAIN,
@@ -43,6 +47,18 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.Optional(
                 CONF_STOPS, default=defaults.get(CONF_STOPS, "")
             ): selector.TextSelector(),
+            vol.Required(
+                CONF_QUAKES, default=defaults.get(CONF_QUAKES, True)
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_HOLIDAYS, default=defaults.get(CONF_HOLIDAYS, True)
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_AIR, default=defaults.get(CONF_AIR, False)
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_PHARMACY_COMUNA, default=defaults.get(CONF_PHARMACY_COMUNA, "")
+            ): selector.TextSelector(),
         }
     )
 
@@ -53,9 +69,19 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         stops = parse_stop_codes(user_input.get(CONF_STOPS, ""))
     except ValueError:
         return user_input, {CONF_STOPS: "invalid_stop"}
-    if not (user_input[CONF_INDICATORS] or user_input[CONF_METRO] or stops):
+    has_any = (
+        user_input[CONF_INDICATORS]
+        or stops
+        or any(user_input.get(k) for k in (CONF_METRO, CONF_QUAKES, CONF_HOLIDAYS, CONF_AIR))
+        or user_input.get(CONF_PHARMACY_COMUNA, "").strip()
+    )
+    if not has_any:
         errors["base"] = "nothing_selected"
-    return {**user_input, CONF_STOPS: ", ".join(stops)}, errors
+    return {
+        **user_input,
+        CONF_STOPS: ", ".join(stops),
+        CONF_PHARMACY_COMUNA: user_input.get(CONF_PHARMACY_COMUNA, "").strip(),
+    }, errors
 
 
 class NavajaConfigFlow(ConfigFlow, domain=DOMAIN):

@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -42,6 +46,18 @@ async def async_setup_entry(
     if rt.stops:
         entities += [StopSensor(rt.stops, entry, code) for code in rt.stops.data]
 
+    if rt.quakes:
+        entities.append(QuakeSensor(rt.quakes, entry, "ultimo"))
+    if rt.holidays:
+        entities += [
+            NextHolidaySensor(rt.holidays, entry, "proximo"),
+            DaysToHolidaySensor(rt.holidays, entry, "dias"),
+        ]
+    if rt.air:
+        entities += [AirSensor(rt.air, entry, spec) for spec in AIR_SENSORS]
+    if rt.pharmacy:
+        entities.append(PharmacySensor(rt.pharmacy, entry, rt.pharmacy_comuna))
+
     async_add_entities(entities)
 
 
@@ -57,7 +73,10 @@ class _Base(CoordinatorEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
-        return super().available and self._key in (self.coordinator.data or {})
+        return super().available and self._has_data()
+
+    def _has_data(self) -> bool:
+        return self._key in (self.coordinator.data or {})
 
 
 class IndicatorSensor(_Base):
@@ -139,4 +158,144 @@ class StopSensor(_Base):
                 s.id: {"minutos": s.next_minutes, "estado": s.status, "buses": s.buses}
                 for s in stop.services
             },
+        }
+
+
+class QuakeSensor(_Base):
+    """Último sismo; con latitude/longitude para la tarjeta de mapa."""
+
+    _kind = "sismo"
+    _attr_icon = "mdi:waveform"
+    _attr_name = "Último sismo"
+    _attr_native_unit_of_measurement = "M"
+
+    def __init__(self, coordinator, entry, key: str) -> None:
+        super().__init__(coordinator, entry, key)
+        self._attr_device_info = _device("sismos", "Sismos Chile")
+
+    def _has_data(self) -> bool:
+        return bool(self.coordinator.data)
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.data[0].magnitude
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        q = self.coordinator.data[0]
+        return {
+            "latitude": q.latitude,
+            "longitude": q.longitude,
+            "profundidad_km": q.depth_km,
+            "referencia": q.reference,
+            "fecha": q.date,
+        }
+
+
+class _HolidayBase(_Base):
+    _kind = "feriado"
+
+    def __init__(self, coordinator, entry, key: str) -> None:
+        super().__init__(coordinator, entry, key)
+        self._attr_device_info = _device("feriados", "Feriados Chile")
+
+    def _has_data(self) -> bool:
+        return bool(self.coordinator.data and self.coordinator.data["next"])
+
+
+class NextHolidaySensor(_HolidayBase):
+    _attr_icon = "mdi:calendar-star"
+    _attr_name = "Próximo feriado"
+    _attr_device_class = SensorDeviceClass.DATE
+
+    @property
+    def native_value(self):
+        return self.coordinator.data["next"].date
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        h = self.coordinator.data["next"]
+        return {
+            "nombre": h.name,
+            "tipo": h.kind,
+            "irrenunciable": h.inalienable,
+            "es_hoy": self.coordinator.data["is_holiday_today"],
+        }
+
+
+class DaysToHolidaySensor(_HolidayBase):
+    _attr_icon = "mdi:calendar-clock"
+    _attr_name = "Días para el próximo feriado"
+    _attr_native_unit_of_measurement = "d"
+
+    @property
+    def native_value(self) -> int:
+        d = self.coordinator.data
+        return (d["next"].date - d["today"]).days
+
+
+AIR_SENSORS = (
+    # (clave, nombre, atributo, device_class, unidad, icono)
+    ("pm2_5", "PM2.5", "pm2_5", SensorDeviceClass.PM25, "µg/m³", None),
+    ("pm10", "PM10", "pm10", SensorDeviceClass.PM10, "µg/m³", None),
+    ("aqi", "Índice de calidad del aire (US AQI)", "aqi", SensorDeviceClass.AQI, None, None),
+    ("uv", "Índice UV", "uv_index", None, "UV index", "mdi:weather-sunny-alert"),
+)
+
+
+class AirSensor(_Base):
+    _kind = "aire"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry, spec) -> None:
+        key, name, self._field, dclass, unit, icon = spec
+        super().__init__(coordinator, entry, key)
+        self._attr_name = name
+        self._attr_device_class = dclass
+        self._attr_native_unit_of_measurement = unit
+        if icon:
+            self._attr_icon = icon
+        self._attr_device_info = _device("aire", "Calidad del aire y UV")
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None
+
+    @property
+    def native_value(self) -> float | None:
+        return getattr(self.coordinator.data, self._field)
+
+
+class PharmacySensor(_Base):
+    _kind = "farmacias"
+    _attr_icon = "mdi:pharmacy"
+    _attr_native_unit_of_measurement = "farmacias"
+    MAX_LISTED = 20
+
+    def __init__(self, coordinator, entry, comuna: str) -> None:
+        super().__init__(coordinator, entry, comuna.lower())
+        self._attr_name = f"Farmacias de turno {comuna}"
+        self._attr_device_info = _device("farmacias", "Farmacias de turno")
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None
+
+    @property
+    def native_value(self) -> int:
+        return len(self.coordinator.data)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "farmacias": [
+                {
+                    "nombre": p.name,
+                    "direccion": p.address,
+                    "telefono": p.phone,
+                    "apertura": p.opens,
+                    "cierre": p.closes,
+                    "latitude": p.latitude,
+                    "longitude": p.longitude,
+                }
+                for p in self.coordinator.data[: self.MAX_LISTED]
+            ]
         }

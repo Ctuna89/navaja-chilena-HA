@@ -45,3 +45,26 @@ UNIT_MAP: dict[str, str] = {
     "Dólar": "USD",
     "Porcentaje": "%",
 }
+
+# ---- Módulos adicionales
+CONF_QUAKES = "quakes"
+CONF_HOLIDAYS = "holidays"
+CONF_AIR = "air"
+CONF_PHARMACY_COMUNA = "pharmacy_comuna"
+
+QUAKES_URL = "https://api.gael.cl/general/public/sismos"
+HOLIDAYS_URLS = (
+    "https://apis.digital.gob.cl/fl/feriados/{year}",
+    "https://api.boostr.cl/holidays/{year}.json",
+)
+AIR_URL = (
+    "https://air-quality-api.open-meteo.com/v1/air-quality"
+    "?latitude={lat}&longitude={lon}&current=pm10,pm2_5,us_aqi,uv_index"
+)
+PHARMACY_URL = "https://midas.minsal.cl/farmacia_v2/WS/getLocalesTurnos.php"
+
+QUAKES_INTERVAL = timedelta(minutes=5)
+HOLIDAYS_INTERVAL = timedelta(hours=1)
+HOLIDAYS_REFETCH = timedelta(hours=12)
+AIR_INTERVAL = timedelta(minutes=30)
+PHARMACY_INTERVAL = timedelta(hours=6)
