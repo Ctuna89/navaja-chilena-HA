@@ -18,7 +18,7 @@ No requiere claves de API.
 
 ## Instalación
 
-1. HACS → ⋮ → *Repositorios personalizados* → añade este repositorio como **Integración**.
+1. HACS → ⋮ → *Repositorios personalizados* → pega `https://github.com/Ctuna89/navaja-chilena-HA` y elige categoría **Integración**.
 2. Instala *Navaja Chilena* y reinicia Home Assistant.
 3. *Ajustes → Dispositivos y servicios → Añadir integración → Navaja Chilena*.
 
