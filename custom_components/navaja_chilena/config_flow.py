@@ -10,6 +10,9 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFl
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+from . import api
 from .api import parse_stop_codes
 from .const import (
     CONF_AIR,
@@ -84,6 +87,21 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
     }, errors
 
 
+async def _check_stops(hass, stops: list[str]) -> dict[str, str]:
+    """Rechaza paraderos que la API declara inexistentes (HTTP 400/404).
+
+    Si la API no responde por otra causa no se bloquea la configuración.
+    """
+    session = async_get_clientsession(hass)
+    for code in stops:
+        try:
+            await api.fetch_stop(session, code)
+        except api.NavajaApiError as err:
+            if err.status in (400, 404):
+                return {CONF_STOPS: "stop_not_found"}
+    return {}
+
+
 class NavajaConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
@@ -95,6 +113,8 @@ class NavajaConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             cleaned, errors = _validate(user_input)
+            if not errors:
+                errors = await _check_stops(self.hass, parse_stop_codes(cleaned[CONF_STOPS]))
             if not errors:
                 return self.async_create_entry(title="Navaja Chilena", data=cleaned)
         return self.async_show_form(
@@ -114,6 +134,8 @@ class NavajaOptionsFlow(OptionsFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             cleaned, errors = _validate(user_input)
+            if not errors:
+                errors = await _check_stops(self.hass, parse_stop_codes(cleaned[CONF_STOPS]))
             if not errors:
                 return self.async_create_entry(data=cleaned)
         current = {**self.config_entry.data, **self.config_entry.options}

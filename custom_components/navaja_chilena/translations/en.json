@@ -17,7 +17,8 @@
     },
     "error": {
       "invalid_stop": "Invalid bus stop code. Use a format like PC615.",
-      "nothing_selected": "Select at least one indicator, the Metro or a bus stop."
+      "nothing_selected": "Select at least one indicator, the Metro or a bus stop.",
+      "stop_not_found": "That bus stop does not exist in Red Movilidad. Check the code (e.g. PC615)."
     },
     "abort": {
       "already_configured": "Navaja Chilena is already configured."
@@ -41,7 +42,8 @@
     },
     "error": {
       "invalid_stop": "Invalid bus stop code. Use a format like PC615.",
-      "nothing_selected": "Select at least one indicator, the Metro or a bus stop."
+      "nothing_selected": "Select at least one indicator, the Metro or a bus stop.",
+      "stop_not_found": "That bus stop does not exist in Red Movilidad. Check the code (e.g. PC615)."
     }
   }
 }

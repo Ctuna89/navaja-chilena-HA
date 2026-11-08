@@ -15,6 +15,8 @@ from .const import DOMAIN, INDICATORS_INTERVAL, METRO_INTERVAL, STOPS_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
+MAX_BACKOFF = timedelta(minutes=30)
+
 
 class NavajaCoordinator(DataUpdateCoordinator[Any]):
     """Coordinador genérico: ejecuta `fetch(session)` periódicamente."""
@@ -30,12 +32,19 @@ class NavajaCoordinator(DataUpdateCoordinator[Any]):
             hass, _LOGGER, name=f"{DOMAIN}_{name}", update_interval=interval
         )
         self._fetch = fetch
+        self._base_interval = interval
 
     async def _async_update_data(self) -> Any:
+        # Con la fuente caída se consulta cada vez menos (hasta 30 min); el
+        # coordinador de HA registra el fallo una vez y avisa al recuperarse.
         try:
-            return await self._fetch(async_get_clientsession(self.hass))
+            data = await self._fetch(async_get_clientsession(self.hass))
         except api.NavajaApiError as err:
+            cap = max(self._base_interval, MAX_BACKOFF)
+            self.update_interval = min((self.update_interval or cap) * 2, cap)
             raise UpdateFailed(str(err)) from err
+        self.update_interval = self._base_interval
+        return data
 
 
 def indicators_coordinator(hass: HomeAssistant) -> NavajaCoordinator:

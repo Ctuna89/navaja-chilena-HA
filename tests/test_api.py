@@ -40,16 +40,28 @@ def test_indicators():
         api.parse_indicators({"version": "1"})
 
 
-def test_metro():
+def test_metro_station_codes():
+    # En api.xor.cl: 0 operativa, 1 cerrada temporalmente, 2 no habilitada, 3 accesos cerrados
     data = {"lines": [
-        {"id": "l1", "name": "Línea 1", "status": {"code": "1", "message": "Operativa"},
-         "stations": [{"id": "a", "name": "A", "status": {"code": "1"}}]},
-        {"id": "l2", "name": "Línea 2", "status": {"code": "2", "message": "Demoras"},
-         "stations": [{"id": "b", "name": "B", "status": {"code": "2"}}]},
+        {"id": "l1", "name": "Línea 1", "stations": [
+            {"name": "A", "status": {"code": "0"}}, {"name": "B", "status": 0}]},
+        {"id": "l2", "name": "Línea 2", "stations": [
+            {"name": "C", "status": {"code": "0"}}, {"name": "D", "status": {"code": "1", "message": "Cerrada"}}]},
     ]}
     out = api.parse_metro(data)
-    assert out["l1"].operational and not out["l2"].operational
-    assert out["l2"].stations_with_issues == ["B"] and out["l2"].message == "Demoras"
+    assert out["l1"].operational is True
+    assert out["l2"].operational is False and out["l2"].stations_with_issues == ["D"]
+
+
+def test_metro_unknown_is_never_operational():
+    data = {"lines": [
+        {"id": "l1", "name": "L1", "status": {"code": "?"}},
+        {"id": "l2", "name": "L2", "status": {"code": "0"}},
+    ]}
+    out = api.parse_metro(data)
+    assert out["l1"].operational is None and out["l2"].operational is True
+    with pytest.raises(api.NavajaApiError):  # nada interpretable -> error, no "operativa"
+        api.parse_metro({"lines": [{"id": "l1", "name": "L1", "status": {"code": "?"}}]})
     with pytest.raises(api.NavajaApiError):
         api.parse_metro({"lines": []})
 
@@ -67,15 +79,21 @@ def test_stop():
         api.parse_stop("ZZ1", {"error": "x"})
 
 
-def test_quakes():
-    data = [
-        {"Fecha": "2026-11-06 10:00:00", "Latitud": "-33,1", "Longitud": "-70.5",
-         "Profundidad": "10.0", "Magnitud": "3.1 Ml", "RefGeografica": "A"},
-        {"Fecha": "2026-11-07 08:30:00", "Latitud": "-20.2", "Longitud": "-69.1",
-         "Profundidad": "95", "Magnitud": "4.7 Mw", "RefGeografica": "B"},
-    ]
+def test_quakes_usgs():
+    feat = lambda mag, place, t, lon=-70.5, lat=-33.1, d=10.0: {
+        "properties": {"mag": mag, "place": place, "time": t},
+        "geometry": {"coordinates": [lon, lat, d]}}
+    data = {"features": [
+        feat(3.1, "20 km N of Ovalle, Chile", 1_762_500_000_000),
+        feat(4.7, "10 km S of Salta, Argentina", 1_762_600_000_000),   # se descarta
+        feat(5.2, "50 km W of Illapel, Chile", 1_762_550_000_000, -71.9, -31.6, 35.0),
+    ]}
     q = api.parse_quakes(data)
-    assert q[0].magnitude == 4.7 and q[0].reference == "B" and q[1].latitude == -33.1
+    assert [x.magnitude for x in q] == [5.2, 3.1]
+    assert q[0].latitude == -31.6 and q[0].longitude == -71.9 and q[0].depth_km == 35.0
+    assert q[0].date.startswith("2025-11-0")
+    with pytest.raises(api.NavajaApiError):
+        api.parse_quakes({"features": []})
     with pytest.raises(api.NavajaApiError):
         api.parse_quakes([])
 
@@ -124,10 +142,3 @@ def test_metro_schedule():
     assert api.metro_is_open(at(8, 7, 30))
     assert not api.metro_is_open(at(9, 7, 0), holiday=True)  # festivo = horario domingo
     assert api.metro_is_open(at(9, 7, 30), holiday=True)
-
-
-def test_metro_stations_kept():
-    data = {"lines": [{"id": "l1", "name": "Línea 1", "status": {"code": "1"},
-                       "stations": [{"name": "A", "status": {"code": "1"}},
-                                    {"name": "B", "status": {"code": "2"}}]}]}
-    assert api.parse_metro(data)["l1"].stations == {"A": True, "B": False}

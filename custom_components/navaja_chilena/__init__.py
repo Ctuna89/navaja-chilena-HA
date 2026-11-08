@@ -7,9 +7,11 @@ from dataclasses import dataclass, field
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 
 from .api import parse_stop_codes
 from .const import (
+    DEFAULT_INDICATORS,
     CONF_AIR,
     CONF_HOLIDAYS,
     CONF_INDICATORS,
@@ -49,7 +51,31 @@ type NavajaConfigEntry = ConfigEntry[RuntimeData]
 
 
 def _options(entry: ConfigEntry) -> dict:
-    return {**entry.data, **entry.options}
+    """Datos + opciones, con valores por defecto para entradas de versiones antiguas."""
+    opts = {**entry.data, **entry.options}
+    if CONF_INDICATORS not in opts:  # entrada creada por la versión 1.x
+        opts.setdefault(CONF_INDICATORS, DEFAULT_INDICATORS)
+        opts.setdefault(CONF_METRO, True)
+        opts.setdefault(CONF_QUAKES, True)
+        opts.setdefault(CONF_HOLIDAYS, True)
+    return opts
+
+
+def _stops(raw) -> list[str]:
+    if isinstance(raw, (list, tuple)):
+        raw = ",".join(str(r) for r in raw)
+    try:
+        return parse_stop_codes(str(raw or ""))
+    except ValueError:
+        return []
+
+
+async def _refresh(coordinator: NavajaCoordinator | None) -> bool:
+    """Primer refresco que no propaga errores: cada módulo falla por separado."""
+    if coordinator is None:
+        return False
+    await coordinator.async_refresh()
+    return coordinator.last_update_success
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bool:
@@ -58,29 +84,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
 
     if data.indicator_codes:
         data.indicators = indicators_coordinator(hass)
-        await data.indicators.async_config_entry_first_refresh()
     if opts.get(CONF_METRO):
         data.metro = metro_coordinator(hass)
-        await data.metro.async_config_entry_first_refresh()
-    stops = parse_stop_codes(opts.get(CONF_STOPS, ""))
+    stops = _stops(opts.get(CONF_STOPS))
     if stops:
         data.stops = stops_coordinator(hass, stops)
-        await data.stops.async_config_entry_first_refresh()
 
     if opts.get(CONF_QUAKES):
         data.quakes = quakes_coordinator(hass)
-        await data.quakes.async_config_entry_first_refresh()
     if opts.get(CONF_HOLIDAYS):
         data.holidays = holidays_coordinator(hass)
-        await data.holidays.async_config_entry_first_refresh()
     if opts.get(CONF_AIR):
         data.air = air_coordinator(hass)
-        await data.air.async_config_entry_first_refresh()
     comuna = (opts.get(CONF_PHARMACY_COMUNA) or "").strip()
     if comuna:
         data.pharmacy_comuna = comuna
         data.pharmacy = pharmacy_coordinator(hass, comuna)
-        await data.pharmacy.async_config_entry_first_refresh()
+
+    coordinators = [
+        c
+        for c in (data.indicators, data.metro, data.stops, data.quakes,
+                  data.holidays, data.air, data.pharmacy)
+        if c is not None
+    ]
+    results = [await _refresh(c) for c in coordinators]
+    if coordinators and not any(results):
+        # Ninguna fuente responde: reintentar la carga más tarde.
+        raise ConfigEntryNotReady("Ninguna fuente de datos respondió")
 
     entry.runtime_data = data
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

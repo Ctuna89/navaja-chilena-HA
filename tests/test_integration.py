@@ -1,0 +1,154 @@
+"""Pruebas dentro de Home Assistant (requieren pytest-homeassistant-custom-component)."""
+
+import pytest
+
+pytest.importorskip("pytest_homeassistant_custom_component")
+
+from homeassistant import config_entries  # noqa: E402
+from homeassistant.data_entry_flow import FlowResultType  # noqa: E402
+from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
+
+from custom_components.navaja_chilena import api  # noqa: E402
+from custom_components.navaja_chilena.const import (  # noqa: E402
+    AIR_URL, DOMAIN, INDICATORS_URL, METRO_URL, PHARMACY_URL, QUAKES_URL, STOP_URL,
+)
+
+STOP = {"id": "PC615", "status_description": "Servicio en horario normal", "services": [
+    {"id": "210", "status_description": "Buses disponibles",
+     "buses": [{"id": "X", "min_arrival_time": 5, "max_arrival_time": 8}]}]}
+INDICATORS = {"version": "1", "uf": {"codigo": "uf", "nombre": "UF", "unidad_medida": "Pesos",
+              "fecha": "2026-11-07T03:00:00.000Z", "valor": 39000.5},
+              "dolar": {"codigo": "dolar", "nombre": "Dólar", "unidad_medida": "Pesos",
+              "fecha": "2026-11-07T03:00:00.000Z", "valor": 950.2}}
+METRO = {"lines": [
+    {"id": "l1", "name": "Línea 1", "stations": [{"name": "A", "status": {"code": "0"}}]},
+    {"id": "l2", "name": "Línea 2", "stations": [{"name": "B", "status": {"code": "1"}}]}]}
+QUAKES = {"features": [{"properties": {"mag": 4.5, "place": "10 km N of Ovalle, Chile",
+          "time": 1_762_500_000_000}, "geometry": {"coordinates": [-71.2, -30.5, 30.0]}}]}
+HOLIDAYS = [{"nombre": "Navidad", "fecha": "2099-12-25", "irrenunciable": "1", "tipo": "Civil"}]
+AIR = {"current": {"pm10": 30, "pm2_5": 12, "us_aqi": 55, "uv_index": 7}}
+PHARM = [{"comuna_nombre": "ÑUÑOA", "local_nombre": "Cruz", "local_direccion": "X 1"}]
+
+DATA = {"indicators": ["uf", "dolar"], "metro": True, "stops": "PC615", "quakes": True,
+        "holidays": True, "air": True, "pharmacy_comuna": "Ñuñoa"}
+
+
+def mock_all(mock, metro_status=200):
+    mock.get(INDICATORS_URL, json=INDICATORS)
+    mock.get(METRO_URL, json=METRO, status=metro_status)
+    mock.get(STOP_URL.format(code="PC615"), json=STOP)
+    mock.get(QUAKES_URL, json=QUAKES)
+    mock.get(PHARMACY_URL, json=PHARM)
+    mock.get(AIR_URL.format(lat=32.87336, lon=-117.22743), json=AIR)
+    from custom_components.navaja_chilena.const import HOLIDAYS_URLS
+    for url in HOLIDAYS_URLS:
+        for year in range(2024, 2030):
+            mock.get(url.format(year=year), json=HOLIDAYS)
+
+
+class _States(dict):
+    """Busca por el final del nombre (HA antepone el nombre del dispositivo)."""
+
+    def __getitem__(self, key):
+        for name, value in self.items():
+            if name.endswith(key):
+                return value
+        raise KeyError(key)
+
+
+def states(hass):
+    return _States({s.name: s.state for s in hass.states.async_all("sensor")})
+
+
+async def setup(hass, aioclient_mock, **kw):
+    mock_all(aioclient_mock, **kw)
+    entry = MockConfigEntry(domain=DOMAIN, data=DATA)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_metro_states(hass, aioclient_mock, monkeypatch):
+    monkeypatch.setattr(api, "metro_is_open", lambda *a, **k: True)
+    await setup(hass, aioclient_mock)
+    st = states(hass)
+    assert st["Línea 1"] == "operativa"
+    assert st["Línea 2"] == "con_problemas"
+    assert st["UF"] == "39000.5"
+    assert st["Paradero PC615"] == "5"
+    assert st["Último sismo"] == "4.5"
+    assert st["Próximo feriado"] == "2099-12-25"
+    assert st["PM2.5"] == "12.0"
+    assert st["Ñuñoa"] == "1"
+
+
+async def test_metro_closed_outside_hours(hass, aioclient_mock, monkeypatch):
+    monkeypatch.setattr(api, "metro_is_open", lambda *a, **k: False)
+    await setup(hass, aioclient_mock)
+    st = states(hass)
+    assert st["Línea 1"] == "cerrada" and st["Línea 2"] == "cerrada"
+
+
+async def test_metro_down_does_not_break_the_rest(hass, aioclient_mock, monkeypatch):
+    """Si la fuente del Metro falla, jamás se ve 'operativa' y lo demás sigue funcionando."""
+    monkeypatch.setattr(api, "metro_is_open", lambda *a, **k: True)
+    entry = await setup(hass, aioclient_mock, metro_status=404)
+    assert entry.state is config_entries.ConfigEntryState.LOADED
+    st = states(hass)
+    assert st["UF"] == "39000.5" and st["Paradero PC615"] == "5"
+    assert not any("Línea" in k for k in st)          # no se inventan líneas ni estados
+
+
+async def test_metro_recovers_and_lines_appear(hass, aioclient_mock, monkeypatch):
+    from datetime import timedelta
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+    monkeypatch.setattr(api, "metro_is_open", lambda *a, **k: True)
+    await setup(hass, aioclient_mock, metro_status=404)
+    aioclient_mock.clear_requests()
+    mock_all(aioclient_mock)                          # el Metro vuelve
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=5))
+    await hass.async_block_till_done()
+    assert states(hass)["Línea 1"] == "operativa"
+
+
+async def test_all_sources_down_retries_setup(hass, aioclient_mock):
+    aioclient_mock.get(INDICATORS_URL, status=500)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    assert entry.state is config_entries.ConfigEntryState.SETUP_RETRY
+
+
+async def test_config_and_options_flow(hass, aioclient_mock):
+    aioclient_mock.get(STOP_URL.format(code="PC615"), json=STOP)
+    aioclient_mock.get(STOP_URL.format(code="PA433"), status=400)
+    r = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    assert r["type"] is FlowResultType.FORM
+    bad = await hass.config_entries.flow.async_configure(r["flow_id"], {**DATA, "stops": "PA433"})
+    assert bad["errors"] == {"stops": "stop_not_found"}
+    bad = await hass.config_entries.flow.async_configure(r["flow_id"], {**DATA, "stops": "xx"})
+    assert bad["errors"] == {"stops": "invalid_stop"}
+    ok = await hass.config_entries.flow.async_configure(r["flow_id"], {**DATA, "stops": "pc615"})
+    assert ok["type"] is FlowResultType.CREATE_ENTRY and ok["data"]["stops"] == "PC615"
+
+
+async def test_options_flow_opens(hass, aioclient_mock, monkeypatch):
+    monkeypatch.setattr(api, "metro_is_open", lambda *a, **k: True)
+    entry = await setup(hass, aioclient_mock)
+    r = await hass.config_entries.options.async_init(entry.entry_id)
+    assert r["type"] is FlowResultType.FORM and r["step_id"] == "init"
+    r = await hass.config_entries.options.async_configure(r["flow_id"], {**DATA, "air": False})
+    assert r["type"] is FlowResultType.CREATE_ENTRY
+
+
+async def test_legacy_entry_does_not_crash(hass, aioclient_mock, monkeypatch):
+    """Una entrada de la versión 1.x (solo paraderos) debe cargar con valores por defecto."""
+    monkeypatch.setattr(api, "metro_is_open", lambda *a, **k: True)
+    mock_all(aioclient_mock)
+    entry = MockConfigEntry(domain=DOMAIN, data={"stops": ["PC615"]})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is config_entries.ConfigEntryState.LOADED
