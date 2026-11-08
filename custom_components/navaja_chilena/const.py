@@ -1,19 +1,70 @@
-# Author: duvob90
+"""Constantes de Navaja Chilena."""
+
 from __future__ import annotations
 
+from datetime import timedelta
+
 DOMAIN = "navaja_chilena"
-TITLE = "Navaja Chilena"
 
-CONF_STOP_IDS = "stop_ids"  # comma-separated list
-DEFAULT_STOPS = "PA433"
-UPDATE_INTERVAL_SECONDS = 60
+# Opciones de configuración
+CONF_INDICATORS = "indicators"
+CONF_METRO = "metro"
+CONF_STOPS = "stops"
 
-# API endpoints
-USD_URL = "https://mindicador.cl/api/dolar"
-UF_URL = "https://mindicador.cl/api/uf"
-METRO_URL = "https://www.metro.cl/api/estado-red"
-BUS_URL_TMPL = "https://api.xor.cl/red/bus-stop/{stop_id}"
-SISMOS_URL = "https://api.gael.cl/general/public/sismos"
+# APIs públicas (sin clave)
+INDICATORS_URL = "https://mindicador.cl/api"
+METRO_URL = "https://api.xor.cl/red/metro-network"
+STOP_URL = "https://api.xor.cl/red/bus-stop/{code}"
 
-# Known Metro lines (used if API does not list lines initially)
-METRO_KNOWN_LINES = ["L1", "L2", "L3", "L4", "L4A", "L5", "L6"]
+REQUEST_TIMEOUT = 15
+
+# Frecuencias de actualización
+INDICATORS_INTERVAL = timedelta(hours=1)
+METRO_INTERVAL = timedelta(minutes=2)
+STOPS_INTERVAL = timedelta(minutes=1)
+
+# Indicadores disponibles: código en mindicador.cl -> nombre en español
+INDICATORS: dict[str, str] = {
+    "uf": "UF",
+    "dolar": "Dólar observado",
+    "euro": "Euro",
+    "utm": "UTM",
+    "ipc": "IPC",
+    "ivp": "IVP",
+    "imacec": "Imacec",
+    "tpm": "Tasa de política monetaria",
+    "libra_cobre": "Libra de cobre",
+    "tasa_desempleo": "Tasa de desempleo",
+    "bitcoin": "Bitcoin",
+}
+DEFAULT_INDICATORS = ["uf", "dolar", "euro", "utm"]
+
+# Unidad de medida de mindicador.cl -> unidad en Home Assistant
+UNIT_MAP: dict[str, str] = {
+    "Pesos": "CLP",
+    "Dólar": "USD",
+    "Porcentaje": "%",
+}
+
+# ---- Módulos adicionales
+CONF_QUAKES = "quakes"
+CONF_HOLIDAYS = "holidays"
+CONF_AIR = "air"
+CONF_PHARMACY_COMUNA = "pharmacy_comuna"
+
+QUAKES_URL = "https://api.gael.cl/general/public/sismos"
+HOLIDAYS_URLS = (
+    "https://apis.digital.gob.cl/fl/feriados/{year}",
+    "https://api.boostr.cl/holidays/{year}.json",
+)
+AIR_URL = (
+    "https://air-quality-api.open-meteo.com/v1/air-quality"
+    "?latitude={lat}&longitude={lon}&current=pm10,pm2_5,us_aqi,uv_index"
+)
+PHARMACY_URL = "https://midas.minsal.cl/farmacia_v2/WS/getLocalesTurnos.php"
+
+QUAKES_INTERVAL = timedelta(minutes=5)
+HOLIDAYS_INTERVAL = timedelta(hours=1)
+HOLIDAYS_REFETCH = timedelta(hours=12)
+AIR_INTERVAL = timedelta(minutes=30)
+PHARMACY_INTERVAL = timedelta(hours=6)

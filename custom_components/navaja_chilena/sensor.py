@@ -1,180 +1,301 @@
-# Author: duvob90
+"""Sensores de Navaja Chilena."""
+
 from __future__ import annotations
+
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.core import HomeAssistant
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, TITLE, CONF_STOP_IDS, METRO_KNOWN_LINES
-from .coordinator import NavajaCoordinator
+from . import NavajaConfigEntry
+from .const import DOMAIN, INDICATORS, UNIT_MAP
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
-    data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: NavajaCoordinator = data["coordinator"]
 
+def _device(key: str, name: str) -> DeviceInfo:
+    return DeviceInfo(
+        identifiers={(DOMAIN, key)},
+        name=name,
+        manufacturer="Navaja Chilena",
+        entry_type=DeviceEntryType.SERVICE,
+    )
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: NavajaConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
+    rt = entry.runtime_data
     entities: list[SensorEntity] = []
-    entities.append(UsdSensor(coordinator, entry))
-    entities.append(UfSensor(coordinator, entry))
-    entities.append(QuakeSensor(coordinator, entry))
 
-    # Metro per-line sensors
-    metro_lines = (coordinator.data.get("metro_lines") or {}).keys()
-    line_ids = list(metro_lines) if metro_lines else METRO_KNOWN_LINES
-    for lid in line_ids:
-        entities.append(MetroLineSensor(coordinator, entry, lid))
+    if rt.indicators:
+        entities += [
+            IndicatorSensor(rt.indicators, entry, code)
+            for code in rt.indicator_codes
+            if code in rt.indicators.data
+        ]
+    if rt.metro:
+        entities += [
+            MetroLineSensor(rt.metro, entry, line_id) for line_id in rt.metro.data
+        ]
+    if rt.stops:
+        entities += [StopSensor(rt.stops, entry, code) for code in rt.stops.data]
 
-    # Bus stop sensors
-    stops_str = entry.options.get(CONF_STOP_IDS, entry.data.get(CONF_STOP_IDS, ""))
-    stop_ids = [s.strip() for s in stops_str.split(",") if s.strip()]
-    for sid in stop_ids:
-        entities.append(BusStopSensor(coordinator, entry, sid))
+    if rt.quakes:
+        entities.append(QuakeSensor(rt.quakes, entry, "ultimo"))
+    if rt.holidays:
+        entities += [
+            NextHolidaySensor(rt.holidays, entry, "proximo"),
+            DaysToHolidaySensor(rt.holidays, entry, "dias"),
+        ]
+    if rt.air:
+        entities += [AirSensor(rt.air, entry, spec) for spec in AIR_SENSORS]
+    if rt.pharmacy:
+        entities.append(PharmacySensor(rt.pharmacy, entry, rt.pharmacy_comuna))
 
     async_add_entities(entities)
 
-class NavajaBase(CoordinatorEntity[NavajaCoordinator], SensorEntity):
+
+class _Base(CoordinatorEntity, SensorEntity):
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: NavajaCoordinator, entry: ConfigEntry) -> None:
+    def __init__(self, coordinator, entry: NavajaConfigEntry, key: str) -> None:
         super().__init__(coordinator)
-        self._entry = entry
+        self._key = key
+        self._attr_unique_id = f"{entry.entry_id}_{self._kind}_{key}"
+
+    _kind = ""
 
     @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
-            name=TITLE,
-            manufacturer="duvob90",
-            model="Navaja Chilena",
-        )
+    def available(self) -> bool:
+        return super().available and self._has_data()
 
-class UsdSensor(NavajaBase):
-    @property
-    def name(self) -> str:
-        return "USD (CLP)"
+    def _has_data(self) -> bool:
+        return self._key in (self.coordinator.data or {})
 
-    @property
-    def unique_id(self) -> str:
-        return f"{self._entry.entry_id}_usd"
 
-    @property
-    def icon(self) -> str:
-        return "mdi:currency-usd"
+class IndicatorSensor(_Base):
+    _kind = "indicador"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator, entry, code: str) -> None:
+        super().__init__(coordinator, entry, code)
+        self._attr_name = INDICATORS.get(code, code)
+        self._attr_device_info = _device("indicadores", "Indicadores económicos")
 
     @property
-    def native_unit_of_measurement(self) -> str | None:
-        return "CLP"
-
-    @property
-    def native_value(self) -> Any:
-        return self.coordinator.data.get("usd")
-
-class UfSensor(NavajaBase):
-    @property
-    def name(self) -> str:
-        return "UF (CLP)"
-
-    @property
-    def unique_id(self) -> str:
-        return f"{self._entry.entry_id}_uf"
-
-    @property
-    def icon(self) -> str:
-        return "mdi:cash-100"
+    def native_value(self) -> float | None:
+        item = self.coordinator.data.get(self._key)
+        return item.value if item else None
 
     @property
     def native_unit_of_measurement(self) -> str | None:
-        return "CLP"
+        item = self.coordinator.data.get(self._key)
+        return UNIT_MAP.get(item.unit, item.unit) if item and item.unit else None
 
     @property
-    def native_value(self) -> Any:
-        return self.coordinator.data.get("uf")
+    def extra_state_attributes(self) -> dict[str, Any]:
+        item = self.coordinator.data.get(self._key)
+        return {"fecha": item.date, "nombre_oficial": item.name} if item else {}
 
-class MetroLineSensor(NavajaBase):
-    def __init__(self, coordinator: NavajaCoordinator, entry: ConfigEntry, line_id: str) -> None:
-        super().__init__(coordinator, entry)
-        self._line_id = line_id.upper()
 
-    @property
-    def name(self) -> str:
-        return f"Metro {self._line_id}"
+class MetroLineSensor(_Base):
+    _kind = "metro"
+    _attr_icon = "mdi:subway-variant"
 
-    @property
-    def unique_id(self) -> str:
-        return f"{self._entry.entry_id}_metro_{self._line_id}"
+    def __init__(self, coordinator, entry, line_id: str) -> None:
+        super().__init__(coordinator, entry, line_id)
+        self._attr_name = coordinator.data[line_id].name
+        self._attr_device_info = _device("metro", "Metro de Santiago")
 
     @property
-    def icon(self) -> str:
-        return "mdi:subway-variant"
+    def native_value(self) -> str | None:
+        line = self.coordinator.data.get(self._key)
+        if not line:
+            return None
+        return "operativa" if line.operational else "con_problemas"
 
     @property
-    def native_value(self) -> Any:
-        lines = self.coordinator.data.get("metro_lines") or {}
-        return lines.get(self._line_id)
+    def extra_state_attributes(self) -> dict[str, Any]:
+        line = self.coordinator.data.get(self._key)
+        if not line:
+            return {}
+        return {
+            "mensaje": line.message,
+            "estaciones_con_problemas": line.stations_with_issues,
+        }
+
+
+class StopSensor(_Base):
+    _kind = "paradero"
+    _attr_icon = "mdi:bus-stop"
+    _attr_native_unit_of_measurement = "min"
+
+    def __init__(self, coordinator, entry, code: str) -> None:
+        super().__init__(coordinator, entry, code)
+        self._attr_name = f"Paradero {code}"
+        self._attr_device_info = _device("paraderos", "Paraderos Red Movilidad")
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        details = (self.coordinator.data.get("metro_details") or {}).get(self._line_id) or {}
-        return details if details else None
-
-class QuakeSensor(NavajaBase):
-    @property
-    def name(self) -> str:
-        return "Último Sismo (Chile)"
+    def native_value(self) -> int | None:
+        stop = self.coordinator.data.get(self._key)
+        return stop.next_minutes if stop else None
 
     @property
-    def unique_id(self) -> str:
-        return f"{self._entry.entry_id}_quake"
+    def extra_state_attributes(self) -> dict[str, Any]:
+        stop = self.coordinator.data.get(self._key)
+        if not stop:
+            return {}
+        return {
+            "estado": stop.status,
+            "recorridos": {
+                s.id: {"minutos": s.next_minutes, "estado": s.status, "buses": s.buses}
+                for s in stop.services
+            },
+        }
+
+
+class QuakeSensor(_Base):
+    """Último sismo; con latitude/longitude para la tarjeta de mapa."""
+
+    _kind = "sismo"
+    _attr_icon = "mdi:waveform"
+    _attr_name = "Último sismo"
+    _attr_native_unit_of_measurement = "M"
+
+    def __init__(self, coordinator, entry, key: str) -> None:
+        super().__init__(coordinator, entry, key)
+        self._attr_device_info = _device("sismos", "Sismos Chile")
+
+    def _has_data(self) -> bool:
+        return bool(self.coordinator.data)
 
     @property
-    def icon(self) -> str:
-        return "mdi:earth"
+    def native_value(self) -> float | None:
+        return self.coordinator.data[0].magnitude
 
     @property
-    def native_value(self) -> Any:
-        q = self.coordinator.data.get("sismo") or {}
-        return q.get("state")
+    def extra_state_attributes(self) -> dict[str, Any]:
+        q = self.coordinator.data[0]
+        return {
+            "latitude": q.latitude,
+            "longitude": q.longitude,
+            "profundidad_km": q.depth_km,
+            "referencia": q.reference,
+            "fecha": q.date,
+        }
+
+
+class _HolidayBase(_Base):
+    _kind = "feriado"
+
+    def __init__(self, coordinator, entry, key: str) -> None:
+        super().__init__(coordinator, entry, key)
+        self._attr_device_info = _device("feriados", "Feriados Chile")
+
+    def _has_data(self) -> bool:
+        return bool(self.coordinator.data and self.coordinator.data["next"])
+
+
+class NextHolidaySensor(_HolidayBase):
+    _attr_icon = "mdi:calendar-star"
+    _attr_name = "Próximo feriado"
+    _attr_device_class = SensorDeviceClass.DATE
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        q = self.coordinator.data.get("sismo") or {}
-        return q.get("attr") or {}
-
-class BusStopSensor(NavajaBase):
-    def __init__(self, coordinator: NavajaCoordinator, entry: ConfigEntry, stop_id: str) -> None:
-        super().__init__(coordinator, entry)
-        self._stop_id = stop_id
+    def native_value(self):
+        return self.coordinator.data["next"].date
 
     @property
-    def name(self) -> str:
-        return f"Paradero {self._stop_id}"
+    def extra_state_attributes(self) -> dict[str, Any]:
+        h = self.coordinator.data["next"]
+        return {
+            "nombre": h.name,
+            "tipo": h.kind,
+            "irrenunciable": h.inalienable,
+            "es_hoy": self.coordinator.data["is_holiday_today"],
+        }
+
+
+class DaysToHolidaySensor(_HolidayBase):
+    _attr_icon = "mdi:calendar-clock"
+    _attr_name = "Días para el próximo feriado"
+    _attr_native_unit_of_measurement = "d"
 
     @property
-    def unique_id(self) -> str:
-        return f"{self._entry.entry_id}_bus_{self._stop_id}"
+    def native_value(self) -> int:
+        d = self.coordinator.data
+        return (d["next"].date - d["today"]).days
+
+
+AIR_SENSORS = (
+    # (clave, nombre, atributo, device_class, unidad, icono)
+    ("pm2_5", "PM2.5", "pm2_5", SensorDeviceClass.PM25, "µg/m³", None),
+    ("pm10", "PM10", "pm10", SensorDeviceClass.PM10, "µg/m³", None),
+    ("aqi", "Índice de calidad del aire (US AQI)", "aqi", SensorDeviceClass.AQI, None, None),
+    ("uv", "Índice UV", "uv_index", None, "UV index", "mdi:weather-sunny-alert"),
+)
+
+
+class AirSensor(_Base):
+    _kind = "aire"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry, spec) -> None:
+        key, name, self._field, dclass, unit, icon = spec
+        super().__init__(coordinator, entry, key)
+        self._attr_name = name
+        self._attr_device_class = dclass
+        self._attr_native_unit_of_measurement = unit
+        if icon:
+            self._attr_icon = icon
+        self._attr_device_info = _device("aire", "Calidad del aire y UV")
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None
 
     @property
-    def icon(self) -> str:
-        return "mdi:bus-clock"
+    def native_value(self) -> float | None:
+        return getattr(self.coordinator.data, self._field)
+
+
+class PharmacySensor(_Base):
+    _kind = "farmacias"
+    _attr_icon = "mdi:pharmacy"
+    _attr_native_unit_of_measurement = "farmacias"
+    MAX_LISTED = 20
+
+    def __init__(self, coordinator, entry, comuna: str) -> None:
+        super().__init__(coordinator, entry, comuna.lower())
+        self._attr_name = f"Farmacias de turno {comuna}"
+        self._attr_device_info = _device("farmacias", "Farmacias de turno")
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None
 
     @property
-    def native_value(self) -> Any:
-        buses = (self.coordinator.data.get("buses") or {}).get(self._stop_id) or {}
-        arrivals = buses.get("arrivals") or []
-        if arrivals:
-            first = arrivals[0]
-            eta = first.get("eta")
-            route = first.get("route") or ""
-            dest = first.get("dest") or ""
-            if eta and route:
-                return f"{route} → {dest} ({eta})"
-        return None
+    def native_value(self) -> int:
+        return len(self.coordinator.data)
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        buses = (self.coordinator.data.get("buses") or {}).get(self._stop_id) or {}
-        name = buses.get("name") or self._stop_id
-        arrivals = buses.get("arrivals") or []
-        return {"paradero": name, "stop_id": self._stop_id, "arrivals": arrivals}
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "farmacias": [
+                {
+                    "nombre": p.name,
+                    "direccion": p.address,
+                    "telefono": p.phone,
+                    "apertura": p.opens,
+                    "cierre": p.closes,
+                    "latitude": p.latitude,
+                    "longitude": p.longitude,
+                }
+                for p in self.coordinator.data[: self.MAX_LISTED]
+            ]
+        }

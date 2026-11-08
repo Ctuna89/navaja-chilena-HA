@@ -1,58 +1,122 @@
-# Author: duvob90
+"""Flujo de configuración y opciones."""
+
 from __future__ import annotations
 
+from typing import Any
+
 import voluptuous as vol
-from homeassistant import config_entries
+
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
+from homeassistant.helpers import selector
 
-# Evitamos dependencias innecesarias para que el import sea 100% fiable
-DOMAIN = "navaja_chilena"
-CONF_STOP_IDS = "stop_ids"
-DEFAULT_STOPS = "PA433"
+from .api import parse_stop_codes
+from .const import (
+    CONF_AIR,
+    CONF_HOLIDAYS,
+    CONF_INDICATORS,
+    CONF_METRO,
+    CONF_PHARMACY_COMUNA,
+    CONF_QUAKES,
+    CONF_STOPS,
+    DEFAULT_INDICATORS,
+    DOMAIN,
+    INDICATORS,
+)
 
-DATA_SCHEMA = vol.Schema({
-    vol.Required(CONF_STOP_IDS, default=DEFAULT_STOPS): str
-})
+
+def _schema(defaults: dict[str, Any]) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_INDICATORS,
+                default=defaults.get(CONF_INDICATORS, DEFAULT_INDICATORS),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=k, label=v)
+                        for k, v in INDICATORS.items()
+                    ],
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(
+                CONF_METRO, default=defaults.get(CONF_METRO, True)
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_STOPS, default=defaults.get(CONF_STOPS, "")
+            ): selector.TextSelector(),
+            vol.Required(
+                CONF_QUAKES, default=defaults.get(CONF_QUAKES, True)
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_HOLIDAYS, default=defaults.get(CONF_HOLIDAYS, True)
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_AIR, default=defaults.get(CONF_AIR, False)
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_PHARMACY_COMUNA, default=defaults.get(CONF_PHARMACY_COMUNA, "")
+            ): selector.TextSelector(),
+        }
+    )
 
 
-class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Flujo de configuración de Navaja Chilena."""
+def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
+    errors: dict[str, str] = {}
+    try:
+        stops = parse_stop_codes(user_input.get(CONF_STOPS, ""))
+    except ValueError:
+        return user_input, {CONF_STOPS: "invalid_stop"}
+    has_any = (
+        user_input[CONF_INDICATORS]
+        or stops
+        or any(user_input.get(k) for k in (CONF_METRO, CONF_QUAKES, CONF_HOLIDAYS, CONF_AIR))
+        or user_input.get(CONF_PHARMACY_COMUNA, "").strip()
+    )
+    if not has_any:
+        errors["base"] = "nothing_selected"
+    return {
+        **user_input,
+        CONF_STOPS: ", ".join(stops),
+        CONF_PHARMACY_COMUNA: user_input.get(CONF_PHARMACY_COMUNA, "").strip(),
+    }, errors
+
+
+class NavajaConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
-    async def async_step_user(self, user_input: dict | None = None):
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        await self.async_set_unique_id(DOMAIN)
+        self._abort_if_unique_id_configured()
+        errors: dict[str, str] = {}
         if user_input is not None:
-            # Guardamos directamente lo ingresado por el usuario
-            return self.async_create_entry(title="Navaja Chilena", data=user_input)
-
+            cleaned, errors = _validate(user_input)
+            if not errors:
+                return self.async_create_entry(title="Navaja Chilena", data=cleaned)
         return self.async_show_form(
-            step_id="user",
-            data_schema=DATA_SCHEMA,
-            errors={},
+            step_id="user", data_schema=_schema(user_input or {}), errors=errors
         )
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):
-        return OptionsFlowHandler(config_entry)
+    def async_get_options_flow(config_entry) -> OptionsFlow:
+        return NavajaOptionsFlow()
 
 
-class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Opciones: agregar/eliminar/editar paraderos desde la UI."""
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
-
-    async def async_step_init(self, user_input: dict | None = None):
+class NavajaOptionsFlow(OptionsFlow):
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            # Persistimos las opciones tal cual
-            return self.async_create_entry(title="", data=user_input)
-
-        current = self.config_entry.options.get(
-            CONF_STOP_IDS,
-            self.config_entry.data.get(CONF_STOP_IDS, DEFAULT_STOPS),
-        )
+            cleaned, errors = _validate(user_input)
+            if not errors:
+                return self.async_create_entry(data=cleaned)
+        current = {**self.config_entry.data, **self.config_entry.options}
         return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema({
-                vol.Required(CONF_STOP_IDS, default=current): str
-            }),
+            step_id="init", data_schema=_schema(user_input or current), errors=errors
         )

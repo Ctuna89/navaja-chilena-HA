@@ -1,57 +1,96 @@
-# Author: duvob90
+"""Navaja Chilena: indicadores económicos, Metro y paraderos de Chile."""
+
 from __future__ import annotations
 
-import logging
-from homeassistant.core import HomeAssistant
+from dataclasses import dataclass, field
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.helpers.typing import ConfigType
+from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
+from .api import parse_stop_codes
+from .const import (
+    CONF_AIR,
+    CONF_HOLIDAYS,
+    CONF_INDICATORS,
+    CONF_METRO,
+    CONF_PHARMACY_COMUNA,
+    CONF_QUAKES,
+    CONF_STOPS,
+)
+from .coordinator import (
+    NavajaCoordinator,
+    air_coordinator,
+    holidays_coordinator,
+    pharmacy_coordinator,
+    quakes_coordinator,
+    indicators_coordinator,
+    metro_coordinator,
+    stops_coordinator,
+)
 
-_LOGGER = logging.getLogger(__name__)
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR]
 
 
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Setup via YAML (no-op)."""
-    return True
+@dataclass
+class RuntimeData:
+    indicators: NavajaCoordinator | None = None
+    metro: NavajaCoordinator | None = None
+    stops: NavajaCoordinator | None = None
+    quakes: NavajaCoordinator | None = None
+    holidays: NavajaCoordinator | None = None
+    air: NavajaCoordinator | None = None
+    pharmacy: NavajaCoordinator | None = None
+    pharmacy_comuna: str = ""
+    indicator_codes: list[str] = field(default_factory=list)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Navaja Chilena from a config entry."""
-    # ⬇️ Importamos aquí para no bloquear el import de config_flow
-    from .coordinator import NavajaCoordinator
+type NavajaConfigEntry = ConfigEntry[RuntimeData]
 
-    coordinator = NavajaCoordinator(hass, entry)
-    await coordinator.async_config_entry_first_refresh()
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator, "entry": entry}
+def _options(entry: ConfigEntry) -> dict:
+    return {**entry.data, **entry.options}
 
-    # UI/endpoint opcional (también import perezoso)
-    try:
-        from .panel import register_views
-        register_views(hass)
-    except Exception as e:
-        _LOGGER.debug("Panel opcional no cargado: %s", e)
 
-    # Cargar plataformas
+async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bool:
+    opts = _options(entry)
+    data = RuntimeData(indicator_codes=list(opts.get(CONF_INDICATORS, [])))
+
+    if data.indicator_codes:
+        data.indicators = indicators_coordinator(hass)
+        await data.indicators.async_config_entry_first_refresh()
+    if opts.get(CONF_METRO):
+        data.metro = metro_coordinator(hass)
+        await data.metro.async_config_entry_first_refresh()
+    stops = parse_stop_codes(opts.get(CONF_STOPS, ""))
+    if stops:
+        data.stops = stops_coordinator(hass, stops)
+        await data.stops.async_config_entry_first_refresh()
+
+    if opts.get(CONF_QUAKES):
+        data.quakes = quakes_coordinator(hass)
+        await data.quakes.async_config_entry_first_refresh()
+    if opts.get(CONF_HOLIDAYS):
+        data.holidays = holidays_coordinator(hass)
+        await data.holidays.async_config_entry_first_refresh()
+    if opts.get(CONF_AIR):
+        data.air = air_coordinator(hass)
+        await data.air.async_config_entry_first_refresh()
+    comuna = (opts.get(CONF_PHARMACY_COMUNA) or "").strip()
+    if comuna:
+        data.pharmacy_comuna = comuna
+        data.pharmacy = pharmacy_coordinator(hass, comuna)
+        await data.pharmacy.async_config_entry_first_refresh()
+
+    entry.runtime_data = data
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    # Recargar si cambian opciones
-    entry.async_on_unload(entry.add_update_listener(async_update_listener))
+    entry.async_on_unload(entry.add_update_listener(_reload))
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
-    return unload_ok
-
-
-async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload entry on options update."""
+async def _reload(hass: HomeAssistant, entry: NavajaConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bool:
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

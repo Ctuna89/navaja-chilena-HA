@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Navaja Chilena",
+        "description": "Choose which Chilean data to add to Home Assistant.",
+        "data": {
+          "indicators": "Economic indicators",
+          "metro": "Santiago Metro status",
+          "stops": "Bus stops (comma-separated codes, e.g. PC615, PA433)",
+          "quakes": "Latest earthquake (Chile National Seismological Center)",
+          "holidays": "Next public holiday",
+          "air": "Air quality and UV (based on Home Assistant location)",
+          "pharmacy_comuna": "Commune for pharmacies on duty (optional, e.g. Providencia)"
+        }
+      }
+    },
+    "error": {
+      "invalid_stop": "Invalid bus stop code. Use a format like PC615.",
+      "nothing_selected": "Select at least one indicator, the Metro or a bus stop."
+    },
+    "abort": {
+      "already_configured": "Navaja Chilena is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Navaja Chilena",
+        "description": "Choose which Chilean data to add to Home Assistant.",
+        "data": {
+          "indicators": "Economic indicators",
+          "metro": "Santiago Metro status",
+          "stops": "Bus stops (comma-separated codes, e.g. PC615, PA433)",
+          "quakes": "Latest earthquake (Chile National Seismological Center)",
+          "holidays": "Next public holiday",
+          "air": "Air quality and UV (based on Home Assistant location)",
+          "pharmacy_comuna": "Commune for pharmacies on duty (optional, e.g. Providencia)"
+        }
+      }
+    },
+    "error": {
+      "invalid_stop": "Invalid bus stop code. Use a format like PC615.",
+      "nothing_selected": "Select at least one indicator, the Metro or a bus stop."
+    }
+  }
+}

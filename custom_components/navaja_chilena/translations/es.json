@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Navaja Chilena",
+        "description": "Elige qué datos de Chile quieres en Home Assistant.",
+        "data": {
+          "indicators": "Indicadores económicos",
+          "metro": "Estado del Metro de Santiago",
+          "stops": "Paraderos (códigos separados por coma, ej. PC615, PA433)",
+          "quakes": "Último sismo (Centro Sismológico Nacional)",
+          "holidays": "Próximo feriado",
+          "air": "Calidad del aire y UV (según la ubicación de Home Assistant)",
+          "pharmacy_comuna": "Comuna para farmacias de turno (opcional, ej. Providencia)"
+        }
+      }
+    },
+    "error": {
+      "invalid_stop": "Código de paradero inválido. Usa el formato PC615.",
+      "nothing_selected": "Selecciona al menos un indicador, el Metro o un paradero."
+    },
+    "abort": {
+      "already_configured": "Navaja Chilena ya está configurada."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Navaja Chilena",
+        "description": "Elige qué datos de Chile quieres en Home Assistant.",
+        "data": {
+          "indicators": "Indicadores económicos",
+          "metro": "Estado del Metro de Santiago",
+          "stops": "Paraderos (códigos separados por coma, ej. PC615, PA433)",
+          "quakes": "Último sismo (Centro Sismológico Nacional)",
+          "holidays": "Próximo feriado",
+          "air": "Calidad del aire y UV (según la ubicación de Home Assistant)",
+          "pharmacy_comuna": "Comuna para farmacias de turno (opcional, ej. Providencia)"
+        }
+      }
+    },
+    "error": {
+      "invalid_stop": "Código de paradero inválido. Usa el formato PC615.",
+      "nothing_selected": "Selecciona al menos un indicador, el Metro o un paradero."
+    }
+  }
+}
