@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, time
+from zoneinfo import ZoneInfo
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -105,6 +107,7 @@ class MetroLine:
     operational: bool
     message: str
     stations_with_issues: list[str] = field(default_factory=list)
+    stations: dict[str, bool] = field(default_factory=dict)  # nombre -> operativa
 
 
 def _status_ok(status: Any) -> tuple[bool, str]:
@@ -137,12 +140,16 @@ def parse_metro(data: Any) -> dict[str, MetroLine]:
         status = item.get("status", item.get("estado"))
         stations = item.get("stations") or item.get("estaciones") or []
         problems: list[str] = []
+        station_states: dict[str, bool] = {}
         for st in stations:
             if not isinstance(st, dict):
                 continue
-            st_ok, _ = _status_ok(st.get("status", st.get("estado")))
-            if not st_ok and st.get("status", st.get("estado")) is not None:
-                problems.append(str(st.get("name") or st.get("nombre") or st.get("id")))
+            raw = st.get("status", st.get("estado"))
+            st_ok, _ = _status_ok(raw)
+            st_name = str(st.get("name") or st.get("nombre") or st.get("id"))
+            station_states[st_name] = st_ok or raw is None
+            if not st_ok and raw is not None:
+                problems.append(st_name)
         ok, message = _status_ok(status)
         result[line_id] = MetroLine(
             id=line_id,
@@ -150,10 +157,34 @@ def parse_metro(data: Any) -> dict[str, MetroLine]:
             operational=ok,
             message=message,
             stations_with_issues=problems,
+            stations=station_states,
         )
     if not result:
         raise NavajaApiError("La respuesta no contiene líneas de Metro")
     return result
+
+
+# Horario de funcionamiento del Metro de Santiago (hora de Chile continental).
+METRO_TZ = "America/Santiago"
+METRO_HOURS = {
+    "weekday": (time(6, 0), time(23, 0)),
+    "saturday": (time(6, 30), time(23, 0)),
+    "sunday": (time(7, 30), time(23, 0)),  # domingo y festivos
+}
+
+
+def metro_hours(now: datetime, holiday: bool = False) -> tuple[time, time]:
+    """Hora de apertura y cierre que rige en el día de `now`."""
+    if holiday or now.weekday() == 6:
+        return METRO_HOURS["sunday"]
+    return METRO_HOURS["saturday" if now.weekday() == 5 else "weekday"]
+
+
+def metro_is_open(now: datetime | None = None, holiday: bool = False) -> bool:
+    """True si el Metro está en horario de servicio ahora (hora de Santiago)."""
+    now = now.astimezone(ZoneInfo(METRO_TZ)) if now else datetime.now(ZoneInfo(METRO_TZ))
+    opens, closes = metro_hours(now, holiday)
+    return opens <= now.time() < closes
 
 
 async def fetch_metro(session: aiohttp.ClientSession) -> dict[str, MetroLine]:

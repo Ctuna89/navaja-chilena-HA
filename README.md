@@ -7,7 +7,7 @@ Integración para Home Assistant (instalable vía HACS) con datos útiles de Chi
 | Módulo | Datos | Fuente | Actualización |
 |---|---|---|---|
 | Indicadores económicos | UF, dólar, euro, UTM, IPC, IVP, Imacec, TPM, cobre, desempleo, bitcoin | [mindicador.cl](https://mindicador.cl) | 1 h |
-| Metro de Santiago | Estado operacional por línea y estaciones con problemas | [api.xor.cl](https://api.xor.cl) | 2 min |
+| Metro de Santiago | Estado por línea (`operativa`, `con_problemas` o `cerrada` fuera de horario) y por estación | [api.xor.cl](https://api.xor.cl) | 2 min |
 | Paraderos | Minutos al próximo bus y detalle por recorrido | [api.xor.cl](https://api.xor.cl) (Red Movilidad) | 1 min |
 | Sismos | Último sismo: magnitud, profundidad, referencia y coordenadas (sirve para la tarjeta de mapa) | Centro Sismológico Nacional vía api.gael.cl | 5 min |
 | Feriados | Próximo feriado, días que faltan, si es irrenunciable | apis.digital.gob.cl (respaldo: boostr.cl) | 1 h |
@@ -30,7 +30,10 @@ separados por coma (ej. `PC615, PA433`). Todo se puede cambiar después en *Conf
 ## Entidades
 
 - `sensor.<indicador>`: valor numérico; atributo `fecha`.
-- `sensor.<línea de metro>`: `operativa` / `con_problemas`; atributos `mensaje` y `estaciones_con_problemas`.
+- `sensor.<línea de metro>`: `operativa` / `con_problemas` / `cerrada`; atributos `mensaje`, `estaciones` (estado de cada una),
+  `estaciones_con_problemas`, `horario_apertura` y `horario_cierre`.
+  El horario se calcula en la integración (hora de Santiago): lun-vie 06:00–23:00, sáb 06:30–23:00,
+  domingo y festivos 07:30–23:00. Para que los festivos cuenten como domingo, activa también el módulo de feriados.
 - `sensor.paradero_<código>`: minutos al próximo bus; atributos `estado` y `recorridos`.
 - `sensor.ultimo_sismo`: magnitud; atributos `latitude`, `longitude`, `profundidad_km`, `referencia`, `fecha`.
 - `sensor.proximo_feriado` (fecha) y `sensor.dias_para_el_proximo_feriado`.
