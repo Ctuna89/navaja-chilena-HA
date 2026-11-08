@@ -10,7 +10,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa
 
 from custom_components.navaja_chilena import api  # noqa: E402
 from custom_components.navaja_chilena.const import (  # noqa: E402
-    AIR_URL, DOMAIN, INDICATORS_URL, METRO_URL, PHARMACY_URL, QUAKES_URL, STOP_URL,
+    AIR_URL, CRYPTO_URL, DOMAIN, INDICATORS_URL, METRO_URL, PHARMACY_URL, QUAKES_CSN_URL,
+    QUAKES_URL, STOP_URL,
 )
 
 STOP = {"id": "PC615", "status_description": "Servicio en horario normal", "services": [
@@ -20,9 +21,12 @@ INDICATORS = {"version": "1", "uf": {"codigo": "uf", "nombre": "UF", "unidad_med
               "fecha": "2026-11-07T03:00:00.000Z", "valor": 39000.5},
               "dolar": {"codigo": "dolar", "nombre": "Dólar", "unidad_medida": "Pesos",
               "fecha": "2026-11-07T03:00:00.000Z", "valor": 950.2}}
-METRO = {"lines": [
-    {"id": "l1", "name": "Línea 1", "stations": [{"name": "A", "status": {"code": "0"}}]},
+METRO = {"api_status": "OK", "issues": True, "lines": [
     {"id": "l2", "name": "Línea 2", "stations": [{"name": "B", "status": {"code": "1"}}]}]}
+CSN = [{"Fecha": "2026-11-07 23:54:11", "Profundidad": "74", "Magnitud": "2.9",
+        "RefGeografica": "26 km al E de Sierra Gorda"}]
+BUDA = {"ticker": {"last_price": ["74385376.0", "CLP"], "price_variation_24h": "-0.001",
+                   "price_variation_7d": "-0.038", "volume": ["0.5", "BTC"]}}
 QUAKES = {"features": [{"properties": {"mag": 4.5, "place": "10 km N of Ovalle, Chile",
           "time": 1_762_500_000_000}, "geometry": {"coordinates": [-71.2, -30.5, 30.0]}}]}
 HOLIDAYS = [{"nombre": "Navidad", "fecha": "2099-12-25", "irrenunciable": "1", "tipo": "Civil"}]
@@ -30,7 +34,7 @@ AIR = {"current": {"pm10": 30, "pm2_5": 12, "us_aqi": 55, "uv_index": 7}}
 PHARM = [{"comuna_nombre": "ÑUÑOA", "local_nombre": "Cruz", "local_direccion": "X 1"}]
 
 DATA = {"indicators": ["uf", "dolar"], "metro": True, "stops": "PC615", "quakes": True,
-        "holidays": True, "air": True, "pharmacy_comuna": "Ñuñoa"}
+        "holidays": True, "air": True, "crypto": True, "pharmacy_comuna": "Ñuñoa"}
 
 
 def mock_all(mock, metro_status=200):
@@ -38,6 +42,9 @@ def mock_all(mock, metro_status=200):
     mock.get(METRO_URL, json=METRO, status=metro_status)
     mock.get(STOP_URL.format(code="PC615"), json=STOP)
     mock.get(QUAKES_URL, json=QUAKES)
+    mock.get(QUAKES_CSN_URL, json=CSN)
+    for m in ('btc-clp', 'eth-clp'):
+        mock.get(CRYPTO_URL.format(market=m), json=BUDA)
     mock.get(PHARMACY_URL, json=PHARM)
     mock.get(AIR_URL.format(lat=32.87336, lon=-117.22743), json=AIR)
     from custom_components.navaja_chilena.const import HOLIDAYS_URLS
@@ -73,11 +80,13 @@ async def test_metro_states(hass, aioclient_mock, monkeypatch):
     monkeypatch.setattr(api, "metro_is_open", lambda *a, **k: True)
     await setup(hass, aioclient_mock)
     st = states(hass)
-    assert st["Línea 1"] == "operativa"
+    assert st["Línea 1"] == "operativa"          # no listada = sin incidentes
     assert st["Línea 2"] == "con_problemas"
     assert st["UF"] == "39000.5"
     assert st["Paradero PC615"] == "5"
-    assert st["Último sismo"] == "4.5"
+    assert st["Último sismo (CSN)"] == "2.9"
+    assert st["Último sismo con coordenadas (USGS)"] == "4.5"
+    assert st["Bitcoin"] == "74385376.0"
     assert st["Próximo feriado"] == "2099-12-25"
     assert st["PM2.5"] == "12.0"
     assert st["Ñuñoa"] == "1"

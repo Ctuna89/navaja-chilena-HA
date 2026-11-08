@@ -17,7 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import NavajaConfigEntry, api
-from .const import DOMAIN, INDICATORS, UNIT_MAP
+from .const import CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
 
 
 def _device(key: str, name: str) -> DeviceInfo:
@@ -66,13 +66,17 @@ async def async_setup_entry(
         ],
     )
     add_when_ready(
+        rt.crypto,
+        lambda data: [CryptoSensor(rt.crypto, entry, m) for m in data],
+    )
+    add_when_ready(
         rt.stops, lambda data: [StopSensor(rt.stops, entry, code) for code in data]
     )
 
     # Estos no necesitan datos para existir: aparecen "no disponibles" hasta tenerlos.
     fixed: list[SensorEntity] = []
     if rt.quakes:
-        fixed.append(QuakeSensor(rt.quakes, entry, "ultimo"))
+        fixed += [QuakeSensor(rt.quakes, entry, "csn"), QuakeSensor(rt.quakes, entry, "usgs")]
     if rt.holidays:
         fixed += [
             NextHolidaySensor(rt.holidays, entry, "proximo"),
@@ -205,42 +209,76 @@ class StopSensor(_Base):
         if not stop:
             return {}
         return {
+            "nombre": stop.name,
             "estado": stop.status,
             "recorridos": {
                 s.id: {"minutos": s.next_minutes, "estado": s.status, "buses": s.buses}
                 for s in stop.services
+                if s.buses
             },
+            "recorridos_sin_buses": [s.id for s in stop.services if not s.buses],
         }
 
 
 class QuakeSensor(_Base):
-    """Último sismo; con latitude/longitude para la tarjeta de mapa."""
+    """Último sismo. CSN: completo y en español, sin coordenadas. USGS: con mapa."""
 
     _kind = "sismo"
     _attr_icon = "mdi:waveform"
-    _attr_name = "Último sismo"
     _attr_native_unit_of_measurement = "M"
 
-    def __init__(self, coordinator, entry, key: str) -> None:
-        super().__init__(coordinator, entry, key)
+    def __init__(self, coordinator, entry, source: str) -> None:
+        super().__init__(coordinator, entry, source)
+        self._attr_name = (
+            "Último sismo (CSN)" if source == "csn" else "Último sismo con coordenadas (USGS)"
+        )
         self._attr_device_info = _device("sismos", "Sismos Chile")
 
+    def _quake(self):
+        quakes = (self.coordinator.data or {}).get(self._key)
+        return quakes[0] if quakes else None
+
     def _has_data(self) -> bool:
-        return bool(self.coordinator.data)
+        return self._quake() is not None
 
     @property
     def native_value(self) -> float | None:
-        return self.coordinator.data[0].magnitude
+        return self._quake().magnitude
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        q = self.coordinator.data[0]
+        q = self._quake()
+        attrs = {"profundidad_km": q.depth_km, "referencia": q.reference, "fecha": q.date}
+        if q.latitude is not None and q.longitude is not None:
+            attrs |= {"latitude": q.latitude, "longitude": q.longitude}
+        return attrs
+
+
+class CryptoSensor(_Base):
+    _kind = "cripto"
+    _attr_icon = "mdi:bitcoin"
+    _attr_native_unit_of_measurement = "CLP"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry, market: str) -> None:
+        super().__init__(coordinator, entry, market)
+        self._attr_name = CRYPTO_MARKETS.get(market, market)
+        self._attr_device_info = _device("cripto", "Criptomonedas (Buda)")
+
+    @property
+    def native_value(self) -> float | None:
+        item = (self.coordinator.data or {}).get(self._key)
+        return item.price if item else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        item = (self.coordinator.data or {}).get(self._key)
+        if not item:
+            return {}
         return {
-            "latitude": q.latitude,
-            "longitude": q.longitude,
-            "profundidad_km": q.depth_km,
-            "referencia": q.reference,
-            "fecha": q.date,
+            "variacion_24h_pct": item.change_24h_pct,
+            "variacion_7d_pct": item.change_7d_pct,
+            "volumen_24h": item.volume_24h,
         }
 
 

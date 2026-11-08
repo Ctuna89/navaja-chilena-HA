@@ -11,7 +11,8 @@
           "quakes": "Latest earthquake (Chile National Seismological Center)",
           "holidays": "Next public holiday",
           "air": "Air quality and UV (based on Home Assistant location)",
-          "pharmacy_comuna": "Commune for pharmacies on duty (optional, e.g. Providencia)"
+          "pharmacy_comuna": "Commune for pharmacies on duty (optional, e.g. Providencia)",
+          "crypto": "Cryptocurrencies in CLP (Bitcoin and Ethereum, Buda.com)"
         }
       }
     },
@@ -36,7 +37,8 @@
           "quakes": "Latest earthquake (Chile National Seismological Center)",
           "holidays": "Next public holiday",
           "air": "Air quality and UV (based on Home Assistant location)",
-          "pharmacy_comuna": "Commune for pharmacies on duty (optional, e.g. Providencia)"
+          "pharmacy_comuna": "Commune for pharmacies on duty (optional, e.g. Providencia)",
+          "crypto": "Cryptocurrencies in CLP (Bitcoin and Ethereum, Buda.com)"
         }
       }
     },

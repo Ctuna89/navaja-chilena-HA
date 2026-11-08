@@ -16,6 +16,7 @@ from . import api
 from .api import parse_stop_codes
 from .const import (
     CONF_AIR,
+    CONF_CRYPTO,
     CONF_HOLIDAYS,
     CONF_INDICATORS,
     CONF_METRO,
@@ -59,6 +60,9 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.Required(
                 CONF_AIR, default=defaults.get(CONF_AIR, False)
             ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_CRYPTO, default=defaults.get(CONF_CRYPTO, False)
+            ): selector.BooleanSelector(),
             vol.Optional(
                 CONF_PHARMACY_COMUNA, default=defaults.get(CONF_PHARMACY_COMUNA, "")
             ): selector.TextSelector(),
@@ -75,7 +79,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
     has_any = (
         user_input[CONF_INDICATORS]
         or stops
-        or any(user_input.get(k) for k in (CONF_METRO, CONF_QUAKES, CONF_HOLIDAYS, CONF_AIR))
+        or any(user_input.get(k) for k in (CONF_METRO, CONF_QUAKES, CONF_HOLIDAYS, CONF_AIR, CONF_CRYPTO))
         or user_input.get(CONF_PHARMACY_COMUNA, "").strip()
     )
     if not has_any:
