@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -14,7 +16,7 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import NavajaConfigEntry
+from . import NavajaConfigEntry, api
 from .const import DOMAIN, INDICATORS, UNIT_MAP
 
 
@@ -41,7 +43,8 @@ async def async_setup_entry(
         ]
     if rt.metro:
         entities += [
-            MetroLineSensor(rt.metro, entry, line_id) for line_id in rt.metro.data
+            MetroLineSensor(rt.metro, entry, line_id, rt.holidays)
+            for line_id in rt.metro.data
         ]
     if rt.stops:
         entities += [StopSensor(rt.stops, entry, code) for code in rt.stops.data]
@@ -106,19 +109,31 @@ class IndicatorSensor(_Base):
 
 
 class MetroLineSensor(_Base):
+    """Línea de Metro: operativa, con_problemas o cerrada (fuera de horario)."""
+
     _kind = "metro"
     _attr_icon = "mdi:subway-variant"
 
-    def __init__(self, coordinator, entry, line_id: str) -> None:
+    def __init__(self, coordinator, entry, line_id: str, holidays=None) -> None:
         super().__init__(coordinator, entry, line_id)
+        self._holidays = holidays
         self._attr_name = coordinator.data[line_id].name
         self._attr_device_info = _device("metro", "Metro de Santiago")
+
+    def _is_holiday(self) -> bool:
+        data = self._holidays.data if self._holidays else None
+        return bool(data and data.get("is_holiday_today"))
+
+    def _is_open(self) -> bool:
+        return api.metro_is_open(holiday=self._is_holiday())
 
     @property
     def native_value(self) -> str | None:
         line = self.coordinator.data.get(self._key)
         if not line:
             return None
+        if not self._is_open():
+            return "cerrada"
         return "operativa" if line.operational else "con_problemas"
 
     @property
@@ -126,9 +141,21 @@ class MetroLineSensor(_Base):
         line = self.coordinator.data.get(self._key)
         if not line:
             return {}
+        now = datetime.now(ZoneInfo(api.METRO_TZ))
+        opens, closes = api.metro_hours(now, self._is_holiday())
+        is_open = self._is_open()
+        if is_open:
+            stations = {
+                n: "operativa" if ok else "con_problemas" for n, ok in line.stations.items()
+            }
+        else:
+            stations = {n: "cerrada" for n in line.stations}
         return {
-            "mensaje": line.message,
-            "estaciones_con_problemas": line.stations_with_issues,
+            "mensaje": line.message if is_open else "Fuera de horario de servicio",
+            "estaciones_con_problemas": line.stations_with_issues if is_open else [],
+            "estaciones": stations,
+            "horario_apertura": opens.strftime("%H:%M"),
+            "horario_cierre": closes.strftime("%H:%M"),
         }
 
 

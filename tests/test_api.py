@@ -107,3 +107,27 @@ def test_pharmacies_accent_insensitive():
     ]
     assert [p.name for p in api.parse_pharmacies(data, "Ñuñoa")] == ["Cruz"]
     assert api.parse_pharmacies(data, "Las Condes") == []
+
+
+def test_metro_schedule():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("America/Santiago")
+    at = lambda d, h, m=0: datetime(2026, 11, d, h, m, tzinfo=tz)  # 9 nov 2026 = lunes
+    assert api.metro_is_open(at(9, 12))
+    assert not api.metro_is_open(at(9, 5, 59))
+    assert api.metro_is_open(at(9, 6, 0))
+    assert not api.metro_is_open(at(9, 23, 0))
+    assert api.metro_is_open(at(7, 6, 45))             # sábado abre 6:30
+    assert not api.metro_is_open(at(7, 6, 15))
+    assert not api.metro_is_open(at(8, 7, 0))          # domingo abre 7:30
+    assert api.metro_is_open(at(8, 7, 30))
+    assert not api.metro_is_open(at(9, 7, 0), holiday=True)  # festivo = horario domingo
+    assert api.metro_is_open(at(9, 7, 30), holiday=True)
+
+
+def test_metro_stations_kept():
+    data = {"lines": [{"id": "l1", "name": "Línea 1", "status": {"code": "1"},
+                       "stations": [{"name": "A", "status": {"code": "1"}},
+                                    {"name": "B", "status": {"code": "2"}}]}]}
+    assert api.parse_metro(data)["l1"].stations == {"A": True, "B": False}
