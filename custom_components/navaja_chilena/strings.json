@@ -17,7 +17,8 @@
     },
     "error": {
       "invalid_stop": "Código de paradero inválido. Usa el formato PC615.",
-      "nothing_selected": "Selecciona al menos un indicador, el Metro o un paradero."
+      "nothing_selected": "Selecciona al menos un indicador, el Metro o un paradero.",
+      "stop_not_found": "Ese paradero no existe en Red Movilidad. Revisa el código (ej. PC615)."
     },
     "abort": {
       "already_configured": "Navaja Chilena ya está configurada."
@@ -41,7 +42,8 @@
     },
     "error": {
       "invalid_stop": "Código de paradero inválido. Usa el formato PC615.",
-      "nothing_selected": "Selecciona al menos un indicador, el Metro o un paradero."
+      "nothing_selected": "Selecciona al menos un indicador, el Metro o un paradero.",
+      "stop_not_found": "Ese paradero no existe en Red Movilidad. Revisa el código (ej. PC615)."
     }
   }
 }

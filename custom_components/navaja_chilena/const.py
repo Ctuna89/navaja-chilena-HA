@@ -52,7 +52,12 @@ CONF_HOLIDAYS = "holidays"
 CONF_AIR = "air"
 CONF_PHARMACY_COMUNA = "pharmacy_comuna"
 
-QUAKES_URL = "https://api.gael.cl/general/public/sismos"
+# USGS (FDSN): caja que cubre Chile continental; se filtra por "Chile" en el lugar.
+QUAKES_URL = (
+    "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&orderby=time"
+    "&limit=100&minmagnitude=2.5&minlatitude=-56&maxlatitude=-17"
+    "&minlongitude=-76&maxlongitude=-66"
+)
 HOLIDAYS_URLS = (
     "https://apis.digital.gob.cl/fl/feriados/{year}",
     "https://api.boostr.cl/holidays/{year}.json",

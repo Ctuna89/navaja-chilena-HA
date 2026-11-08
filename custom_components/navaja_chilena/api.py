@@ -18,6 +18,10 @@ STOP_CODE_RE = re.compile(r"^[A-Z]{1,3}\d{1,5}$")
 class NavajaApiError(Exception):
     """Error al consultar o interpretar una API."""
 
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+
 
 def normalize_stop_code(raw: str) -> str:
     """Devuelve el código de paradero en mayúsculas, sin espacios."""
@@ -49,6 +53,8 @@ async def _get_json(session: aiohttp.ClientSession, url: str) -> Any:
         ) as resp:
             resp.raise_for_status()
             return await resp.json(content_type=None)
+    except aiohttp.ClientResponseError as err:
+        raise NavajaApiError(f"Error consultando {url}: {err}", err.status) from err
     except (aiohttp.ClientError, TimeoutError, ValueError) as err:
         raise NavajaApiError(f"Error consultando {url}: {err}") from err
 
@@ -104,28 +110,52 @@ class MetroLine:
 
     id: str
     name: str
-    operational: bool
+    operational: bool | None  # None = desconocido
     message: str
     stations_with_issues: list[str] = field(default_factory=list)
     stations: dict[str, bool] = field(default_factory=dict)  # nombre -> operativa
 
 
-def _status_ok(status: Any) -> tuple[bool, str]:
-    """Normaliza el estado de una línea/estación a (operativa, mensaje)."""
+_OK_CODES = {"0", "true", "ok", "operativa", "operativo", "operational", "normal", "open"}
+_BAD_CODES = {
+    "1", "2", "3", "false", "cerrada", "cerrado", "closed", "no habilitada",
+    "con problemas", "problemas", "accesos cerrados",
+}
+
+
+def _status_ok(status: Any) -> tuple[bool | None, str]:
+    """Normaliza un estado a (operativa, mensaje).
+
+    En api.xor.cl los códigos de estación son: 0 operativa, 1 cerrada
+    temporalmente, 2 no habilitada, 3 accesos cerrados. Si el estado no es
+    reconocible devuelve None (desconocido): nunca se asume "operativa".
+    """
+    if status is None:
+        return None, ""
     code: Any = status
     message = ""
     if isinstance(status, dict):
-        code = status.get("code", status.get("id", status.get("estado")))
+        code = next(
+            (status[k] for k in ("code", "id", "estado", "status") if k in status), None
+        )
         message = str(status.get("message") or status.get("description") or "")
-    elif isinstance(status, bool):
-        return status, "Operativa" if status else "Con problemas"
+    if isinstance(code, bool):
+        return code, message
     code_s = str(code).strip().lower() if code is not None else ""
-    ok = code_s in {"1", "true", "ok", "operativa", "operational", "open"}
-    return ok, message or ("Operativa" if ok else "Con problemas")
+    if code_s in _OK_CODES:
+        return True, message or "Operativa"
+    if code_s in _BAD_CODES:
+        return False, message or "Con problemas"
+    return None, message
 
 
 def parse_metro(data: Any) -> dict[str, MetroLine]:
-    """Interpreta la respuesta de https://api.xor.cl/red/metro-network."""
+    """Interpreta la respuesta de https://api.xor.cl/red/metro-network.
+
+    El estado de la línea se deduce de sus estaciones cuando existen; si no,
+    del estado propio de la línea. Si no se puede determinar, queda en None
+    (el sensor aparece como no disponible en lugar de inventar "operativa").
+    """
     lines_raw = data.get("lines", data) if isinstance(data, dict) else data
     if isinstance(lines_raw, dict):
         lines_raw = list(lines_raw.values())
@@ -137,30 +167,40 @@ def parse_metro(data: Any) -> dict[str, MetroLine]:
         if not isinstance(item, dict) or "id" not in item:
             continue
         line_id = str(item["id"]).lower()
-        status = item.get("status", item.get("estado"))
         stations = item.get("stations") or item.get("estaciones") or []
         problems: list[str] = []
         station_states: dict[str, bool] = {}
+        known = 0
         for st in stations:
             if not isinstance(st, dict):
                 continue
-            raw = st.get("status", st.get("estado"))
-            st_ok, _ = _status_ok(raw)
+            ok, _ = _status_ok(st.get("status", st.get("estado")))
             st_name = str(st.get("name") or st.get("nombre") or st.get("id"))
-            station_states[st_name] = st_ok or raw is None
-            if not st_ok and raw is not None:
+            if ok is None:
+                continue
+            known += 1
+            station_states[st_name] = ok
+            if not ok:
                 problems.append(st_name)
-        ok, message = _status_ok(status)
+        line_ok, message = _status_ok(item.get("status", item.get("estado")))
+        if known:
+            operational: bool | None = not problems
+            if problems and not message:
+                message = f"{len(problems)} estación(es) con problemas"
+        else:
+            operational = line_ok
+        if operational and not message:
+            message = "Operativa"
         result[line_id] = MetroLine(
             id=line_id,
             name=str(item.get("name") or item.get("nombre") or line_id.upper()),
-            operational=ok,
+            operational=operational,
             message=message,
             stations_with_issues=problems,
             stations=station_states,
         )
-    if not result:
-        raise NavajaApiError("La respuesta no contiene líneas de Metro")
+    if not result or all(l.operational is None for l in result.values()):
+        raise NavajaApiError("No se pudo interpretar el estado del Metro")
     return result
 
 
@@ -294,31 +334,39 @@ class Quake:
 
 
 def parse_quakes(data: Any) -> list[Quake]:
-    """Interpreta la lista de sismos (más reciente primero)."""
-    if isinstance(data, dict):
-        data = data.get("data") or data.get("sismos") or []
-    if not isinstance(data, list):
+    """Interpreta el GeoJSON de USGS (FDSN) y deja solo sismos de Chile."""
+    features = data.get("features") if isinstance(data, dict) else None
+    if not isinstance(features, list):
         raise NavajaApiError("Respuesta de sismos inesperada")
     quakes: list[Quake] = []
-    for item in data:
-        if not isinstance(item, dict):
+    for feat in features:
+        if not isinstance(feat, dict):
             continue
-        mag = _num(_pick(item, "Magnitud", "magnitude", "mag"))
-        if mag is None:
+        props = feat.get("properties") or {}
+        coords = (feat.get("geometry") or {}).get("coordinates") or []
+        place = str(props.get("place") or "")
+        mag = _num(props.get("mag"))
+        if mag is None or "chile" not in place.lower() or len(coords) < 2:
             continue
+        when = None
+        if isinstance(props.get("time"), (int, float)):
+            when = (
+                datetime.fromtimestamp(props["time"] / 1000, ZoneInfo(METRO_TZ))
+                .replace(microsecond=0)
+                .isoformat()
+            )
         quakes.append(
             Quake(
                 magnitude=mag,
-                latitude=_num(_pick(item, "Latitud", "latitude", "lat")),
-                longitude=_num(_pick(item, "Longitud", "longitude", "lon", "lng")),
-                depth_km=_num(_pick(item, "Profundidad", "depth")),
-                reference=_pick(item, "RefGeografica", "referencia", "reference"),
-                date=_pick(item, "Fecha", "fecha", "date"),
+                latitude=_num(coords[1]),
+                longitude=_num(coords[0]),
+                depth_km=_num(coords[2]) if len(coords) > 2 else None,
+                reference=place,
+                date=when,
             )
         )
     if not quakes:
-        raise NavajaApiError("La respuesta no contiene sismos")
-    # Si hay fecha ISO-like ordenable, deja el más reciente primero.
+        raise NavajaApiError("La respuesta no contiene sismos de Chile")
     quakes.sort(key=lambda q: q.date or "", reverse=True)
     return quakes
 

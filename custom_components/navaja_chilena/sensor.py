@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -33,35 +33,56 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: NavajaConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     rt = entry.runtime_data
-    entities: list[SensorEntity] = []
 
-    if rt.indicators:
-        entities += [
+    def add_when_ready(coordinator, make) -> None:
+        """Crea las entidades al tener datos; si la fuente está caída, cuando vuelva."""
+        if coordinator is None:
+            return
+        if coordinator.data is not None:
+            async_add_entities(make(coordinator.data))
+            return
+
+        @callback
+        def _listener() -> None:
+            if coordinator.data is not None:
+                unsub()
+                async_add_entities(make(coordinator.data))
+
+        unsub = coordinator.async_add_listener(_listener)
+        entry.async_on_unload(unsub)
+
+    add_when_ready(
+        rt.indicators,
+        lambda data: [
             IndicatorSensor(rt.indicators, entry, code)
             for code in rt.indicator_codes
-            if code in rt.indicators.data
-        ]
-    if rt.metro:
-        entities += [
-            MetroLineSensor(rt.metro, entry, line_id, rt.holidays)
-            for line_id in rt.metro.data
-        ]
-    if rt.stops:
-        entities += [StopSensor(rt.stops, entry, code) for code in rt.stops.data]
+            if code in data
+        ],
+    )
+    add_when_ready(
+        rt.metro,
+        lambda data: [
+            MetroLineSensor(rt.metro, entry, line_id, rt.holidays) for line_id in data
+        ],
+    )
+    add_when_ready(
+        rt.stops, lambda data: [StopSensor(rt.stops, entry, code) for code in data]
+    )
 
+    # Estos no necesitan datos para existir: aparecen "no disponibles" hasta tenerlos.
+    fixed: list[SensorEntity] = []
     if rt.quakes:
-        entities.append(QuakeSensor(rt.quakes, entry, "ultimo"))
+        fixed.append(QuakeSensor(rt.quakes, entry, "ultimo"))
     if rt.holidays:
-        entities += [
+        fixed += [
             NextHolidaySensor(rt.holidays, entry, "proximo"),
             DaysToHolidaySensor(rt.holidays, entry, "dias"),
         ]
     if rt.air:
-        entities += [AirSensor(rt.air, entry, spec) for spec in AIR_SENSORS]
+        fixed += [AirSensor(rt.air, entry, spec) for spec in AIR_SENSORS]
     if rt.pharmacy:
-        entities.append(PharmacySensor(rt.pharmacy, entry, rt.pharmacy_comuna))
-
-    async_add_entities(entities)
+        fixed.append(PharmacySensor(rt.pharmacy, entry, rt.pharmacy_comuna))
+    async_add_entities(fixed)
 
 
 class _Base(CoordinatorEntity, SensorEntity):
@@ -119,6 +140,10 @@ class MetroLineSensor(_Base):
         self._holidays = holidays
         self._attr_name = coordinator.data[line_id].name
         self._attr_device_info = _device("metro", "Metro de Santiago")
+
+    def _has_data(self) -> bool:
+        line = (self.coordinator.data or {}).get(self._key)
+        return line is not None and line.operational is not None
 
     def _is_holiday(self) -> bool:
         data = self._holidays.data if self._holidays else None
@@ -300,7 +325,7 @@ class PharmacySensor(_Base):
 
     def __init__(self, coordinator, entry, comuna: str) -> None:
         super().__init__(coordinator, entry, comuna.lower())
-        self._attr_name = f"Farmacias de turno {comuna}"
+        self._attr_name = comuna
         self._attr_device_info = _device("farmacias", "Farmacias de turno")
 
     def _has_data(self) -> bool:
