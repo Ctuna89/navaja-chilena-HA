@@ -1,0 +1,107 @@
+[
+  {
+    "Fecha": "2026-11-07 23:54:11",
+    "Profundidad": "74",
+    "Magnitud": "2.9",
+    "RefGeografica": "26 km al E de Sierra Gorda",
+    "FechaUpdate": "2026-11-08T00:05:00.457Z"
+  },
+  {
+    "Fecha": "2026-11-07 23:33:55",
+    "Profundidad": "23",
+    "Magnitud": "2.8",
+    "RefGeografica": "77 km al S de Socaire",
+    "FechaUpdate": "2026-11-08T00:05:00.457Z"
+  },
+  {
+    "Fecha": "2026-11-07 23:12:24",
+    "Profundidad": "122",
+    "Magnitud": "3.2",
+    "RefGeografica": "62 km al SO de Ollagüe",
+    "FechaUpdate": "2026-11-08T00:05:00.457Z"
+  },
+  {
+    "Fecha": "2026-11-07 22:48:49",
+    "Profundidad": "112",
+    "Magnitud": "2.7",
+    "RefGeografica": "63 km al SO de Ollagüe",
+    "FechaUpdate": "2026-11-08T00:05:00.460Z"
+  },
+  {
+    "Fecha": "2026-11-07 22:33:41",
+    "Profundidad": "186",
+    "Magnitud": "3.0",
+    "RefGeografica": "85 km al SE de Socaire",
+    "FechaUpdate": "2026-11-08T00:05:00.460Z"
+  },
+  {
+    "Fecha": "2026-11-07 22:22:01",
+    "Profundidad": "93",
+    "Magnitud": "2.8",
+    "RefGeografica": "41 km al S de Camiña",
+    "FechaUpdate": "2026-11-08T00:05:00.460Z"
+  },
+  {
+    "Fecha": "2026-11-07 22:16:40",
+    "Profundidad": "165",
+    "Magnitud": "3.2",
+    "RefGeografica": "51 km al E de Socaire",
+    "FechaUpdate": "2026-11-08T00:05:00.460Z"
+  },
+  {
+    "Fecha": "2026-11-07 22:03:40",
+    "Profundidad": "61",
+    "Magnitud": "2.7",
+    "RefGeografica": "24 km al SE de La Ligua",
+    "FechaUpdate": "2026-11-08T00:05:00.460Z"
+  },
+  {
+    "Fecha": "2026-11-07 21:36:29",
+    "Profundidad": "46",
+    "Magnitud": "2.9",
+    "RefGeografica": "41 km al NO de Quillagua",
+    "FechaUpdate": "2026-11-08T00:05:00.463Z"
+  },
+  {
+    "Fecha": "2026-11-07 20:52:11",
+    "Profundidad": "127",
+    "Magnitud": "2.8",
+    "RefGeografica": "44 km al SO de Mina Collahuasi",
+    "FechaUpdate": "2026-11-08T00:05:00.463Z"
+  },
+  {
+    "Fecha": "2026-11-07 20:24:16",
+    "Profundidad": "99",
+    "Magnitud": "3.7",
+    "RefGeografica": "11 km al S de Calama",
+    "FechaUpdate": "2026-11-08T00:05:00.463Z"
+  },
+  {
+    "Fecha": "2026-11-07 20:07:17",
+    "Profundidad": "27",
+    "Magnitud": "2.8",
+    "RefGeografica": "42 km al NO de Los Vilos",
+    "FechaUpdate": "2026-11-08T00:05:00.463Z"
+  },
+  {
+    "Fecha": "2026-11-07 20:01:40",
+    "Profundidad": "26",
+    "Magnitud": "3.0",
+    "RefGeografica": "42 km al NO de Los Vilos",
+    "FechaUpdate": "2026-11-08T00:05:00.467Z"
+  },
+  {
+    "Fecha": "2026-11-07 19:46:36",
+    "Profundidad": "237",
+    "Magnitud": "3.1",
+    "RefGeografica": "103 km al NE de Socaire",
+    "FechaUpdate": "2026-11-08T00:05:00.467Z"
+  },
+  {
+    "Fecha": "2026-11-07 19:22:31",
+    "Profundidad": "106",
+    "Magnitud": "3.0",
+    "RefGeografica": "44 km al NE de Calama",
+    "FechaUpdate": "2026-11-08T00:05:00.467Z"
+  }
+]

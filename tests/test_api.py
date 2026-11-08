@@ -1,6 +1,7 @@
 """Pruebas de los parsers (sin red ni Home Assistant)."""
 
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -40,30 +41,46 @@ def test_indicators():
         api.parse_indicators({"version": "1"})
 
 
-def test_metro_station_codes():
+FIX = Path(__file__).parent / "fixtures"
+
+
+def load(name):
+    return json.loads((FIX / name).read_text())
+
+
+def test_metro_real_response_no_incidents():
+    """Respuesta real: lines vacío + issues false => todas las líneas conocidas operativas."""
+    out = api.parse_metro(load("metro_ok.json"))
+    assert set(out) == set(api.KNOWN_LINES)
+    assert all(l.operational is True for l in out.values())
+
+
+def test_metro_incident_and_station_codes():
     # En api.xor.cl: 0 operativa, 1 cerrada temporalmente, 2 no habilitada, 3 accesos cerrados
-    data = {"lines": [
-        {"id": "l1", "name": "Línea 1", "stations": [
-            {"name": "A", "status": {"code": "0"}}, {"name": "B", "status": 0}]},
+    data = {"api_status": "OK", "issues": True, "lines": [
         {"id": "l2", "name": "Línea 2", "stations": [
-            {"name": "C", "status": {"code": "0"}}, {"name": "D", "status": {"code": "1", "message": "Cerrada"}}]},
-    ]}
+            {"name": "C", "status": {"code": "0"}},
+            {"name": "D", "status": {"code": "1", "message": "Cerrada"}}]}]}
     out = api.parse_metro(data)
-    assert out["l1"].operational is True
     assert out["l2"].operational is False and out["l2"].stations_with_issues == ["D"]
+    assert out["l1"].operational is True            # no listada = sin incidentes
 
 
-def test_metro_unknown_is_never_operational():
-    data = {"lines": [
-        {"id": "l1", "name": "L1", "status": {"code": "?"}},
-        {"id": "l2", "name": "L2", "status": {"code": "0"}},
-    ]}
-    out = api.parse_metro(data)
-    assert out["l1"].operational is None and out["l2"].operational is True
-    with pytest.raises(api.NavajaApiError):  # nada interpretable -> error, no "operativa"
-        api.parse_metro({"lines": [{"id": "l1", "name": "L1", "status": {"code": "?"}}]})
-    with pytest.raises(api.NavajaApiError):
-        api.parse_metro({"lines": []})
+def test_metro_listed_line_with_unreadable_status_is_a_problem():
+    data = {"api_status": "OK", "issues": True, "lines": [{"id": "l3", "status": {"code": "?"}}]}
+    assert api.parse_metro(data)["l3"].operational is False   # falsa alarma > falso normal
+
+
+def test_metro_invalid_responses_raise_never_default_to_operational():
+    for bad in (
+        {"api_status": "ERROR", "issues": False, "lines": []},
+        {"api_status": "OK", "lines": []},            # sin 'issues': no hay evidencia
+        {"issues": False, "lines": []},               # sin api_status
+        {"api_status": "OK", "issues": False},        # sin lista
+        [], None, "x",
+    ):
+        with pytest.raises(api.NavajaApiError):
+            api.parse_metro(bad)
 
 
 def test_stop():
@@ -79,23 +96,44 @@ def test_stop():
         api.parse_stop("ZZ1", {"error": "x"})
 
 
-def test_quakes_usgs():
-    feat = lambda mag, place, t, lon=-70.5, lat=-33.1, d=10.0: {
-        "properties": {"mag": mag, "place": place, "time": t},
-        "geometry": {"coordinates": [lon, lat, d]}}
-    data = {"features": [
-        feat(3.1, "20 km N of Ovalle, Chile", 1_762_500_000_000),
-        feat(4.7, "10 km S of Salta, Argentina", 1_762_600_000_000),   # se descarta
-        feat(5.2, "50 km W of Illapel, Chile", 1_762_550_000_000, -71.9, -31.6, 35.0),
-    ]}
-    q = api.parse_quakes(data)
-    assert [x.magnitude for x in q] == [5.2, 3.1]
-    assert q[0].latitude == -31.6 and q[0].longitude == -71.9 and q[0].depth_km == 35.0
-    assert q[0].date.startswith("2025-11-0")
+def test_quakes_real_csn():
+    q = api.parse_quakes_csn(load("sismos_csn.json"))
+    assert q[0].date == "2026-11-07 23:54:11" and q[0].magnitude == 2.9
+    assert q[0].reference == "26 km al E de Sierra Gorda" and q[0].latitude is None
+
+
+def test_quakes_real_usgs_only_chile():
+    raw = load("sismos_usgs.json")
+    q = api.parse_quakes_usgs(raw)
+    assert all("chile" in x.reference.lower() for x in q)
+    assert len(q) < len(raw["features"])              # se descartan los de Argentina
+    assert q[0].latitude is not None and q[0].date.endswith("+00:00")
+
+
+def test_quakes_invalid():
     with pytest.raises(api.NavajaApiError):
-        api.parse_quakes({"features": []})
+        api.parse_quakes_csn([])
     with pytest.raises(api.NavajaApiError):
-        api.parse_quakes([])
+        api.parse_quakes_usgs({"features": []})
+
+
+def test_real_samples_other_sources():
+    assert api.parse_indicators(load("mindicador.json"))["uf"].value > 10000
+    fin = api.parse_indicators(load("findic.json"))
+    assert {"uf", "dolar", "ipsa", "yen"} <= set(fin)        # findic trae más indicadores
+    hs = api.parse_holidays(load("feriados_boostr.json"))
+    assert hs[0].name == "Año Nuevo" and hs[0].inalienable
+    air = api.parse_air(load("aire.json"))
+    assert air.pm2_5 == 37.7 and air.aqi == 69 and air.uv_index == 0.0
+    btc = api.parse_crypto("btc-clp", load("buda_btc.json"))
+    assert btc.price > 1_000_000 and btc.change_24h_pct == -0.1
+
+
+def test_real_stop_ignores_services_without_buses():
+    s = api.parse_stop("PC615", load("stop_pc615.json"))
+    assert s.name == "AVENIDA LAS CONDES / ESQ. LA CABAÑA"
+    assert s.next_minutes is not None
+    assert any(not x.buses for x in s.services) and any(x.buses for x in s.services)
 
 
 def test_holidays_both_formats():

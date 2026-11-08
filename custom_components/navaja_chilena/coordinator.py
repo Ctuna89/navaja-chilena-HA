@@ -11,7 +11,14 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from . import api
-from .const import DOMAIN, INDICATORS_INTERVAL, METRO_INTERVAL, STOPS_INTERVAL
+from .const import (
+    CRYPTO_INTERVAL,
+    CRYPTO_MARKETS,
+    DOMAIN,
+    INDICATORS_INTERVAL,
+    METRO_INTERVAL,
+    STOPS_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,8 +54,18 @@ class NavajaCoordinator(DataUpdateCoordinator[Any]):
         return data
 
 
-def indicators_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
-    return NavajaCoordinator(hass, "indicadores", INDICATORS_INTERVAL, api.fetch_indicators)
+def indicators_coordinator(hass: HomeAssistant, codes: list[str]) -> NavajaCoordinator:
+    async def fetch(session: Any) -> dict[str, api.Indicator]:
+        return await api.fetch_indicators(session, codes)
+
+    return NavajaCoordinator(hass, "indicadores", INDICATORS_INTERVAL, fetch)
+
+
+def crypto_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
+    async def fetch(session: Any) -> dict[str, api.CryptoPrice]:
+        return await api.fetch_crypto(session, list(CRYPTO_MARKETS))
+
+    return NavajaCoordinator(hass, "cripto", CRYPTO_INTERVAL, fetch)
 
 
 def metro_coordinator(hass: HomeAssistant) -> NavajaCoordinator:

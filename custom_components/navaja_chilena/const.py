@@ -13,6 +13,7 @@ CONF_STOPS = "stops"
 
 # APIs públicas (sin clave)
 INDICATORS_URL = "https://mindicador.cl/api"
+INDICATORS_FALLBACK_URL = "https://findic.cl/api/"  # mismo formato; trae más indicadores
 METRO_URL = "https://api.xor.cl/red/metro-network"
 STOP_URL = "https://api.xor.cl/red/bus-stop/{code}"
 
@@ -35,7 +36,11 @@ INDICATORS: dict[str, str] = {
     "tpm": "Tasa de política monetaria",
     "libra_cobre": "Libra de cobre",
     "tasa_desempleo": "Tasa de desempleo",
-    "bitcoin": "Bitcoin",
+    "bitcoin": "Bitcoin (USD)",
+    "ipsa": "IPSA",
+    "yen": "Yen",
+    "dolar_intercambio": "Dólar acuerdo",
+    "ethereum": "Ethereum (USD)",
 }
 DEFAULT_INDICATORS = ["uf", "dolar", "euro", "utm"]
 
@@ -53,15 +58,13 @@ CONF_AIR = "air"
 CONF_PHARMACY_COMUNA = "pharmacy_comuna"
 
 # USGS (FDSN): caja que cubre Chile continental; se filtra por "Chile" en el lugar.
+QUAKES_CSN_URL = "https://api.gael.cloud/general/public/sismos"  # CSN; sin coordenadas
 QUAKES_URL = (
     "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&orderby=time"
     "&limit=100&minmagnitude=2.5&minlatitude=-56&maxlatitude=-17"
     "&minlongitude=-76&maxlongitude=-66"
 )
-HOLIDAYS_URLS = (
-    "https://apis.digital.gob.cl/fl/feriados/{year}",
-    "https://api.boostr.cl/holidays/{year}.json",
-)
+HOLIDAYS_URLS = ("https://api.boostr.cl/holidays/{year}.json",)
 AIR_URL = (
     "https://air-quality-api.open-meteo.com/v1/air-quality"
     "?latitude={lat}&longitude={lon}&current=pm10,pm2_5,us_aqi,uv_index"
@@ -73,3 +76,9 @@ HOLIDAYS_INTERVAL = timedelta(hours=1)
 HOLIDAYS_REFETCH = timedelta(hours=12)
 AIR_INTERVAL = timedelta(minutes=30)
 PHARMACY_INTERVAL = timedelta(hours=6)
+
+# Criptomonedas en pesos (Buda.com)
+CONF_CRYPTO = "crypto"
+CRYPTO_URL = "https://www.buda.com/api/v2/markets/{market}/ticker"
+CRYPTO_MARKETS = {"btc-clp": "Bitcoin", "eth-clp": "Ethereum"}
+CRYPTO_INTERVAL = timedelta(minutes=5)

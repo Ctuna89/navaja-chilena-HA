@@ -10,7 +10,16 @@ from typing import Any
 
 import aiohttp
 
-from .const import INDICATORS_URL, METRO_URL, REQUEST_TIMEOUT, STOP_URL
+from .const import (
+    CRYPTO_URL,
+    INDICATORS_FALLBACK_URL,
+    INDICATORS_URL,
+    METRO_URL,
+    REQUEST_TIMEOUT,
+    STOP_URL,
+)
+
+HEADERS = {"User-Agent": "NavajaChilena/2.1 (Home Assistant)"}
 
 STOP_CODE_RE = re.compile(r"^[A-Z]{1,3}\d{1,5}$")
 
@@ -49,7 +58,7 @@ def parse_stop_codes(raw: str) -> list[str]:
 async def _get_json(session: aiohttp.ClientSession, url: str) -> Any:
     try:
         async with session.get(
-            url, timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+            url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
         ) as resp:
             resp.raise_for_status()
             return await resp.json(content_type=None)
@@ -97,8 +106,25 @@ def parse_indicators(data: Any) -> dict[str, Indicator]:
     return result
 
 
-async def fetch_indicators(session: aiohttp.ClientSession) -> dict[str, Indicator]:
-    return parse_indicators(await _get_json(session, INDICATORS_URL))
+async def fetch_indicators(
+    session: aiohttp.ClientSession, wanted: list[str] | None = None
+) -> dict[str, Indicator]:
+    """mindicador.cl; si cae o le faltan indicadores pedidos, completa con findic.cl."""
+    result: dict[str, Indicator] = {}
+    primary_error: NavajaApiError | None = None
+    try:
+        result = parse_indicators(await _get_json(session, INDICATORS_URL))
+    except NavajaApiError as err:
+        primary_error = err
+    if primary_error or (wanted and any(code not in result for code in wanted)):
+        try:
+            extra = parse_indicators(await _get_json(session, INDICATORS_FALLBACK_URL))
+            for code, ind in extra.items():
+                result.setdefault(code, ind)
+        except NavajaApiError:
+            if primary_error:
+                raise primary_error
+    return result
 
 
 # ---------------------------------------------------------------------- Metro
@@ -149,20 +175,36 @@ def _status_ok(status: Any) -> tuple[bool | None, str]:
     return None, message
 
 
+KNOWN_LINES = {
+    "l1": "Línea 1", "l2": "Línea 2", "l3": "Línea 3", "l4": "Línea 4",
+    "l4a": "Línea 4A", "l5": "Línea 5", "l6": "Línea 6",
+}
+
+
 def parse_metro(data: Any) -> dict[str, MetroLine]:
     """Interpreta la respuesta de https://api.xor.cl/red/metro-network.
 
-    El estado de la línea se deduce de sus estaciones cuando existen; si no,
-    del estado propio de la línea. Si no se puede determinar, queda en None
-    (el sensor aparece como no disponible en lugar de inventar "operativa").
+    La API solo lista en `lines` las líneas con incidentes; con `issues: false`
+    llega `lines: []`. Por eso una línea ausente es operativa **únicamente** si
+    la respuesta es válida (`api_status` OK y `issues` informado). Cualquier otra
+    cosa lanza error y los sensores quedan no disponibles (jamás se supone
+    "operativa" sin evidencia). Una línea listada con estado ilegible se
+    considera con problemas (es preferible una falsa alarma a un falso normal).
     """
-    lines_raw = data.get("lines", data) if isinstance(data, dict) else data
-    if isinstance(lines_raw, dict):
-        lines_raw = list(lines_raw.values())
-    if not isinstance(lines_raw, list):
+    if not isinstance(data, dict):
         raise NavajaApiError("Respuesta de Metro inesperada")
+    if str(data.get("api_status", "")).upper() != "OK":
+        raise NavajaApiError(f"La API del Metro informa estado {data.get('api_status')!r}")
+    lines_raw = data.get("lines")
+    if not isinstance(lines_raw, list):
+        raise NavajaApiError("Respuesta de Metro sin lista de líneas")
+    if not lines_raw and not isinstance(data.get("issues"), bool):
+        raise NavajaApiError("Respuesta de Metro sin indicador de incidentes")
 
-    result: dict[str, MetroLine] = {}
+    result: dict[str, MetroLine] = {
+        lid: MetroLine(id=lid, name=name, operational=True, message="Operativa")
+        for lid, name in KNOWN_LINES.items()
+    }
     for item in lines_raw:
         if not isinstance(item, dict) or "id" not in item:
             continue
@@ -170,37 +212,29 @@ def parse_metro(data: Any) -> dict[str, MetroLine]:
         stations = item.get("stations") or item.get("estaciones") or []
         problems: list[str] = []
         station_states: dict[str, bool] = {}
-        known = 0
         for st in stations:
             if not isinstance(st, dict):
                 continue
             ok, _ = _status_ok(st.get("status", st.get("estado")))
             st_name = str(st.get("name") or st.get("nombre") or st.get("id"))
-            if ok is None:
-                continue
-            known += 1
+            ok = bool(ok)  # estado ilegible = con problemas
             station_states[st_name] = ok
             if not ok:
                 problems.append(st_name)
         line_ok, message = _status_ok(item.get("status", item.get("estado")))
-        if known:
-            operational: bool | None = not problems
-            if problems and not message:
-                message = f"{len(problems)} estación(es) con problemas"
-        else:
-            operational = line_ok
+        operational = (not problems) if station_states else bool(line_ok)
+        if not operational and not message:
+            message = f"{len(problems)} estación(es) con problemas" if problems else "Con problemas"
         if operational and not message:
             message = "Operativa"
         result[line_id] = MetroLine(
             id=line_id,
-            name=str(item.get("name") or item.get("nombre") or line_id.upper()),
+            name=str(item.get("name") or item.get("nombre") or KNOWN_LINES.get(line_id) or line_id.upper()),
             operational=operational,
             message=message,
             stations_with_issues=problems,
             stations=station_states,
         )
-    if not result or all(l.operational is None for l in result.values()):
-        raise NavajaApiError("No se pudo interpretar el estado del Metro")
     return result
 
 
@@ -302,7 +336,13 @@ async def fetch_stop(session: aiohttp.ClientSession, code: str) -> StopInfo:
 from datetime import date  # noqa: E402
 import unicodedata  # noqa: E402
 
-from .const import AIR_URL, HOLIDAYS_URLS, PHARMACY_URL, QUAKES_URL  # noqa: E402
+from .const import (  # noqa: E402
+    AIR_URL,
+    HOLIDAYS_URLS,
+    PHARMACY_URL,
+    QUAKES_CSN_URL,
+    QUAKES_URL,
+)
 
 
 def _num(value: Any) -> float | None:
@@ -333,11 +373,41 @@ class Quake:
     date: str | None
 
 
-def parse_quakes(data: Any) -> list[Quake]:
-    """Interpreta el GeoJSON de USGS (FDSN) y deja solo sismos de Chile."""
+def parse_quakes_csn(data: Any) -> list[Quake]:
+    """Centro Sismológico Nacional vía api.gael.cloud (sin coordenadas).
+
+    La `Fecha` se entrega tal cual la publica el CSN (no se convierte).
+    """
+    if not isinstance(data, list):
+        raise NavajaApiError("Respuesta de sismos (CSN) inesperada")
+    out: list[Quake] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        mag = _num(item.get("Magnitud"))
+        if mag is None:
+            continue
+        out.append(
+            Quake(
+                magnitude=mag,
+                latitude=None,
+                longitude=None,
+                depth_km=_num(item.get("Profundidad")),
+                reference=item.get("RefGeografica"),
+                date=item.get("Fecha"),
+            )
+        )
+    if not out:
+        raise NavajaApiError("La respuesta del CSN no contiene sismos")
+    out.sort(key=lambda q: q.date or "", reverse=True)
+    return out
+
+
+def parse_quakes_usgs(data: Any) -> list[Quake]:
+    """GeoJSON de USGS (FDSN), solo sismos de Chile; con coordenadas."""
     features = data.get("features") if isinstance(data, dict) else None
     if not isinstance(features, list):
-        raise NavajaApiError("Respuesta de sismos inesperada")
+        raise NavajaApiError("Respuesta de sismos (USGS) inesperada")
     quakes: list[Quake] = []
     for feat in features:
         if not isinstance(feat, dict):
@@ -350,11 +420,9 @@ def parse_quakes(data: Any) -> list[Quake]:
             continue
         when = None
         if isinstance(props.get("time"), (int, float)):
-            when = (
-                datetime.fromtimestamp(props["time"] / 1000, ZoneInfo(METRO_TZ))
-                .replace(microsecond=0)
-                .isoformat()
-            )
+            when = datetime.fromtimestamp(props["time"] / 1000, ZoneInfo("UTC")).replace(
+                microsecond=0
+            ).isoformat()
         quakes.append(
             Quake(
                 magnitude=mag,
@@ -366,13 +434,26 @@ def parse_quakes(data: Any) -> list[Quake]:
             )
         )
     if not quakes:
-        raise NavajaApiError("La respuesta no contiene sismos de Chile")
+        raise NavajaApiError("La respuesta de USGS no contiene sismos de Chile")
     quakes.sort(key=lambda q: q.date or "", reverse=True)
     return quakes
 
 
-async def fetch_quakes(session: aiohttp.ClientSession) -> list[Quake]:
-    return parse_quakes(await _get_json(session, QUAKES_URL))
+async def fetch_quakes(session: aiohttp.ClientSession) -> dict[str, list[Quake] | None]:
+    """Consulta CSN y USGS por separado; falla solo si ambas fallan."""
+    result: dict[str, list[Quake] | None] = {"csn": None, "usgs": None}
+    errors: list[str] = []
+    for key, url, parser in (
+        ("csn", QUAKES_CSN_URL, parse_quakes_csn),
+        ("usgs", QUAKES_URL, parse_quakes_usgs),
+    ):
+        try:
+            result[key] = parser(await _get_json(session, url))
+        except NavajaApiError as err:
+            errors.append(str(err))
+    if not any(result.values()):
+        raise NavajaApiError("; ".join(errors))
+    return result
 
 
 # -------------------------------------------------------------------- Feriados
@@ -504,3 +585,50 @@ def parse_pharmacies(data: Any, comuna: str) -> list[Pharmacy]:
 
 async def fetch_pharmacies(session: aiohttp.ClientSession, comuna: str) -> list[Pharmacy]:
     return parse_pharmacies(await _get_json(session, PHARMACY_URL), comuna)
+
+
+# ----------------------------------------------------------------- Criptomonedas
+
+
+@dataclass(frozen=True)
+class CryptoPrice:
+    market: str
+    price: float
+    change_24h_pct: float | None
+    change_7d_pct: float | None
+    volume_24h: float | None
+
+
+def parse_crypto(market: str, data: Any) -> CryptoPrice:
+    """Ticker de Buda.com; las variaciones vienen como fracción (-0.001 = -0,1 %)."""
+    t = data.get("ticker") if isinstance(data, dict) else None
+    if not isinstance(t, dict):
+        raise NavajaApiError(f"Respuesta inesperada para {market}")
+
+    def first(v: Any) -> float | None:
+        return _num(v[0] if isinstance(v, list) and v else v)
+
+    price = first(t.get("last_price"))
+    if price is None:
+        raise NavajaApiError(f"Sin precio para {market}")
+    pct = lambda v: None if _num(v) is None else round(_num(v) * 100, 2)  # noqa: E731
+    return CryptoPrice(
+        market=market,
+        price=price,
+        change_24h_pct=pct(t.get("price_variation_24h")),
+        change_7d_pct=pct(t.get("price_variation_7d")),
+        volume_24h=first(t.get("volume")),
+    )
+
+
+async def fetch_crypto(session: aiohttp.ClientSession, markets: list[str]) -> dict[str, CryptoPrice]:
+    out: dict[str, CryptoPrice] = {}
+    errors: list[str] = []
+    for m in markets:
+        try:
+            out[m] = parse_crypto(m, await _get_json(session, CRYPTO_URL.format(market=m)))
+        except NavajaApiError as err:
+            errors.append(str(err))
+    if not out:
+        raise NavajaApiError("; ".join(errors))
+    return out
