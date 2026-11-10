@@ -5,6 +5,8 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+## 2.10.0
+
 - **Fútbol**: próximos partidos, resultados y posición de tu equipo de la Primera División; tabla y fechas de la liga; y La Roja (ESPN). Se consulta cada 3 horas y cada 5 minutos con un partido en juego.
 
 - **Descuentos de tus tarjetas**: eliges tus tarjetas y las categorías que te interesan (combustibles, comida, salud, etc.) y ves los descuentos que aplican hoy (N Beneficios). Se descarga cada 7 días y el día 1 de cada mes, y se guarda para no consultar de más.
