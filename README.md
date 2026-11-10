@@ -1226,6 +1226,10 @@ solo esos paraderos, con mapa de buses en vivo, esa integración es una excelent
 El módulo del **tren Limache–Puerto** es un aporte de [claudiojara](https://github.com/claudiojara), autor de
 [ha-efe-valparaiso](https://github.com/claudiojara/ha-efe-valparaiso) (licencia MIT), que además ofrece una tarjeta propia con selección de cualquier par de estaciones. Gracias por sumarlo.
 
+Y gracias a quienes mantienen abiertos los servicios que hacen posible esta integración —[mindicador.cl](https://mindicador.cl), [findic.cl](https://findic.cl), [api.xor.cl](https://api.xor.cl),
+[Open-Meteo](https://open-meteo.com), [Bencina en Línea](https://www.bencinaenlinea.cl), [N Beneficios](https://www.nbeneficios.cl), [efemerides.cl](https://www.efemerides.cl), La Tercera y Cooperativa, entre otros—
+y a todas las personas que reportan problemas y proponen mejoras: cada módulo nuevo parte de una idea de alguien que usa esto en su casa.
+
 ## Si vienes de la versión 1.x
 
 La versión 2 usa otros nombres de entidad y una configuración renovada. Tras actualizar desde HACS (*⋮ → Volver a descargar*)
