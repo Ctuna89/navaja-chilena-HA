@@ -868,3 +868,67 @@ async def test_regional_config_flow_validation(hass, aioclient_mock):
     assert (await submit({"regional_zone": "temuco", "regional_stops": "NOEXISTE9"}))["errors"] == {"regional_stops": "regional_stop_not_found"}
     ok = await submit({"regional_zone": "temuco", "regional_stops": "75, 53"})
     assert ok["type"] == FlowResultType.CREATE_ENTRY and ok["data"]["regional_stops"] == "75, 53"
+
+
+# ------------------------------------------------------------------- Noticias
+
+LT_NAC = (FIX_DIR / "noticias_latercera_nacional.xml").read_text()
+LT_DEP = (FIX_DIR / "noticias_latercera_deportivo.xml").read_text()
+COOP_3 = (FIX_DIR / "noticias_cooperativa_3.xml").read_text()
+COOP_1 = (FIX_DIR / "noticias_cooperativa_1.xml").read_text()
+LT_URL = "https://www.latercera.com/arc/outboundfeeds/rss/category/{}/?outputType=xml"
+COOP_URL = "https://www.cooperativa.cl/noticias/site/tax/port/all/rss_{}___1.xml"
+
+
+async def _setup_news(hass, aioclient_mock, monkeypatch, topics, lt_status=200, **extra):
+    from custom_components.navaja_chilena import api as _api
+    monkeypatch.setattr(_api, "NEWS_PAUSE", 0)
+    mock_all(aioclient_mock)
+    aioclient_mock.get(LT_URL.format("nacional"), text=LT_NAC, status=lt_status)
+    aioclient_mock.get(LT_URL.format("el-deportivo"), text=LT_DEP, status=lt_status)
+    for n in range(1, 9):
+        aioclient_mock.get(COOP_URL.format(n), text=COOP_1 if n == 1 else COOP_3)
+    data = {"indicators": ["uf"], "metro": False, "news_topics": topics, "news_count": "5", **extra}
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+def _news_calls(aioclient_mock, host):
+    return len([c for c in aioclient_mock.mock_calls if host in str(c[1])])
+
+
+async def test_news_topics_merge_both_outlets(hass, aioclient_mock, freezer, monkeypatch):
+    freezer.move_to("2026-11-10 20:00:00+00:00")
+    entry = await _setup_news(hass, aioclient_mock, monkeypatch, ["nacional", "deportes", "economia"])
+    nac = hass.states.get("sensor.noticias_titulares_nacional")
+    assert nac is not None and nac.state not in ("unknown", "unavailable")
+    medios = {t["medio"] for t in nac.attributes["titulares"]}
+    assert medios == {"La Tercera", "Cooperativa"} and len(nac.attributes["titulares"]) == 5
+    horas = [t["hora"] for t in nac.attributes["titulares"]]
+    assert horas == sorted(horas, reverse=True)
+    dep = hass.states.get("sensor.noticias_titulares_deportes")
+    assert {t["medio"] for t in dep.attributes["titulares"]} == {"La Tercera", "Cooperativa"}
+    eco = hass.states.get("sensor.noticias_titulares_economia")
+    assert eco is not None and {t["medio"] for t in eco.attributes["titulares"]} == {"Cooperativa"}
+
+
+async def test_news_cooperativa_cached_for_an_hour(hass, aioclient_mock, freezer, monkeypatch):
+    freezer.move_to("2026-11-10 20:00:00+00:00")
+    entry = await _setup_news(hass, aioclient_mock, monkeypatch, ["nacional"])
+    assert _news_calls(aioclient_mock, "cooperativa.cl") == 8 and _news_calls(aioclient_mock, "latercera.com") == 1
+    freezer.move_to("2026-11-10 20:31:00+00:00")
+    await entry.runtime_data.news.async_refresh()
+    assert _news_calls(aioclient_mock, "cooperativa.cl") == 8 and _news_calls(aioclient_mock, "latercera.com") == 2
+    freezer.move_to("2026-11-10 21:05:00+00:00")
+    await entry.runtime_data.news.async_refresh()
+    assert _news_calls(aioclient_mock, "cooperativa.cl") == 16
+
+
+async def test_news_one_outlet_down_keeps_the_other(hass, aioclient_mock, freezer, monkeypatch):
+    freezer.move_to("2026-11-10 20:00:00+00:00")
+    await _setup_news(hass, aioclient_mock, monkeypatch, ["nacional"], lt_status=503)
+    nac = hass.states.get("sensor.noticias_titulares_nacional")
+    assert nac is not None and {t["medio"] for t in nac.attributes["titulares"]} == {"Cooperativa"}

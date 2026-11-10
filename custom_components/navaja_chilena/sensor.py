@@ -24,7 +24,7 @@ from . import vehicle
 from .vehicle_entity import REASON_TEXT, VehicleMixin
 from .api import FUEL_LABELS
 from .const import FOOTBALL_TEAMS, NATIONAL_TEAM_ID
-from .const import REGIONAL_ZONES, BENEFIT_CATEGORIES, BENEFITS_SITE, CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
+from .const import NEWS_TOPICS, REGIONAL_ZONES, BENEFIT_CATEGORIES, BENEFITS_SITE, CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
 
 
 def _device(key: str, name: str) -> DeviceInfo:
@@ -118,6 +118,8 @@ async def async_setup_entry(
         rt.regional,
         lambda data: [RegionalStopSensor(rt.regional, entry, code, rt.regional_zone) for code in data],
     )
+    if rt.news:
+        fixed += [NewsSensor(rt.news, entry, topic) for topic in rt.news_topics]
     if rt.fuel_discounts:
         fixed.append(FuelDiscountSensor(rt.fuel_discounts, entry, rt.benefit_cards))
     if rt.benefits:
@@ -325,6 +327,51 @@ class RegionalStopSensor(_Base):
             ],
             "alertas": list(stop.alerts),
             "fuente": "Red Regional / TransApp (servicio no oficial)",
+        }
+
+
+class NewsSensor(_Base):
+    """Titulares de un tema (La Tercera y Cooperativa): el valor es el más reciente."""
+
+    _kind = "noticias"
+    _attr_icon = "mdi:newspaper-variant-outline"
+
+    def __init__(self, coordinator, entry, topic: str) -> None:
+        super().__init__(coordinator, entry, topic)
+        self._attr_name = f"Titulares: {NEWS_TOPICS[topic]}"
+        self._attr_device_info = _device("noticias", "Noticias")
+
+    def _has_data(self) -> bool:
+        return self._key in (self.coordinator.data or {})
+
+    def _items(self) -> list[api.NewsItem]:
+        return self.coordinator.data[self._key]
+
+    @property
+    def native_value(self) -> str | None:
+        items = self._items()
+        if not items:
+            return None
+        title = items[0].title
+        return title if len(title) <= 255 else title[:254].rstrip() + "…"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        tz = ZoneInfo(api.METRO_TZ)
+        return {
+            "medio": self._items()[0].source if self._items() else None,
+            "enlace": self._items()[0].url if self._items() else None,
+            "titulares": [
+                {
+                    "titulo": n.title,
+                    "medio": n.source,
+                    "enlace": n.url,
+                    "hora": n.published.astimezone(tz).strftime("%Y-%m-%d %H:%M"),
+                    "resumen": n.summary,
+                }
+                for n in self._items()
+            ],
+            "fuente": "La Tercera y Cooperativa.cl (feeds RSS públicos)",
         }
 
 

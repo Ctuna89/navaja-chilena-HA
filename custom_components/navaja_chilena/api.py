@@ -34,6 +34,12 @@ from .const import (
     INDICATORS_URL,
     IPSA_URL,
     METRO_URL,
+    NEWS_COOPERATIVA_CATEGORIES,
+    NEWS_COOPERATIVA_FEEDS,
+    NEWS_COOPERATIVA_URL,
+    NEWS_LATERCERA_SECTIONS,
+    NEWS_LATERCERA_URL,
+    NEWS_PAUSE,
     REGIONAL_HEADERS,
     REGIONAL_URL,
     REGIONAL_ZONES,
@@ -1858,3 +1864,135 @@ async def fetch_regional_stop(
         session, f"{REGIONAL_URL}/{zone_id}/stopInfo?stopCode={code}&mode=3&phoneId={phone_id}", REGIONAL_HEADERS
     )
     return parse_regional_stop(raw, code, name, now)
+
+
+# ----------------------------------------------- Noticias (La Tercera y Cooperativa)
+
+@dataclass(frozen=True)
+class NewsItem:
+    title: str
+    source: str        # "La Tercera" | "Cooperativa"
+    url: str
+    published: datetime
+    summary: str
+
+
+def _folded(text: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", text.lower()) if not unicodedata.combining(c)).strip()
+
+
+def _short(text: str, limit: int) -> str:
+    text = _plain(text)
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def parse_news_feed(xml_text: str, source: str) -> list[tuple[str, NewsItem]]:
+    """Noticias de un feed RSS: [(categoría sin tildes, noticia)]. Solo título, enlace, fecha y bajada corta."""
+    import xml.etree.ElementTree as ET
+    from email.utils import parsedate_to_datetime
+
+    if "<!DOCTYPE" in xml_text[:2000].upper() or "<!ENTITY" in xml_text.upper():
+        raise NavajaApiError("Feed con definiciones XML no permitidas")
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as err:
+        raise NavajaApiError(f"Feed inválido: {err}") from err
+    items: list[tuple[str, NewsItem]] = []
+    for it in root.iter("item"):
+        title = _plain(it.findtext("title"))
+        link = (it.findtext("link") or "").strip()
+        if not title or not link.startswith("https://"):
+            continue
+        try:
+            published = parsedate_to_datetime((it.findtext("pubDate") or "").strip())
+        except (TypeError, ValueError):
+            continue
+        if published.tzinfo is None:
+            published = published.replace(tzinfo=ZoneInfo("UTC"))
+        # La Tercera trae la bajada en <description>; Cooperativa en <descent> (su <description> trae publicidad).
+        summary = it.findtext("descent") or it.findtext("description") or ""
+        items.append((_folded(it.findtext("category") or ""), NewsItem(title, source, link, published, _short(summary, 220))))
+    return items
+
+
+def merge_news(
+    per_topic: dict[str, list[NewsItem]], topics: list[str], count: int
+) -> dict[str, list[NewsItem]]:
+    """Ordena por fecha (la más reciente primero), quita repetidos y limita a `count` por tema."""
+    result: dict[str, list[NewsItem]] = {}
+    for topic in topics:
+        if topic not in per_topic:
+            continue
+        seen: set[str] = set()
+        unique: list[NewsItem] = []
+        for n in sorted(per_topic[topic], key=lambda n: n.published, reverse=True):
+            key = n.url or n.title
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(n)
+        result[topic] = unique[:count]
+    return result
+
+
+async def fetch_news(
+    session: aiohttp.ClientSession,
+    topics: list[str],
+    count: int = 5,
+    coop_cache: dict[str, Any] | None = None,
+    now: datetime | None = None,
+    min_coop_age: timedelta = timedelta(minutes=60),
+    pause: float | None = None,
+) -> dict[str, list[NewsItem]]:
+    """Titulares por tema. Cada medio y cada sección fallan por separado; un tema sin ninguna fuente queda fuera."""
+    import asyncio
+
+    pause = NEWS_PAUSE if pause is None else pause
+    per_topic: dict[str, list[NewsItem]] = {}
+    errors: list[str] = []
+    first = True
+
+    # La Tercera: un feed por sección.
+    for topic in topics:
+        slug = NEWS_LATERCERA_SECTIONS.get(topic)
+        if not slug:
+            continue
+        if not first:
+            await asyncio.sleep(pause)
+        first = False
+        try:
+            feed = parse_news_feed(await _get_text(session, NEWS_LATERCERA_URL.format(slug=slug)), "La Tercera")
+        except NavajaApiError as err:
+            errors.append(str(err))
+            continue
+        per_topic.setdefault(topic, []).extend(n for _cat, n in feed)
+
+    # Cooperativa: feeds mezclados; cada noticia trae su categoría. Se reutiliza lo bajado hace menos de una hora.
+    coop_topics = {t for t in topics if t in NEWS_COOPERATIVA_CATEGORIES.values()}
+    if coop_topics:
+        cache = coop_cache if coop_cache is not None else {}
+        now = now or datetime.now(ZoneInfo("UTC"))
+        feed_items = cache.get("items")
+        if feed_items is None or cache.get("at") is None or now - cache["at"] >= min_coop_age:
+            fresh: list[tuple[str, NewsItem]] = []
+            answered = 0
+            for n in NEWS_COOPERATIVA_FEEDS:
+                if not first:
+                    await asyncio.sleep(pause)
+                first = False
+                try:
+                    fresh.extend(parse_news_feed(await _get_text(session, NEWS_COOPERATIVA_URL.format(n=n)), "Cooperativa"))
+                    answered += 1
+                except NavajaApiError as err:
+                    errors.append(str(err))
+            if answered:
+                cache["items"], cache["at"] = fresh, now
+                feed_items = fresh
+        for cat, item in feed_items or []:
+            topic = NEWS_COOPERATIVA_CATEGORIES.get(cat)
+            if topic in coop_topics:
+                per_topic.setdefault(topic, []).append(item)
+
+    if not per_topic:
+        raise NavajaApiError("; ".join(errors[:1]) or "Sin titulares")
+    return merge_news(per_topic, topics, count)

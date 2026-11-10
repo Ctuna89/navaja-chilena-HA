@@ -25,6 +25,7 @@ feriados, efemérides y mucho más, en una sola integración que se instala en u
 | 🎬 **Cartelera de cine** | La cartelera de hoy de tu cine Cinemark favorito, o **el más cercano a tu casa** |
 | 🇨🇱 **Efemérides** | Los días significativos y las efemérides chilenas de hoy, y el próximo día significativo |
 | ⚽ **Fútbol** | Próximos partidos, resultados y posición de tu equipo de la Primera División, la tabla y las fechas de la liga, y los partidos de La Roja |
+| 📰 **Noticias por tema** | Titulares de La Tercera y Cooperativa separados por tema (nacional, política, mundo, economía, deportes, tecnología…), con enlace a cada nota |
 | ⛽ **Combustibles** | Dónde está la bencina (93, 95, 97) o el diésel más barato cerca de tu casa, con precio, marca, dirección y distancia |
 | 💳 **Descuentos de tus tarjetas** | Eliges tus tarjetas (Banco de Chile, BCI, Santander, CMR…) y las categorías que te interesan (combustibles, comida, salud…) y ves los descuentos que aplican **hoy** |
 | 🚗 **Restricción vehicular y revisión técnica** | Con el último dígito de tu patente: si hoy tienes restricción, tu próximo día con restricción y el mes de tu revisión técnica |
@@ -58,6 +59,7 @@ El asistente te pregunta qué quieres activar:
 - tu **comuna** para las farmacias de turno,
 - tu **equipo** de la Primera División (o toda la liga) y **La Roja**, para ver partidos, resultados y tabla,
 - los **combustibles** que usas (93, 95, 97 o diésel), el **radio** de búsqueda alrededor de tu casa y la **antigüedad máxima** de los precios,
+- los **temas de noticias** que quieres seguir y cuántos titulares por tema,
 - la **ciudad y los paraderos** de la Red Regional (si vives fuera de Santiago),
 - tus **tarjetas** (descuentos en bencina de hoy) y las **categorías** de descuentos que te interesan (combustibles, comida, salud y belleza, etc.),
 - el **último dígito de tu patente** y el tipo de vehículo, para la restricción vehicular y la revisión técnica,
@@ -203,6 +205,16 @@ el valor es la cantidad de descuentos de **hoy** para tus tarjetas.
   lo que no se pudo confirmar con una fuente oficial del mes aparece con `confirmado: false`.
 - Si el calendario no es del mes en curso, el sensor queda sin valor y el atributo `motivo` lo explica: nunca se muestran descuentos de un mes anterior como vigentes.
 - ¿Faltan descuentos o hay un error? Puedes proponer el cambio en `data/bencina.json` con un pull request (el método y la validación están en [`data/README.md`](data/README.md)).
+
+### 📰 Noticias por tema
+`sensor.noticias_titulares_<tema>` · un sensor por cada tema que elijas: **Nacional, Política, Mundo, Economía, Deportes, Tecnología, Sociedad, Cultura y tendencias y Servicios**.
+El valor es el titular más reciente del tema; los atributos traen la lista completa.
+
+- Los titulares vienen de **La Tercera** y de **Cooperativa.cl**, que publican sus noticias en feeds RSS públicos. Cada tema reúne lo de ambos medios, ordenado por hora, sin repetidos.
+  Política y Servicios salen de La Tercera; Economía y Sociedad, de Cooperativa; el resto combina los dos.
+- Atributos: `titulares` (hasta 5, 10 o 15 según elijas, con `titulo`, `medio`, `enlace`, `hora` y un `resumen` corto), y `medio` y `enlace` del titular más reciente.
+- Solo se muestran el titular, la bajada corta y el enlace a la nota original en el sitio del medio; el contenido es de sus autores.
+- Actualización cada 30 minutos (Cooperativa, como máximo cada hora, que es la vigencia que declara). Si uno de los medios no responde, el tema sigue con el otro; si ninguno, queda sin datos.
 
 ### 🚗 Mi vehículo: restricción vehicular y revisión técnica
 Eliges el **último dígito** de tu patente y el **tipo de vehículo**. No usa internet: las reglas están incluidas en la integración y se
@@ -992,6 +1004,20 @@ actions:
         {% endfor %}
 ```
 
+### 📰 Noticias por tema
+Titulares de un tema con enlace a la nota (cambia `nacional` por `politica`, `mundo`, `economia`, `deportes`…).
+
+![Titulares nacionales de La Tercera y Cooperativa con enlace a cada nota](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/noticias-nacional.png)
+
+```yaml
+type: markdown
+title: 📰 Titulares · Nacional
+content: |
+  {% for n in state_attr('sensor.noticias_titulares_nacional', 'titulares') or [] %}
+  - [{{ n.titulo }}]({{ n.enlace }}) · {{ n.medio }}, {{ n.hora[-5:] }}
+  {% endfor %}
+```
+
 ### 🚗 Mi vehículo
 
 Restricción de hoy, dígitos restringidos, próxima fecha y mes de revisión técnica:
@@ -1077,6 +1103,7 @@ necesidad de registrarte.
 | Combustibles | [Bencina en Línea](https://www.bencinaenlinea.cl) (Comisión Nacional de Energía) |
 | Descuentos en bencina | Calendario mensual del repositorio ([`data/bencina.json`](data/bencina.json)); cada descuento cita su fuente (Copec, Shell, Aramco, bancos y prensa) |
 | Descuentos de tarjetas | [N Beneficios](https://www.nbeneficios.cl), un servicio de Infoacción (los beneficios, logos e imágenes pertenecen a sus emisores) |
+| Noticias por tema | Feeds RSS públicos de [La Tercera](https://www.latercera.com) y [Cooperativa.cl](https://www.cooperativa.cl); los titulares enlazan a las notas originales y su contenido pertenece a sus autores |
 | Paraderos de la Red Regional | TransApp / DTPR (servicio no oficial). Referencia de la API: [edwinroket/red-regional-api](https://github.com/edwinroket/red-regional-api) y [frabarz/hass-red-regional](https://github.com/frabarz/hass-red-regional) (integración para Home Assistant, licencia MIT); este módulo es una implementación propia |
 | Restricción vehicular | [Ministerio de Transportes](https://mtt.gob.cl/restriccion-vehicular-2026/): Resolución Exenta N° 1698/2026 (Seremi RM) |
 | Revisión técnica | [ChileAtiende](https://www.chileatiende.gob.cl/fichas/23978) (Subsecretaría de Transportes) |

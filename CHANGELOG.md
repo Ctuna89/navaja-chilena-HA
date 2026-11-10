@@ -5,6 +5,7 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+- **Noticias por tema**: titulares de La Tercera y Cooperativa separados por tema (nacional, política, mundo, economía, deportes, tecnología, sociedad, cultura y servicios), con enlace a cada nota. Se actualiza cada 30 minutos.
 ## 2.11.0
 
 - **Paraderos de la Red Regional**: llegadas en vivo y alertas del servicio en las ciudades fuera de Santiago (Temuco, Talca, Concepción, Valparaíso, La Serena…). Servicio de TransApp/DTPR, no oficial. Gracias a edwinroket/red-regional-api y frabarz/hass-red-regional por la referencia de la API.

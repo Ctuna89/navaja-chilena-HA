@@ -16,6 +16,8 @@ from homeassistant.helpers.storage import Store
 from . import api
 from .const import (
     BENEFITS_INTERVAL,
+    NEWS_COOP_MIN_AGE,
+    NEWS_INTERVAL,
     REGIONAL_INTERVAL,
     REGIONAL_NAMES_REFETCH,
     FUEL_DISCOUNTS_INTERVAL,
@@ -341,3 +343,12 @@ def regional_coordinator(hass: HomeAssistant, zone: str, codes: list[str]) -> Na
         return result
 
     return NavajaCoordinator(hass, "red_regional", REGIONAL_INTERVAL, fetch)
+
+
+def news_coordinator(hass: HomeAssistant, topics: list[str], count: int) -> NavajaCoordinator:
+    cache: dict[str, Any] = {}   # Cooperativa: no se vuelve a descargar antes de una hora
+
+    async def fetch(session: Any) -> dict[str, list[api.NewsItem]]:
+        return await api.fetch_news(session, topics, count, cache, dt_util.utcnow(), NEWS_COOP_MIN_AGE)
+
+    return NavajaCoordinator(hass, "noticias", NEWS_INTERVAL, fetch)

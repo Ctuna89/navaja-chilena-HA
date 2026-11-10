@@ -637,3 +637,42 @@ def test_regional_stop_names_from_gtfs():
     assert names["75"] == "1 Norte esq. 1 Oriente" and len(names) >= 10
     with pytest.raises(api.NavajaApiError):
         api.parse_regional_stop_names(b"no es un zip")
+
+
+# ----------------------------------------------------------------- Noticias
+
+NEWS_DIR = Path(__file__).parent / "fixtures"
+
+
+def test_news_latercera_feed():
+    feed = api.parse_news_feed((NEWS_DIR / "noticias_latercera_nacional.xml").read_text(), "La Tercera")
+    assert len(feed) == 4
+    cat, item = feed[0]
+    assert cat == "nacional" and item.source == "La Tercera"
+    assert item.title and item.url.startswith("https://www.latercera.com/") and item.published.tzinfo is not None
+    assert item.summary and "<" not in item.summary
+
+
+def test_news_cooperativa_feed_uses_short_summary_and_category():
+    feed = api.parse_news_feed((NEWS_DIR / "noticias_cooperativa_3.xml").read_text(), "Cooperativa")
+    assert feed and all(i.url.startswith("https://www.cooperativa.cl/") for _c, i in feed)
+    assert {c for c, _i in feed} <= {"pais", "economia"}
+    assert all("whatsapp" not in i.summary.lower() and "<" not in i.summary for _c, i in feed)
+    assert all(len(i.summary) <= 220 for _c, i in feed)
+
+
+def test_news_feed_rejects_xml_entities_and_garbage():
+    with pytest.raises(api.NavajaApiError):
+        api.parse_news_feed('<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "b">]><rss><channel></channel></rss>', "x")
+    with pytest.raises(api.NavajaApiError):
+        api.parse_news_feed("no es xml", "x")
+    assert api.parse_news_feed("<rss><channel><item><title>Sin enlace</title></item></channel></rss>", "x") == []
+
+
+def test_news_merge_sorts_dedupes_and_limits():
+    from datetime import datetime, timedelta, timezone
+    base = datetime(2026, 11, 10, 12, tzinfo=timezone.utc)
+    mk = lambda t, m, u, src="La Tercera": api.NewsItem(t, src, u, base + timedelta(minutes=m), "")
+    data = {"nacional": [mk("a", 1, "https://x/a"), mk("b", 5, "https://x/b"), mk("a otra vez", 2, "https://x/a", "Cooperativa"), mk("c", 3, "https://x/c")]}
+    out = api.merge_news(data, ["nacional", "mundo"], 2)
+    assert [n.title for n in out["nacional"]] == ["b", "c"] and "mundo" not in out
