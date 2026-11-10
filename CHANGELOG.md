@@ -5,6 +5,8 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+- **Tren Limache–Puerto**: próximos trenes de EFE Valparaíso entre tus estaciones (`Villa Alemana > Puerto`, con la opción del sentido inverso). Un sensor por trayecto con el texto de EFE, la hora estimada, la lista de trenes y si cada uno llega a tu destino (hacia Limache también hay trenes cortos «Hasta Sargento Aldea»). Usa la API de «Próximos trenes» de la app de EFE, no documentada para terceros.
+
 ## 2.11.0
 
 - **Paraderos de la Red Regional**: llegadas en vivo y alertas del servicio en las ciudades fuera de Santiago (Temuco, Talca, Concepción, Valparaíso, La Serena…). Servicio de TransApp/DTPR, no oficial. Gracias a edwinroket/red-regional-api y frabarz/hass-red-regional por la referencia de la API.

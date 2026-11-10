@@ -50,6 +50,8 @@ from .const import (
     CONF_VEHICLE_TYPE,
     VEHICLE_NONE,
 )
+from .efe_train import CONF_TRAIN_RETURN, CONF_TRAIN_TRIPS, parse_trips
+from .efe_train_entity import train_coordinator
 from .vehicle import VEHICLE_TYPES
 from .coordinator import (
     football_coordinator,
@@ -80,6 +82,8 @@ class RuntimeData:
     indicators: NavajaCoordinator | None = None
     metro: NavajaCoordinator | None = None
     stops: NavajaCoordinator | None = None
+    train: NavajaCoordinator | None = None
+    train_trips: list[tuple[int, int]] = field(default_factory=list)
     quakes: NavajaCoordinator | None = None
     holidays: NavajaCoordinator | None = None
     air: NavajaCoordinator | None = None
@@ -154,6 +158,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     stops = _stops(opts.get(CONF_STOPS))
     if stops:
         data.stops = stops_coordinator(hass, stops)
+    try:
+        data.train_trips = parse_trips(
+            str(opts.get(CONF_TRAIN_TRIPS) or ""), bool(opts.get(CONF_TRAIN_RETURN))
+        )
+    except ValueError:
+        data.train_trips = []
+    if data.train_trips:
+        data.train = train_coordinator(hass, data.train_trips)
 
     if opts.get(CONF_QUAKES):
         data.quakes = quakes_coordinator(hass)
@@ -223,7 +235,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
 
     coordinators = [
         c
-        for c in (data.indicators, data.metro, data.stops, data.quakes,
+        for c in (data.indicators, data.metro, data.stops, data.train, data.quakes,
                   data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.benefits, data.fuel_discounts, data.regional, data.football, data.national)
         if c is not None
     ]

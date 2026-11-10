@@ -18,6 +18,7 @@ feriados, efemérides y mucho más, en una sola integración que se instala en u
 | 🪙 **Criptomonedas** | Bitcoin y Ethereum en pesos chilenos, con variación de 24 horas y 7 días |
 | 🚇 **Metro de Santiago** | Estado de cada línea y de sus estaciones, y aviso de **red cerrada** fuera de horario |
 | 🚌 **Paraderos** | Minutos para el próximo bus en cada paradero de Red Movilidad, por recorrido |
+| 🚆 **Tren Limache–Puerto** | Próximos trenes de EFE Valparaíso entre tus estaciones, con hora estimada y aviso de los trenes que no llegan a tu destino |
 | 🌋 **Sismos** | Último sismo del Centro Sismológico Nacional y otro con coordenadas para verlo en un mapa |
 | 📅 **Feriados** | Próximo feriado, cuántos días faltan y si es irrenunciable |
 | 🌫️ **Calidad del aire y UV** | PM2.5, PM10, índice de calidad del aire e índice UV donde vives |
@@ -55,6 +56,7 @@ El asistente te pregunta qué quieres activar:
 - los **indicadores** que te interesan (UF, dólar, euro…),
 - el **Metro**, los **sismos**, los **feriados**, el **IPSA**, el **santoral**, las **efemérides**, la **calidad del aire** y las **criptomonedas** (un interruptor cada uno),
 - tus **paraderos** (códigos separados por coma, por ejemplo `PC615, PA433`; se comprueba que existan),
+- tus **trayectos del tren** Limache–Puerto (por ejemplo `Villa Alemana > Puerto, Viña del Mar > Limache`), con la opción de agregar también el sentido inverso,
 - tu **comuna** para las farmacias de turno,
 - tu **equipo** de la Primera División (o toda la liga) y **La Roja**, para ver partidos, resultados y tabla,
 - los **combustibles** que usas (93, 95, 97 o diésel), el **radio** de búsqueda alrededor de tu casa y la **antigüedad máxima** de los precios,
@@ -106,6 +108,26 @@ Concepción, Temuco, Valdivia, Osorno, Puerto Montt, Punta Arenas y más) · act
 - El sensor binario se enciende cuando el servicio informa alertas que afectan al paradero (por ejemplo, «el servicio 302 no está enviando información en tiempo real»).
 - Si el servicio no responde, solo esos sensores quedan sin datos; el resto de la integración sigue funcionando.
 - Los datos vienen de **TransApp / DTPR**, el sistema detrás de la app Red Regional. Es un servicio **no oficial y sin documentación pública**: puede cambiar sin aviso. Este módulo no está afiliado al Ministerio de Transportes ni a los operadores.
+
+### 🚆 Tren Limache–Puerto (EFE Valparaíso)
+`sensor.tren_limache_puerto_<origen>_<destino>` · un sensor por trayecto · actualización cada minuto.
+
+- Escribes tus **trayectos** como `Origen > Destino`, separados por coma (por ejemplo `Villa Alemana > Puerto, Viña del Mar > Limache`), con
+  cualquiera de las 21 estaciones de la línea, de Puerto a Limache; no importan las tildes ni las mayúsculas. Con la casilla del sentido
+  inverso se agrega también la vuelta de cada uno.
+- **Estado:** el texto que entrega EFE para el primer tren («8 minutos», «cercano») o «Sin servicios informados» si EFE respondió con la
+  lista vacía (por ejemplo, de madrugada; no garantiza que no haya trenes). Si EFE no responde, el sensor queda «no disponible»: nunca se
+  muestra una lista vacía ni datos antiguos en su lugar.
+- **Atributos:** `origen`, `destino`, `consultado_en`, `hasta`, `tipo` (simple o doble), `minutos` (solo si EFE dice «N minutos»; con
+  «cercano» es `null`), `hora_estimada` (hora de la consulta más esos minutos), `servicios_informados`, `servicios` (la lista completa, con
+  `minutos`, `hora_estimada`, `estacion_final` y `llega_a_destino` en cada tren), `estado_consulta`, `aviso_efe` y `operabilidad`.
+- **Respeta `hasta`:** hacia Limache también hay trenes cortos «Hasta Sargento Aldea». `llega_a_destino` dice si cada tren pasa por tu
+  destino, según el orden de las estaciones.
+- `aviso_efe` acompaña la respuesta de EFE; «Servicio no disponible por el momento» aparece incluso con trenes circulando, así que no lo
+  uses solo para decidir que hay una caída. `tiempo_real_confirmado` es siempre `false`: no está confirmado si los minutos vienen de la
+  posición real de los trenes o de una cuenta regresiva programada.
+- Los datos vienen de la API de «Próximos trenes» que usa la app de EFE. **No está documentada para terceros** y puede cambiar sin aviso.
+  Este módulo no está afiliado a EFE.
 
 ### 🌋 Sismos
 - `sensor.sismos_chile_ultimo_sismo_csn`: magnitud del último sismo del Centro Sismológico Nacional, con `referencia`
@@ -521,6 +543,46 @@ content: |
   {% for a in state_attr('sensor.paraderos_red_regional_temuco_paradero_53', 'alertas') or [] %}
   ⚠️ {{ a }}
   {% endfor %}
+```
+
+### 🚆 Tren Limache–Puerto
+Los próximos trenes de un trayecto, con la hora estimada y los que no llegan a tu destino marcados (cambia el sensor por el tuyo):
+
+![Próximos trenes de Villa Alemana a Limache, con un tren que solo llega hasta Sargento Aldea](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/tren-proximos.png)
+
+```yaml
+type: markdown
+title: Villa Alemana → Limache
+content: |
+  {% set e = 'sensor.tren_limache_puerto_villa_alemana_limache' %}
+  {% for t in (state_attr(e, 'servicios') or [])[:4] %}
+  - **{{ t.tiempo }}**{% if t.hora_estimada %} · ≈ {{ as_timestamp(t.hora_estimada) | timestamp_custom('%H:%M') }}{% endif %} · {{ t.tipo }}{% if t.llega_a_destino == false %} · ⚠️ solo hasta {{ t.estacion_final }}{% endif %}
+  {% else %}
+  {{ 'Sin datos de EFE por ahora.' if states(e) in ['unavailable', 'unknown'] else 'Sin servicios informados.' }}
+  {% endfor %}
+```
+
+Ida y vuelta de un vistazo:
+
+![Próximo tren a Puerto y a Limache](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/tren-ida-vuelta.png)
+
+```yaml
+type: grid
+columns: 2
+square: false
+cards:
+  - type: tile
+    entity: sensor.tren_limache_puerto_villa_alemana_puerto
+    name: → Puerto
+    icon: mdi:train
+    color: blue
+    state_content: [state, hasta]
+  - type: tile
+    entity: sensor.tren_limache_puerto_villa_alemana_limache
+    name: → Limache
+    icon: mdi:train
+    color: green
+    state_content: [state, hasta]
 ```
 
 ### 🌋 Sismos
@@ -1078,6 +1140,7 @@ necesidad de registrarte.
 | Descuentos en bencina | Calendario mensual del repositorio ([`data/bencina.json`](data/bencina.json)); cada descuento cita su fuente (Copec, Shell, Aramco, bancos y prensa) |
 | Descuentos de tarjetas | [N Beneficios](https://www.nbeneficios.cl), un servicio de Infoacción (los beneficios, logos e imágenes pertenecen a sus emisores) |
 | Paraderos de la Red Regional | TransApp / DTPR (servicio no oficial). Referencia de la API: [edwinroket/red-regional-api](https://github.com/edwinroket/red-regional-api) y [frabarz/hass-red-regional](https://github.com/frabarz/hass-red-regional) (integración para Home Assistant, licencia MIT); este módulo es una implementación propia |
+| Tren Limache–Puerto | API de «Próximos trenes» de [EFE Valparaíso](https://www.efe.cl) (la que usa la app de EFE; no documentada para terceros) |
 | Restricción vehicular | [Ministerio de Transportes](https://mtt.gob.cl/restriccion-vehicular-2026/): Resolución Exenta N° 1698/2026 (Seremi RM) |
 | Revisión técnica | [ChileAtiende](https://www.chileatiende.gob.cl/fichas/23978) (Subsecretaría de Transportes) |
 | Criptomonedas | [Buda.com](https://www.buda.com) |
