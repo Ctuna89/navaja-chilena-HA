@@ -5,6 +5,8 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+## 2.11.0
+
 - **Paraderos de la Red Regional**: llegadas en vivo y alertas del servicio en las ciudades fuera de Santiago (Temuco, Talca, Concepción, Valparaíso, La Serena…). Servicio de TransApp/DTPR, no oficial. Gracias a edwinroket/red-regional-api y frabarz/hass-red-regional por la referencia de la API.
 - **Descuentos en bencina**: con tus tarjetas marcadas, el sensor «Descuentos en bencina hoy» muestra qué estaciones tienen descuento hoy y el próximo día con descuento, a partir de un calendario mensual del repositorio (`data/bencina.json`) con la fuente de cada fila. Si el calendario no es del mes en curso, no se muestra como vigente.
 
