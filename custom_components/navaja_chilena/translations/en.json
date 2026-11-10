@@ -8,6 +8,8 @@
           "indicators": "Economic indicators",
           "metro": "Santiago Metro status",
           "stops": "Bus stops (comma-separated codes, e.g. PC615, PA433)",
+          "train_trips": "Limache–Puerto train trips (EFE), comma-separated, e.g. Villa Alemana > Puerto, Viña del Mar > Limache",
+          "train_return": "Also add the return direction of each train trip",
           "quakes": "Latest earthquake (Chile National Seismological Center)",
           "holidays": "Next public holiday",
           "air": "Air quality and UV (based on Home Assistant location)",
@@ -41,7 +43,8 @@
       "invalid_regional_stop": "Invalid stop code. Use letters, numbers and hyphens (e.g. P60094).",
       "regional_needs_stops": "Enter at least one Red Regional stop.",
       "regional_needs_zone": "Choose the city of those stops.",
-      "regional_stop_not_found": "That stop does not exist in the chosen city. Check the code on the sign or in the Red Regional app."
+      "regional_stop_not_found": "That stop does not exist in the chosen city. Check the code on the sign or in the Red Regional app.",
+      "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto."
     },
     "abort": {
       "already_configured": "Navaja Chilena is already configured."
@@ -56,6 +59,8 @@
           "indicators": "Economic indicators",
           "metro": "Santiago Metro status",
           "stops": "Bus stops (comma-separated codes, e.g. PC615, PA433)",
+          "train_trips": "Limache–Puerto train trips (EFE), comma-separated, e.g. Villa Alemana > Puerto, Viña del Mar > Limache",
+          "train_return": "Also add the return direction of each train trip",
           "quakes": "Latest earthquake (Chile National Seismological Center)",
           "holidays": "Next public holiday",
           "air": "Air quality and UV (based on Home Assistant location)",
@@ -89,7 +94,8 @@
       "invalid_regional_stop": "Invalid stop code. Use letters, numbers and hyphens (e.g. P60094).",
       "regional_needs_stops": "Enter at least one Red Regional stop.",
       "regional_needs_zone": "Choose the city of those stops.",
-      "regional_stop_not_found": "That stop does not exist in the chosen city. Check the code on the sign or in the Red Regional app."
+      "regional_stop_not_found": "That stop does not exist in the chosen city. Check the code on the sign or in the Red Regional app.",
+      "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto."
     }
   },
   "entity": {

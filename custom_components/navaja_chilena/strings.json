@@ -8,6 +8,8 @@
           "indicators": "Indicadores económicos",
           "metro": "Estado del Metro de Santiago",
           "stops": "Paraderos (códigos separados por coma, ej. PC615, PA433)",
+          "train_trips": "Trayectos del tren Limache–Puerto (EFE), separados por coma, ej. Villa Alemana > Puerto, Viña del Mar > Limache",
+          "train_return": "Agregar también el sentido inverso de cada trayecto del tren",
           "quakes": "Último sismo (Centro Sismológico Nacional)",
           "holidays": "Próximo feriado",
           "air": "Calidad del aire y UV (según la ubicación de Home Assistant)",
@@ -41,7 +43,8 @@
       "invalid_regional_stop": "Código de paradero inválido. Usa letras, números y guion (ej. P60094).",
       "regional_needs_stops": "Indica al menos un paradero de la Red Regional.",
       "regional_needs_zone": "Elige la ciudad de esos paraderos.",
-      "regional_stop_not_found": "Ese paradero no existe en la ciudad elegida. Revisa el código en el letrero o en la app Red Regional."
+      "regional_stop_not_found": "Ese paradero no existe en la ciudad elegida. Revisa el código en el letrero o en la app Red Regional.",
+      "invalid_trip": "Trayecto de tren inválido. Usa «Origen > Destino» con estaciones de la línea Limache–Puerto, ej. Villa Alemana > Puerto."
     },
     "abort": {
       "already_configured": "Navaja Chilena ya está configurada."
@@ -56,6 +59,8 @@
           "indicators": "Indicadores económicos",
           "metro": "Estado del Metro de Santiago",
           "stops": "Paraderos (códigos separados por coma, ej. PC615, PA433)",
+          "train_trips": "Trayectos del tren Limache–Puerto (EFE), separados por coma, ej. Villa Alemana > Puerto, Viña del Mar > Limache",
+          "train_return": "Agregar también el sentido inverso de cada trayecto del tren",
           "quakes": "Último sismo (Centro Sismológico Nacional)",
           "holidays": "Próximo feriado",
           "air": "Calidad del aire y UV (según la ubicación de Home Assistant)",
@@ -89,7 +94,8 @@
       "invalid_regional_stop": "Código de paradero inválido. Usa letras, números y guion (ej. P60094).",
       "regional_needs_stops": "Indica al menos un paradero de la Red Regional.",
       "regional_needs_zone": "Elige la ciudad de esos paraderos.",
-      "regional_stop_not_found": "Ese paradero no existe en la ciudad elegida. Revisa el código en el letrero o en la app Red Regional."
+      "regional_stop_not_found": "Ese paradero no existe en la ciudad elegida. Revisa el código en el letrero o en la app Red Regional.",
+      "invalid_trip": "Trayecto de tren inválido. Usa «Origen > Destino» con estaciones de la línea Limache–Puerto, ej. Villa Alemana > Puerto."
     }
   },
   "entity": {
