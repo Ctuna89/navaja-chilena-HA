@@ -23,6 +23,7 @@ from .santoral import saint_of
 from . import vehicle
 from .vehicle_entity import REASON_TEXT, VehicleMixin
 from .api import FUEL_LABELS
+from .const import FOOTBALL_TEAMS, NATIONAL_TEAM_ID
 from .const import CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
 
 
@@ -93,6 +94,26 @@ async def async_setup_entry(
         fixed += [AirSensor(rt.air, entry, spec) for spec in AIR_SENSORS]
     if rt.pharmacy:
         fixed.append(PharmacySensor(rt.pharmacy, entry, rt.pharmacy_comuna))
+    if rt.football:
+        if rt.football_team:
+            name = FOOTBALL_TEAMS[rt.football_team]
+            dev = f"Fútbol: {name}"
+            fixed += [
+                NextMatchSensor(rt.football, entry, rt.football_team, dev, "team_fixtures", "team_results"),
+                LastResultSensor(rt.football, entry, rt.football_team, dev, "team_results"),
+                PositionSensor(rt.football, entry, rt.football_team, dev),
+            ]
+        if rt.football_league:
+            fixed += [
+                LeagueTableSensor(rt.football, entry),
+                LeagueNextRoundSensor(rt.football, entry),
+                LeagueLastRoundSensor(rt.football, entry),
+            ]
+    if rt.national:
+        fixed += [
+            NextMatchSensor(rt.national, entry, NATIONAL_TEAM_ID, "Fútbol: La Roja", "fixtures", "results"),
+            LastResultSensor(rt.national, entry, NATIONAL_TEAM_ID, "Fútbol: La Roja", "results"),
+        ]
     if rt.fuel:
         fixed += [FuelSensor(rt.fuel, entry, fuel, rt.fuel_radius, rt.fuel_max_age) for fuel in rt.fuel_types]
     if rt.saint:
@@ -867,3 +888,316 @@ class FuelSensor(_Base):
             }
         )
         return attrs
+
+
+# ----------------------------------------------------------------------- Fútbol
+
+_WEEKDAYS = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
+
+
+def _when(moment: datetime) -> str:
+    local = moment.astimezone(ZoneInfo(api.METRO_TZ))
+    return f"{_WEEKDAYS[local.weekday()]} {local:%d-%m} {local:%H:%M}"
+
+
+def _round_item(m: api.Match) -> dict[str, Any]:
+    return {
+        "local": m.home.name,
+        "visita": m.away.name,
+        "hora_local": _when(m.start),
+        "estadio": m.venue,
+        "estado": m.status,
+        "marcador": m.score_text,
+        "en_vivo": m.live,
+    }
+
+
+class _FootballBase(_Base):
+    def __init__(self, coordinator, entry, key: str, device_key: str, device_name: str) -> None:
+        super().__init__(coordinator, entry, key)
+        self._attr_device_info = _device(device_key, device_name)
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None
+
+    def _list(self, key: str) -> list[api.Match]:
+        return list((self.coordinator.data or {}).get(key) or [])
+
+
+class NextMatchSensor(_FootballBase):
+    """Próximo partido (o el que está en juego) de un equipo o de la selección."""
+
+    _kind = "partido_proximo"
+    _attr_icon = "mdi:soccer"
+    _attr_name = "Próximo partido"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator, entry, team_id: str, device: str, fixtures_key: str, results_key: str) -> None:
+        super().__init__(coordinator, entry, f"{team_id}_{fixtures_key}", f"futbol_{team_id}", device)
+        self._team_id = team_id
+        self._fixtures_key = fixtures_key
+        self._results_key = results_key
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None and self.coordinator.data.get(self._fixtures_key) is not None
+
+    def _upcoming(self) -> list[api.Match]:
+        pool = self._list(self._fixtures_key) + [m for m in self._list(self._results_key) if m.live]
+        return sorted({m.id: m for m in pool if not m.finished}.values(), key=lambda m: m.start)
+
+    @property
+    def native_value(self):
+        up = self._upcoming()
+        return up[0].start if up else None
+
+    @property
+    def entity_picture(self) -> str | None:
+        up = self._upcoming() if self.coordinator.data is not None else []
+        return up[0].opponent(self._team_id).logo if up else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        up = self._upcoming()
+        if not up:
+            return {"motivo": "No hay partidos programados"}
+        m = up[0]
+        today = dt_util.now().astimezone(ZoneInfo(api.METRO_TZ)).date()
+        return {
+            "rival": m.opponent(self._team_id).name,
+            "condicion": "local" if m.is_home(self._team_id) else "visita",
+            "competencia": m.competition,
+            "hora_local": _when(m.start),
+            "dias_restantes": (m.start.astimezone(ZoneInfo(api.METRO_TZ)).date() - today).days,
+            "estadio": m.venue,
+            "ciudad": m.city,
+            "en_vivo": m.live,
+            "marcador": m.score_text if m.live else None,
+            "minuto": m.clock,
+            "siguientes": [
+                {
+                    "rival": n.opponent(self._team_id).name,
+                    "condicion": "local" if n.is_home(self._team_id) else "visita",
+                    "hora_local": _when(n.start),
+                    "competencia": n.competition,
+                }
+                for n in up[1:4]
+            ],
+        }
+
+
+class LastResultSensor(_FootballBase):
+    """Último resultado de un equipo o de la selección, con su forma reciente."""
+
+    _kind = "partido_ultimo"
+    _attr_icon = "mdi:scoreboard"
+    _attr_name = "Último resultado"
+    _LETTER = {"ganó": "G", "empató": "E", "perdió": "P"}
+
+    def __init__(self, coordinator, entry, team_id: str, device: str, results_key: str) -> None:
+        super().__init__(coordinator, entry, f"{team_id}_{results_key}", f"futbol_{team_id}", device)
+        self._team_id = team_id
+        self._results_key = results_key
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None and self.coordinator.data.get(self._results_key) is not None
+
+    def _finished(self) -> list[api.Match]:
+        return sorted((m for m in self._list(self._results_key) if m.finished), key=lambda m: m.start, reverse=True)
+
+    def _mine(self, m: api.Match) -> tuple[int, int]:
+        h, a = m.home_score or 0, m.away_score or 0
+        return (h, a) if m.is_home(self._team_id) else (a, h)
+
+    @property
+    def native_value(self) -> str | None:
+        done = self._finished()
+        if not done:
+            return None
+        m = done[0]
+        mine, theirs = self._mine(m)
+        return f"{m.result_for(self._team_id).capitalize()} {mine}-{theirs} vs {m.opponent(self._team_id).name}"
+
+    @property
+    def entity_picture(self) -> str | None:
+        done = self._finished() if self.coordinator.data is not None else []
+        if not done:
+            return None
+        m = done[0]
+        return (m.home if m.is_home(self._team_id) else m.away).logo
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        done = self._finished()
+        if not done:
+            return {"motivo": "Aún no hay resultados"}
+        m = done[0]
+        mine, theirs = self._mine(m)
+        recent = done[:5]
+        return {
+            "resultado": m.result_for(self._team_id),
+            "marcador": f"{mine}-{theirs}",
+            "local": m.home.name,
+            "visita": m.away.name,
+            "marcador_local_visita": m.score_text,
+            "rival": m.opponent(self._team_id).name,
+            "competencia": m.competition,
+            "fecha": _when(m.start),
+            "estadio": m.venue,
+            "forma": "".join(self._LETTER[x.result_for(self._team_id)] for x in recent),
+            "ultimos": [
+                {
+                    "rival": x.opponent(self._team_id).name,
+                    "resultado": x.result_for(self._team_id),
+                    "marcador": "%d-%d" % self._mine(x),
+                    "fecha": _when(x.start),
+                    "competencia": x.competition,
+                }
+                for x in recent
+            ],
+        }
+
+
+class PositionSensor(_FootballBase):
+    """Posición del equipo en la tabla de la Primera División."""
+
+    _kind = "tabla_posicion"
+    _attr_icon = "mdi:podium"
+    _attr_name = "Posición en la tabla"
+
+    def __init__(self, coordinator, entry, team_id: str, device: str) -> None:
+        super().__init__(coordinator, entry, team_id, f"futbol_{team_id}", device)
+        self._team_id = team_id
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None and self.coordinator.data.get("standings") is not None
+
+    def _row(self) -> api.TableRow | None:
+        rows = (self.coordinator.data or {}).get("standings") or []
+        return next((r for r in rows if r.team.id == self._team_id), None)
+
+    @property
+    def native_value(self) -> int | None:
+        row = self._row()
+        return row.rank if row else None
+
+    @property
+    def entity_picture(self) -> str | None:
+        row = self._row()
+        return row.team.logo if row else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        row = self._row()
+        if row is None:
+            return {"motivo": "El equipo no figura en la tabla"}
+        rows = self.coordinator.data["standings"]
+        leader = rows[0]
+        return {
+            "puntos": row.points,
+            "jugados": row.played,
+            "ganados": row.wins,
+            "empatados": row.draws,
+            "perdidos": row.losses,
+            "goles_a_favor": row.goals_for,
+            "goles_en_contra": row.goals_against,
+            "diferencia_de_goles": row.goal_diff,
+            "lider": leader.team.name,
+            "puntos_del_lider": leader.points,
+            "puntos_bajo_el_lider": leader.points - row.points,
+            "equipos": len(rows),
+        }
+
+
+class LeagueTableSensor(_FootballBase):
+    """Tabla de posiciones completa de la Primera División."""
+
+    _kind = "liga_tabla"
+    _attr_icon = "mdi:format-list-numbered"
+    _attr_name = "Tabla de posiciones"
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry, "tabla", "futbol_liga", "Fútbol: Primera División")
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None and self.coordinator.data.get("standings") is not None
+
+    def _rows(self) -> list[api.TableRow]:
+        return list((self.coordinator.data or {}).get("standings") or [])
+
+    @property
+    def native_value(self) -> str | None:
+        rows = self._rows()
+        return rows[0].team.name if rows else None
+
+    @property
+    def entity_picture(self) -> str | None:
+        rows = self._rows()
+        return rows[0].team.logo if rows else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "tabla": [
+                {
+                    "posicion": r.rank,
+                    "equipo": r.team.name,
+                    "pj": r.played,
+                    "pg": r.wins,
+                    "pe": r.draws,
+                    "pp": r.losses,
+                    "gf": r.goals_for,
+                    "gc": r.goals_against,
+                    "dg": r.goal_diff,
+                    "pts": r.points,
+                }
+                for r in self._rows()
+            ]
+        }
+
+
+class LeagueNextRoundSensor(_FootballBase):
+    """Partidos de la próxima fecha; el estado es el horario del primero que falta jugar."""
+
+    _kind = "liga_proxima"
+    _attr_icon = "mdi:calendar-clock"
+    _attr_name = "Próxima fecha"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry, "proxima", "futbol_liga", "Fútbol: Primera División")
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None and self.coordinator.data.get("league_next") is not None
+
+    @property
+    def native_value(self):
+        pending = [m for m in self._list("league_next") if not m.finished]
+        return pending[0].start if pending else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        matches = self._list("league_next")
+        return {"partidos": [_round_item(m) for m in matches], "cantidad": len(matches)}
+
+
+class LeagueLastRoundSensor(_FootballBase):
+    """Resultados de la última fecha; el estado es la cantidad de partidos."""
+
+    _kind = "liga_ultima"
+    _attr_icon = "mdi:scoreboard-outline"
+    _attr_name = "Última fecha"
+    _attr_native_unit_of_measurement = "partidos"
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry, "ultima", "futbol_liga", "Fútbol: Primera División")
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None and self.coordinator.data.get("league_last") is not None
+
+    @property
+    def native_value(self) -> int:
+        return len(self._list("league_last"))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"resultados": [_round_item(m) for m in self._list("league_last")]}

@@ -5,7 +5,7 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
-_Nada por ahora._
+- **Fútbol**: próximos partidos, resultados y posición de tu equipo de la Primera División; tabla y fechas de la liga; y La Roja (ESPN). Se consulta cada 3 horas y cada 5 minutos con un partido en juego.
 
 ## 2.9.0
 

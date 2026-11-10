@@ -19,6 +19,10 @@ from .const import (
     CRYPTO_URL,
     EPHEMERIDES_CL_URL,
     EPHEMERIDES_URL,
+    ESPN_LOCALE,
+    ESPN_SOCCER,
+    ESPN_STANDINGS_URL,
+    FOOTBALL_LEAGUE_SLUG,
     FUEL_BRANDS_URL,
     FUEL_URL,
     INDICATORS_FALLBACK_URL,
@@ -1111,3 +1115,333 @@ async def fetch_fuel(session: aiohttp.ClientSession, brands_cache: dict[int, tup
         except NavajaApiError:
             pass
     return parse_stations(await _get_json(session, FUEL_URL), brands_cache)
+
+
+# ----------------------------------------------------------------------- Fútbol
+
+
+@dataclass(frozen=True)
+class FootballTeam:
+    id: str
+    name: str
+    abbr: str
+    logo: str | None
+
+
+@dataclass(frozen=True)
+class Match:
+    """Un partido (programado, en juego o terminado)."""
+
+    id: str
+    start: datetime  # UTC
+    competition: str
+    home: FootballTeam
+    away: FootballTeam
+    home_score: int | None
+    away_score: int | None
+    state: str  # "pre" | "in" | "post"
+    status: str  # texto en español: «Agendado», «Tiempo Completo»…
+    clock: str | None
+    venue: str | None
+    city: str | None
+
+    @property
+    def live(self) -> bool:
+        return self.state == "in"
+
+    @property
+    def finished(self) -> bool:
+        return self.state == "post"
+
+    @property
+    def score_text(self) -> str | None:
+        if self.home_score is None or self.away_score is None:
+            return None
+        return f"{self.home_score}-{self.away_score}"
+
+    def involves(self, team_id: str) -> bool:
+        return team_id in (self.home.id, self.away.id)
+
+    def is_home(self, team_id: str) -> bool:
+        return self.home.id == team_id
+
+    def opponent(self, team_id: str) -> FootballTeam:
+        return self.away if self.is_home(team_id) else self.home
+
+    def result_for(self, team_id: str) -> str | None:
+        """«ganó», «empató» o «perdió» desde el punto de vista del equipo (si terminó)."""
+        if not self.finished or self.home_score is None or self.away_score is None:
+            return None
+        mine, theirs = (
+            (self.home_score, self.away_score) if self.is_home(team_id) else (self.away_score, self.home_score)
+        )
+        return "ganó" if mine > theirs else "empató" if mine == theirs else "perdió"
+
+
+@dataclass(frozen=True)
+class TableRow:
+    rank: int
+    team: FootballTeam
+    played: int
+    wins: int
+    draws: int
+    losses: int
+    goals_for: int
+    goals_against: int
+    points: int
+
+    @property
+    def goal_diff(self) -> int:
+        return self.goals_for - self.goals_against
+
+
+def _score(raw: Any) -> int | None:
+    if isinstance(raw, dict):
+        raw = raw.get("value", raw.get("displayValue"))
+    try:
+        return int(float(raw))
+    except (TypeError, ValueError):
+        return None
+
+
+def _team(raw: Any) -> FootballTeam | None:
+    if not isinstance(raw, dict) or raw.get("id") is None:
+        return None
+    logos = raw.get("logos") or []
+    logo = raw.get("logo") or (logos[0].get("href") if logos and isinstance(logos[0], dict) else None)
+    name = str(raw.get("displayName") or raw.get("name") or raw.get("location") or "").strip()
+    return FootballTeam(str(raw["id"]), name, str(raw.get("abbreviation") or name[:3].upper()), logo)
+
+
+def parse_match(event: Any, competition: str | None = None) -> Match | None:
+    """Interpreta un evento de ESPN; devuelve None si no se puede (datos incompletos)."""
+    if not isinstance(event, dict):
+        return None
+    comp = (event.get("competitions") or [{}])[0]
+    if not isinstance(comp, dict):
+        return None
+    home = away = None
+    scores: dict[str, int | None] = {}
+    for c in comp.get("competitors") or []:
+        if not isinstance(c, dict):
+            continue
+        team = _team(c.get("team"))
+        if c.get("homeAway") == "home":
+            home, scores["home"] = team, _score(c.get("score"))
+        elif c.get("homeAway") == "away":
+            away, scores["away"] = team, _score(c.get("score"))
+    try:
+        start = datetime.fromisoformat(str(event["date"]).replace("Z", "+00:00"))
+    except (KeyError, ValueError):
+        return None
+    if home is None or away is None:
+        return None
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=ZoneInfo("UTC"))
+    status = event.get("status") or comp.get("status") or {}
+    stype = status.get("type") or {}
+    venue = comp.get("venue") or event.get("venue") or {}
+    state = str(stype.get("state") or "pre")
+    return Match(
+        id=str(event.get("id", "")),
+        start=start,
+        competition=str((event.get("league") or {}).get("name") or competition or ""),
+        home=home,
+        away=away,
+        home_score=scores.get("home") if state != "pre" else None,
+        away_score=scores.get("away") if state != "pre" else None,
+        state=state if state in ("pre", "in", "post") else "pre",
+        status=str(stype.get("description") or stype.get("detail") or ""),
+        clock=str(status.get("displayClock")) if state == "in" and status.get("displayClock") else None,
+        venue=venue.get("fullName") or None,
+        city=(venue.get("address") or {}).get("city") or None,
+    )
+
+
+def parse_matches(data: Any, competition: str | None = None) -> list[Match]:
+    events = data.get("events") if isinstance(data, dict) else None
+    if not isinstance(events, list):
+        raise NavajaApiError("Respuesta de partidos inesperada")
+    return sorted(
+        (m for m in (parse_match(e, competition) for e in events) if m is not None), key=lambda m: m.start
+    )
+
+
+def parse_calendar(data: Any) -> list[date]:
+    """Fechas con partidos de la temporada (de la respuesta del scoreboard)."""
+    try:
+        raw = data["leagues"][0]["calendar"]
+    except (KeyError, IndexError, TypeError):
+        raise NavajaApiError("El calendario de la liga no viene en la respuesta") from None
+    days: list[date] = []
+    for item in raw:
+        try:
+            days.append(date.fromisoformat(str(item)[:10]))
+        except ValueError:
+            continue
+    return sorted(set(days))
+
+
+def matchday_dates(calendar: list[date], today: date, upcoming: bool, span_days: int = 3) -> list[date]:
+    """Fechas de la próxima (o última) jornada: días consecutivos cercanos entre sí."""
+    if upcoming:
+        pool = [d for d in calendar if d >= today]
+        if not pool:
+            return []
+        first = pool[0]
+        return [d for d in pool if (d - first).days <= span_days]
+    pool = [d for d in calendar if d < today]
+    if not pool:
+        return []
+    last = pool[-1]
+    return [d for d in pool if (last - d).days <= span_days]
+
+
+def parse_standings(data: Any) -> list[TableRow]:
+    try:
+        entries = data["children"][0]["standings"]["entries"]
+    except (KeyError, IndexError, TypeError):
+        raise NavajaApiError("Respuesta de la tabla inesperada") from None
+    rows: list[TableRow] = []
+    for e in entries:
+        team = _team(e.get("team")) if isinstance(e, dict) else None
+        if team is None:
+            continue
+        stats = {s.get("name"): s for s in e.get("stats") or [] if isinstance(s, dict)}
+
+        def num(name: str) -> int:
+            s = stats.get(name) or {}
+            return _score(s.get("value", s.get("displayValue"))) or 0
+
+        rows.append(
+            TableRow(
+                rank=num("rank"),
+                team=team,
+                played=num("gamesPlayed"),
+                wins=num("wins"),
+                draws=num("ties"),
+                losses=num("losses"),
+                goals_for=num("pointsFor"),
+                goals_against=num("pointsAgainst"),
+                points=num("points"),
+            )
+        )
+    if not rows:
+        raise NavajaApiError("La tabla no trae equipos")
+    return sorted(rows, key=lambda r: (r.rank or 99, -r.points))
+
+
+def _espn_url(path: str, **params: str) -> str:
+    extra = "".join(f"&{k}={v}" for k, v in params.items())
+    return f"{ESPN_SOCCER}/{path}?{ESPN_LOCALE}{extra}"
+
+
+async def _try(errors: list[str], coro: Any) -> Any:
+    try:
+        return await coro
+    except NavajaApiError as err:
+        errors.append(str(err))
+        return None
+
+
+async def fetch_football(
+    session: aiohttp.ClientSession, team_id: str | None, league: bool, today: date
+) -> dict[str, Any]:
+    """Tabla, partidos del equipo y jornadas de la liga. Cada parte falla por separado."""
+    out: dict[str, Any] = {
+        "standings": None, "team_results": None, "team_fixtures": None,
+        "league_last": None, "league_next": None,
+    }
+    errors: list[str] = []
+    if team_id or league:
+        out["standings"] = await _try(errors, _fetch_standings(session))
+    if team_id:
+        out["team_results"] = await _try(errors, _fetch_team(session, team_id, False))
+        out["team_fixtures"] = await _try(errors, _fetch_team(session, team_id, True))
+    if league:
+        cal = await _try(errors, _fetch_calendar(session))
+        if cal is not None:
+            for key, upcoming in (("league_next", True), ("league_last", False)):
+                days = matchday_dates(cal, today, upcoming)
+                matches: list[Match] = []
+                ok = True
+                for d in days:
+                    part = await _try(errors, _fetch_day(session, d))
+                    if part is None:
+                        ok = False
+                    else:
+                        matches += part
+                if ok:
+                    out[key] = sorted(matches, key=lambda m: m.start)
+    if all(v is None for v in out.values()):
+        raise NavajaApiError("; ".join(errors) or "sin datos de fútbol")
+    return out
+
+
+async def _fetch_standings(session: aiohttp.ClientSession) -> list[TableRow]:
+    return parse_standings(await _get_json(session, f"{ESPN_STANDINGS_URL}?{ESPN_LOCALE}"))
+
+
+async def _fetch_team(session: aiohttp.ClientSession, team_id: str, fixtures: bool) -> list[Match]:
+    extra = {"fixture": "true"} if fixtures else {}
+    matches = parse_matches(
+        await _get_json(session, _espn_url(f"{FOOTBALL_LEAGUE_SLUG}/teams/{team_id}/schedule", **extra))
+    )
+    return matches if fixtures else sorted(matches, key=lambda m: m.start, reverse=True)
+
+
+async def _fetch_calendar(session: aiohttp.ClientSession) -> list[date]:
+    return parse_calendar(await _get_json(session, _espn_url(f"{FOOTBALL_LEAGUE_SLUG}/scoreboard")))
+
+
+async def _fetch_day(session: aiohttp.ClientSession, day: date) -> list[Match]:
+    return parse_matches(
+        await _get_json(session, _espn_url(f"{FOOTBALL_LEAGUE_SLUG}/scoreboard", dates=f"{day:%Y%m%d}"))
+    )
+
+
+async def fetch_national(session: aiohttp.ClientSession, team_id: str, competitions: tuple[str, ...]) -> dict[str, Any]:
+    """Partidos de la selección en todas sus competencias (amistosos, eliminatorias, Copa)."""
+    results: list[Match] = []
+    fixtures: list[Match] = []
+    errors: list[str] = []
+    answered = 0
+    for slug in competitions:
+        for fixture in (False, True):
+            extra = {"fixture": "true"} if fixture else {}
+            data = await _try(errors, _get_json(session, _espn_url(f"{slug}/teams/{team_id}/schedule", **extra)))
+            if data is None:
+                continue
+            try:
+                found = parse_matches(data)
+            except NavajaApiError as err:
+                errors.append(str(err))
+                continue
+            answered += 1
+            (fixtures if fixture else results).extend(found)
+    if not answered:
+        raise NavajaApiError("; ".join(errors) or "sin datos de la selección")
+    seen: set[str] = set()
+
+    def unique(items: list[Match]) -> list[Match]:
+        out = []
+        for m in items:
+            if m.id not in seen:
+                seen.add(m.id)
+                out.append(m)
+        return out
+
+    return {
+        "results": sorted(unique(results), key=lambda m: m.start, reverse=True),
+        "fixtures": sorted(unique(fixtures), key=lambda m: m.start),
+    }
+
+
+def all_matches(data: Any) -> list[Match]:
+    """Todos los partidos de una respuesta de fetch_* (para decidir la frecuencia de consulta)."""
+    found: list[Match] = []
+    if isinstance(data, dict):
+        for value in data.values():
+            if isinstance(value, list):
+                found += [m for m in value if isinstance(m, Match)]
+    return found

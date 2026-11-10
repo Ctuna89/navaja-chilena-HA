@@ -17,6 +17,11 @@ from .api import parse_stop_codes
 from .vehicle import VEHICLE_TYPES
 from .api import FUEL_LABELS
 from .const import (
+    CONF_FOOTBALL_LEAGUE,
+    CONF_FOOTBALL_NATIONAL,
+    CONF_FOOTBALL_TEAM,
+    FOOTBALL_NONE,
+    FOOTBALL_TEAMS,
     CONF_FUEL_MAX_AGE,
     CONF_FUEL_RADIUS,
     CONF_FUEL_TYPES,
@@ -155,6 +160,26 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
+            vol.Required(
+                CONF_FOOTBALL_TEAM, default=str(defaults.get(CONF_FOOTBALL_TEAM, FOOTBALL_NONE))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=FOOTBALL_NONE, label="No usar / None"),
+                        *[
+                            selector.SelectOptionDict(value=k, label=v)
+                            for k, v in sorted(FOOTBALL_TEAMS.items(), key=lambda kv: kv[1])
+                        ],
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(
+                CONF_FOOTBALL_LEAGUE, default=defaults.get(CONF_FOOTBALL_LEAGUE, False)
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_FOOTBALL_NATIONAL, default=defaults.get(CONF_FOOTBALL_NATIONAL, False)
+            ): selector.BooleanSelector(),
             vol.Optional(
                 CONF_PHARMACY_COMUNA, default=defaults.get(CONF_PHARMACY_COMUNA, "")
             ): selector.TextSelector(),
@@ -174,6 +199,9 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or any(user_input.get(k) for k in (CONF_METRO, CONF_QUAKES, CONF_HOLIDAYS, CONF_AIR, CONF_CRYPTO, CONF_BOLSA, CONF_SAINT, CONF_EPHEMERIDES))
         or user_input.get(CONF_PHARMACY_COMUNA, "").strip()
         or bool(user_input.get(CONF_FUEL_TYPES))
+        or str(user_input.get(CONF_FOOTBALL_TEAM, FOOTBALL_NONE)) != FOOTBALL_NONE
+        or bool(user_input.get(CONF_FOOTBALL_LEAGUE))
+        or bool(user_input.get(CONF_FOOTBALL_NATIONAL))
         or user_input.get(CONF_CINEMA, CINEMA_NONE) != CINEMA_NONE
         or str(user_input.get(CONF_VEHICLE_DIGIT, VEHICLE_NONE)) != VEHICLE_NONE
     )

@@ -21,7 +21,10 @@
           "vehicle_type": "Vehicle type (for the traffic restriction)",
           "fuel_types": "Cheapest fuel near your home (choose the ones you use)",
           "fuel_radius": "Search radius for gas stations",
-          "fuel_max_age": "Maximum age of fuel prices"
+          "fuel_max_age": "Maximum age of fuel prices",
+          "football_team": "Your Chilean Primera División team (matches, results and position)",
+          "football_league": "Whole Primera División (table and rounds)",
+          "football_national": "La Roja: national team (matches and results)"
         }
       }
     },
@@ -56,7 +59,10 @@
           "vehicle_type": "Vehicle type (for the traffic restriction)",
           "fuel_types": "Cheapest fuel near your home (choose the ones you use)",
           "fuel_radius": "Search radius for gas stations",
-          "fuel_max_age": "Maximum age of fuel prices"
+          "fuel_max_age": "Maximum age of fuel prices",
+          "football_team": "Your Chilean Primera División team (matches, results and position)",
+          "football_league": "Whole Primera División (table and rounds)",
+          "football_national": "La Roja: national team (matches and results)"
         }
       }
     },

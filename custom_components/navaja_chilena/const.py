@@ -145,3 +145,39 @@ FUEL_DEFAULT_RADIUS = 5
 CONF_FUEL_MAX_AGE = "fuel_max_age"
 FUEL_MAX_AGES = (7, 14, 30)
 FUEL_DEFAULT_MAX_AGE = 14   # días: los precios más viejos suelen estar desactualizados
+
+# Fútbol (ESPN, API pública no documentada)
+CONF_FOOTBALL_TEAM = "football_team"
+CONF_FOOTBALL_LEAGUE = "football_league"
+CONF_FOOTBALL_NATIONAL = "football_national"
+FOOTBALL_NONE = "none"
+ESPN_SOCCER = "https://site.api.espn.com/apis/site/v2/sports/soccer"
+ESPN_STANDINGS_URL = "https://site.api.espn.com/apis/v2/sports/soccer/chi.1/standings"
+ESPN_LOCALE = "lang=es&region=cl"
+FOOTBALL_LEAGUE_SLUG = "chi.1"
+FOOTBALL_INTERVAL = timedelta(hours=3)
+NATIONAL_INTERVAL = timedelta(hours=6)
+FOOTBALL_LIVE_INTERVAL = timedelta(minutes=5)
+FOOTBALL_SOON_INTERVAL = timedelta(minutes=15)
+NATIONAL_TEAM_ID = "207"          # Selección de Chile en ESPN
+NATIONAL_COMPETITIONS = ("fifa.friendly", "fifa.worldq.conmebol", "conmebol.america", "fifa.world")
+
+# Primera División 2026 (id en ESPN -> nombre). Se actualiza cuando cambian los equipos de la liga.
+FOOTBALL_TEAMS: dict[str, str] = {
+    "4138": "Audax Italiano",
+    "4133": "Cobresal",
+    "2688": "Colo Colo",
+    "8186": "Coquimbo Unido",
+    "8110": "Deportes Concepción",
+    "19195": "Deportes Limache",
+    "4129": "Everton",
+    "4134": "Huachipato",
+    "4137": "La Serena",
+    "6072": "O'Higgins",
+    "4422": "Palestino",
+    "885": "Universidad Católica",
+    "4139": "Universidad de Chile",
+    "5362": "Universidad de Concepción",
+    "10144": "Unión La Calera",
+    "7427": "Ñublense",
+}
