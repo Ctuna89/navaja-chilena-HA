@@ -58,7 +58,7 @@ El asistente te pregunta qué quieres activar:
 - tu **comuna** para las farmacias de turno,
 - tu **equipo** de la Primera División (o toda la liga) y **La Roja**, para ver partidos, resultados y tabla,
 - los **combustibles** que usas (93, 95, 97 o diésel), el **radio** de búsqueda alrededor de tu casa y la **antigüedad máxima** de los precios,
-- tus **tarjetas** y las **categorías** de descuentos que te interesan (combustibles, comida, salud y belleza, etc.),
+- tus **tarjetas** (descuentos en bencina de hoy) y las **categorías** de descuentos que te interesan (combustibles, comida, salud y belleza, etc.),
 - el **último dígito de tu patente** y el tipo de vehículo, para la restricción vehicular y la revisión técnica,
 - tu **cine** Cinemark: uno de los 22 cines del país, o *«El más cercano a mi casa»* según la ubicación de tu Home Assistant.
 
@@ -178,6 +178,18 @@ el valor es la cantidad de descuentos de **hoy** para tus tarjetas.
   con el contenido de `hoy` (ejemplo más abajo).
 - Si el sitio no responde, se siguen mostrando los últimos datos descargados; si nunca se pudo descargar, el sensor queda sin valor.
 - Las condiciones, fechas y topes de cada descuento las define el emisor: revisa siempre el detalle antes de comprar.
+
+### ⛽ Descuentos en bencina de tus tarjetas
+`sensor.combustibles_descuentos_en_bencina_hoy` · cuántos descuentos en bencina tienes **hoy** con las tarjetas que marcaste (no requiere elegir categorías).
+
+- Atributos: `hoy` (estaciones, tarjeta, descuento, detalle, `confirmado` y `fuente`), `mejor_ahorro_clp_litro`, `proximo_dia` y `proximo` (el próximo
+  día con descuento y cuáles son), `calendario` (mes del calendario) y `actualizado`.
+- Se alimenta de un **calendario mensual** del repositorio ([`data/bencina.json`](data/bencina.json)), porque los descuentos de bencina se
+  publican en las páginas de cada estación y banco, no en un servicio con datos estructurados. Se renueva **solo, una vez al mes** (se investiga, se valida y se publica de forma automática) y cada fila indica su
+  fuente (Copec, Shell, Aramco, bancos y prensa). Las condiciones que cambian la decisión (tope de litros, activaciones, crédito o débito) van en `detalle`;
+  lo que no se pudo confirmar con una fuente oficial del mes aparece con `confirmado: false`.
+- Si el calendario no es del mes en curso, el sensor queda sin valor y el atributo `motivo` lo explica: nunca se muestran descuentos de un mes anterior como vigentes.
+- ¿Faltan descuentos o hay un error? Puedes proponer el cambio en `data/bencina.json` con un pull request (el método y la validación están en [`data/README.md`](data/README.md)).
 
 ### 🚗 Mi vehículo: restricción vehicular y revisión técnica
 Eliges el **último dígito** de tu patente y el **tipo de vehículo**. No usa internet: las reglas están incluidas en la integración y se
@@ -1028,6 +1040,7 @@ necesidad de registrarte.
 | Efemérides | [efemerides.cl](https://www.efemerides.cl) y [Wikipedia en español](https://es.wikipedia.org) |
 | Fútbol | [ESPN](https://www.espn.cl/futbol/) (calendario, resultados y tabla; servicio público no documentado) |
 | Combustibles | [Bencina en Línea](https://www.bencinaenlinea.cl) (Comisión Nacional de Energía) |
+| Descuentos en bencina | Calendario mensual del repositorio ([`data/bencina.json`](data/bencina.json)); cada descuento cita su fuente (Copec, Shell, Aramco, bancos y prensa) |
 | Descuentos de tarjetas | [N Beneficios](https://www.nbeneficios.cl), un servicio de Infoacción (los beneficios, logos e imágenes pertenecen a sus emisores) |
 | Restricción vehicular | [Ministerio de Transportes](https://mtt.gob.cl/restriccion-vehicular-2026/): Resolución Exenta N° 1698/2026 (Seremi RM) |
 | Revisión técnica | [ChileAtiende](https://www.chileatiende.gob.cl/fichas/23978) (Subsecretaría de Transportes) |

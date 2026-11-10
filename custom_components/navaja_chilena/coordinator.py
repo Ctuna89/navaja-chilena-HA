@@ -16,6 +16,7 @@ from homeassistant.helpers.storage import Store
 from . import api
 from .const import (
     BENEFITS_INTERVAL,
+    FUEL_DISCOUNTS_INTERVAL,
     BENEFITS_REFRESH_DAYS,
     BENEFITS_STORE_VERSION,
     FOOTBALL_INTERVAL,
@@ -300,3 +301,10 @@ def benefits_coordinator(hass: HomeAssistant, cards: list[str], categories: list
         return items
 
     return NavajaCoordinator(hass, "beneficios", BENEFITS_INTERVAL, fetch)
+
+
+def fuel_discounts_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
+    async def fetch(session: Any) -> api.FuelDiscountCalendar:
+        return await api.fetch_fuel_discounts(session)
+
+    return NavajaCoordinator(hass, "descuentos_bencina", FUEL_DISCOUNTS_INTERVAL, fetch)

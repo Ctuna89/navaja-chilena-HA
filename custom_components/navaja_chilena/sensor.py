@@ -114,6 +114,8 @@ async def async_setup_entry(
             NextMatchSensor(rt.national, entry, NATIONAL_TEAM_ID, "Fútbol: La Roja", "fixtures", "results"),
             LastResultSensor(rt.national, entry, NATIONAL_TEAM_ID, "Fútbol: La Roja", "results"),
         ]
+    if rt.fuel_discounts:
+        fixed.append(FuelDiscountSensor(rt.fuel_discounts, entry, rt.benefit_cards))
     if rt.benefits:
         fixed += [BenefitsSensor(rt.benefits, entry, cat) for cat in rt.benefit_categories]
     if rt.fuel:
@@ -811,6 +813,79 @@ class RevisionMonthSensor(VehicleMixin, SensorEntity):
             "nota": "Mes de preferencia en las plantas, no una fecha límite: tu plazo depende del certificado anterior.",
             "fuente": "ChileAtiende (Subsecretaría de Transportes)",
         }
+
+
+class FuelDiscountSensor(_Base):
+    """Descuentos en bencina de hoy con tus tarjetas (calendario mensual)."""
+
+    _kind = "descuento_bencina"
+    _attr_icon = "mdi:gas-station-outline"
+    _attr_native_unit_of_measurement = "descuentos"
+
+    def __init__(self, coordinator, entry, cards: list[str]) -> None:
+        super().__init__(coordinator, entry, "hoy")
+        self._cards = cards
+        self._attr_name = "Descuentos en bencina hoy"
+        self._attr_device_info = _device("combustibles", "Combustibles")
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None
+
+    def _today(self):
+        return dt_util.now().astimezone(ZoneInfo(api.METRO_TZ)).date()
+
+    def _current(self) -> bool:
+        return api.fuel_discounts_current(self.coordinator.data, self._today())
+
+    @staticmethod
+    def _brief(d: api.FuelDiscount) -> dict[str, Any]:
+        return {
+            "estaciones": list(d.stations),
+            "tarjeta": d.card_name,
+            "descuento": d.amount,
+            "detalle": d.detail,
+            "confirmado": d.confirmed,
+            "fuente": d.source,
+        }
+
+    @property
+    def native_value(self) -> int | None:
+        if not self._current():
+            return None   # calendario de otro mes: no se muestra como vigente
+        return len(api.fuel_discounts_for(self.coordinator.data, self._cards, self._today())[0])
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        cal = self.coordinator.data
+        attrs: dict[str, Any] = {
+            "calendario": cal.month,
+            "actualizado": cal.updated,
+            "fuente": "Calendario mensual de Navaja Chilena (cada descuento indica su fuente)",
+        }
+        if not self._current():
+            attrs["motivo"] = f"El calendario de descuentos es de {cal.month}; está pendiente su actualización mensual"
+            return attrs
+        today, nxt, upcoming = api.fuel_discounts_for(cal, self._cards, self._today())
+        savings = [d.saving_clp_l for d in today if d.saving_clp_l]
+        attrs.update(
+            {
+                "hoy": [self._brief(d) for d in today],
+                "mejor_ahorro_clp_litro": max(savings) if savings else None,
+                "proximo_dia": api.DAY_NAMES[nxt - 1] if nxt else None,
+                "proximo": [self._brief(d) for d in upcoming],
+                "aviso": "Revisa condiciones, topes y activaciones en el sitio del emisor o de la estación.",
+            }
+        )
+        return attrs
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+
+        @callback
+        def _refresh(_now: datetime) -> None:
+            self.async_write_ha_state()
+
+        self.async_on_remove(async_track_time_change(self.hass, _refresh, hour=0, minute=0, second=5))
 
 
 class BenefitsSensor(_Base):

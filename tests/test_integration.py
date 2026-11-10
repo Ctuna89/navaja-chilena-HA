@@ -755,3 +755,25 @@ async def test_benefits_source_down_is_unavailable_not_empty(hass, aioclient_moc
     await _setup_benefits(hass, aioclient_mock, monkeypatch, status=503)
     state = hass.states.get("sensor.descuentos_de_tarjetas_descuentos_de_hoy_comida")
     assert state is None or state.state == "unavailable"
+
+
+async def test_fuel_discount_sensor_today_and_stale_month(hass, aioclient_mock, freezer, monkeypatch):
+    import json as _json
+    from custom_components.navaja_chilena.const import FUEL_DISCOUNTS_URL
+    cal = _json.loads((Path(__file__).parents[1] / "data/bencina.json").read_text())
+    freezer.move_to("2026-11-10 12:00:00-03:00")    # martes
+    mock_all(aioclient_mock)
+    aioclient_mock.get(FUEL_DISCOUNTS_URL, json=cal)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False, "benefit_cards": ["bancoestado", "bci"], "benefit_categories": []})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    state = hass.states.get("sensor.combustibles_descuentos_en_bencina_hoy")
+    assert state.state == "1" and state.attributes["mejor_ahorro_clp_litro"] == 50
+    assert state.attributes["proximo_dia"] == "jueves"
+    # Un mes después el calendario ya no es vigente: no se muestra como si lo fuera.
+    freezer.move_to("2026-12-02 12:00:00-03:00")
+    await entry.runtime_data.fuel_discounts.async_refresh()
+    await hass.async_block_till_done()
+    state = hass.states.get("sensor.combustibles_descuentos_en_bencina_hoy")
+    assert state.state in ("unknown", "unavailable") and "motivo" in state.attributes

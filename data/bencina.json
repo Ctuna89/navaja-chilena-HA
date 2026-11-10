@@ -1,0 +1,62 @@
+{
+  "vigencia": "2026-11",
+  "actualizado": "2026-11-10",
+  "nota": "Calendario mensual de descuentos en bencina. Lo renueva un PR cada mes; cada fila trae su fuente. Los días van de 1 (lunes) a 7 (domingo).",
+  "descuentos": [
+    {
+      "dias": [2],
+      "estaciones": ["Copec"],
+      "tarjeta": "itau",
+      "tarjeta_nombre": "Itaú Legend",
+      "monto": "$100/L",
+      "ahorro_clp_litro": 100,
+      "detalle": "Solo tarjeta Legend. Crédito, código Itaú en app Copec",
+      "confirmado": true,
+      "fuente": "https://ww2.copec.cl/personas/promociones"
+    },
+    {
+      "dias": [2],
+      "estaciones": ["Copec"],
+      "tarjeta": "bancoestado",
+      "tarjeta_nombre": "Rutpay BancoEstado",
+      "monto": "$50/L",
+      "ahorro_clp_litro": 50,
+      "detalle": "QR en app Rutpay · máximo 50 L por carga",
+      "confirmado": true,
+      "fuente": "https://www.bancoestado.cl/content/bancoestado-public/cl/es/home/inicio---rutpay-bancoestado.html"
+    },
+    {
+      "dias": [3],
+      "estaciones": ["Shell"],
+      "tarjeta": "bancochile",
+      "tarjeta_nombre": "Banco de Chile / Edwards",
+      "monto": "$100/L",
+      "ahorro_clp_litro": 100,
+      "detalle": "Crédito · App Shell",
+      "confirmado": false,
+      "fuente": "https://www.meganoticias.cl/dato-util/529815-descuentos-en-bencinas-disponibles-tras-nueva-alza-de-combustibles-de-este-jueves-dcv-20-08-2026.html"
+    },
+    {
+      "dias": [4],
+      "estaciones": ["Copec"],
+      "tarjeta": "bci",
+      "tarjeta_nombre": "BCI",
+      "monto": "7% de cashback",
+      "porcentaje": 7,
+      "detalle": "Crédito · App Copec · activar BciPlus+ · tope diario $7.000",
+      "confirmado": true,
+      "fuente": "https://www.latercera.com/servicios/noticia/los-descuentos-para-ahorrar-hasta-300-en-bencina-durante-noviembre/"
+    },
+    {
+      "dias": [5],
+      "estaciones": ["Copec", "Shell", "Aramco"],
+      "tarjeta": "tenpo",
+      "tarjeta_nombre": "Tenpo",
+      "monto": "desde $50/L",
+      "ahorro_clp_litro": 50,
+      "detalle": "Cashback pagando con la app",
+      "confirmado": true,
+      "fuente": "https://chocale.cl/2026/11/descuentos-en-bencinas-combustibles-noviembre-copec-arambo-shell-2026/"
+    }
+  ]
+}

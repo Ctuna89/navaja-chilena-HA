@@ -231,3 +231,7 @@ BENEFIT_CATEGORIES: dict[str, str] = {
     "apps": "Apps",
     "otros": "Otros",
 }
+
+# Calendario mensual de descuentos en bencina (archivo del repositorio, renovado cada mes)
+FUEL_DISCOUNTS_URL = "https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/data/bencina.json"
+FUEL_DISCOUNTS_INTERVAL = timedelta(hours=6)
