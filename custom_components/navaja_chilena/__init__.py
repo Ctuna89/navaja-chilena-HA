@@ -13,17 +13,20 @@ from .api import parse_stop_codes
 from .const import (
     DEFAULT_INDICATORS,
     CONF_AIR,
+    CONF_BOLSA,
     CONF_CRYPTO,
     CONF_HOLIDAYS,
     CONF_INDICATORS,
     CONF_METRO,
     CONF_PHARMACY_COMUNA,
     CONF_QUAKES,
+    CONF_SAINT,
     CONF_STOPS,
 )
 from .coordinator import (
     NavajaCoordinator,
     air_coordinator,
+    bolsa_coordinator,
     crypto_coordinator,
     holidays_coordinator,
     pharmacy_coordinator,
@@ -46,6 +49,8 @@ class RuntimeData:
     air: NavajaCoordinator | None = None
     pharmacy: NavajaCoordinator | None = None
     crypto: NavajaCoordinator | None = None
+    bolsa: NavajaCoordinator | None = None
+    saint: bool = False
     pharmacy_comuna: str = ""
     indicator_codes: list[str] = field(default_factory=list)
 
@@ -61,6 +66,7 @@ def _options(entry: ConfigEntry) -> dict:
         opts.setdefault(CONF_METRO, True)
         opts.setdefault(CONF_QUAKES, True)
         opts.setdefault(CONF_HOLIDAYS, True)
+        opts.setdefault(CONF_SAINT, True)
     return opts
 
 
@@ -101,6 +107,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         data.air = air_coordinator(hass)
     if opts.get(CONF_CRYPTO):
         data.crypto = crypto_coordinator(hass)
+    if opts.get(CONF_BOLSA):
+        data.bolsa = bolsa_coordinator(hass)
+    data.saint = bool(opts.get(CONF_SAINT))
     comuna = (opts.get(CONF_PHARMACY_COMUNA) or "").strip()
     if comuna:
         data.pharmacy_comuna = comuna
@@ -109,7 +118,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     coordinators = [
         c
         for c in (data.indicators, data.metro, data.stops, data.quakes,
-                  data.holidays, data.air, data.pharmacy, data.crypto)
+                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa)
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]

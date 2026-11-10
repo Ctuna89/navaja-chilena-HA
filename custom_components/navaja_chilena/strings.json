@@ -12,7 +12,9 @@
           "holidays": "Próximo feriado",
           "air": "Calidad del aire y UV (según la ubicación de Home Assistant)",
           "pharmacy_comuna": "Comuna para farmacias de turno (opcional, ej. Providencia)",
-          "crypto": "Criptomonedas en pesos (Bitcoin y Ethereum, Buda.com)"
+          "crypto": "Criptomonedas en pesos (Bitcoin y Ethereum, Buda.com)",
+          "bolsa": "Bolsa de Santiago: IPSA y su variación diaria",
+          "saint": "Santo del día (santoral católico)"
         }
       }
     },
@@ -38,7 +40,9 @@
           "holidays": "Próximo feriado",
           "air": "Calidad del aire y UV (según la ubicación de Home Assistant)",
           "pharmacy_comuna": "Comuna para farmacias de turno (opcional, ej. Providencia)",
-          "crypto": "Criptomonedas en pesos (Bitcoin y Ethereum, Buda.com)"
+          "crypto": "Criptomonedas en pesos (Bitcoin y Ethereum, Buda.com)",
+          "bolsa": "Bolsa de Santiago: IPSA y su variación diaria",
+          "saint": "Santo del día (santoral católico)"
         }
       }
     },

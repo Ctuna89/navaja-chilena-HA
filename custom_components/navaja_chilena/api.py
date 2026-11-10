@@ -14,6 +14,7 @@ from .const import (
     CRYPTO_URL,
     INDICATORS_FALLBACK_URL,
     INDICATORS_URL,
+    IPSA_URL,
     METRO_URL,
     REQUEST_TIMEOUT,
     STOP_URL,
@@ -632,3 +633,59 @@ async def fetch_crypto(session: aiohttp.ClientSession, markets: list[str]) -> di
     if not out:
         raise NavajaApiError("; ".join(errors))
     return out
+
+
+# ------------------------------------------------------------------ Bolsa (IPSA)
+
+
+@dataclass(frozen=True)
+class StockIndex:
+    """Último cierre de un índice bursátil y variación respecto del cierre anterior."""
+
+    code: str
+    name: str
+    unit: str
+    value: float
+    date: str
+    previous_value: float | None
+    previous_date: str | None
+
+    @property
+    def change(self) -> float | None:
+        if self.previous_value is None:
+            return None
+        return round(self.value - self.previous_value, 2)
+
+    @property
+    def change_pct(self) -> float | None:
+        if not self.previous_value:
+            return None
+        return round((self.value - self.previous_value) / self.previous_value * 100, 2)
+
+
+def parse_stock_index(data: Any) -> StockIndex:
+    """Interpreta la serie de findic.cl/api/ipsa (cierres diarios, más reciente primero)."""
+    serie = data.get("serie") if isinstance(data, dict) else None
+    if not isinstance(serie, list):
+        raise NavajaApiError("Respuesta del IPSA inesperada")
+    points: list[tuple[str, float]] = []
+    for item in serie:
+        if isinstance(item, dict) and _num(item.get("valor")) is not None and item.get("fecha"):
+            points.append((str(item["fecha"])[:10], _num(item["valor"])))
+    if not points:
+        raise NavajaApiError("El IPSA no trae cierres")
+    points.sort(reverse=True)  # fecha ISO: orden cronológico inverso
+    prev = points[1] if len(points) > 1 else None
+    return StockIndex(
+        code=str(data.get("codigo", "ipsa")),
+        name=str(data.get("nombre", "IPSA")),
+        unit=str(data.get("unidad_medida", "Puntos")),
+        value=points[0][1],
+        date=points[0][0],
+        previous_value=prev[1] if prev else None,
+        previous_date=prev[0] if prev else None,
+    )
+
+
+async def fetch_ipsa(session: aiohttp.ClientSession) -> StockIndex:
+    return parse_stock_index(await _get_json(session, IPSA_URL))

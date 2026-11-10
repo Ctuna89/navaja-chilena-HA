@@ -37,7 +37,6 @@ INDICATORS: dict[str, str] = {
     "libra_cobre": "Libra de cobre",
     "tasa_desempleo": "Tasa de desempleo",
     "bitcoin": "Bitcoin (USD)",
-    "ipsa": "IPSA",
     "yen": "Yen",
     "dolar_intercambio": "Dólar acuerdo",
     "ethereum": "Ethereum (USD)",
@@ -82,3 +81,9 @@ CONF_CRYPTO = "crypto"
 CRYPTO_URL = "https://www.buda.com/api/v2/markets/{market}/ticker"
 CRYPTO_MARKETS = {"btc-clp": "Bitcoin", "eth-clp": "Ethereum"}
 CRYPTO_INTERVAL = timedelta(minutes=5)
+
+# Bolsa de Santiago (IPSA) y santoral
+CONF_BOLSA = "bolsa"
+CONF_SAINT = "saint"
+IPSA_URL = "https://findic.cl/api/ipsa"
+BOLSA_INTERVAL = timedelta(minutes=30)
