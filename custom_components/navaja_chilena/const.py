@@ -119,3 +119,8 @@ CINEMA_NONE = "none"
 CINEMA_NEAREST = "nearest"
 CINEMARK_URL = "https://www.cinemark.cl/cartelera/{slug}"
 CINEMA_INTERVAL = timedelta(hours=3)
+
+# Efemérides chilenas (Wikipedia en español, "Un día como hoy")
+CONF_EPHEMERIDES = "ephemerides"
+EPHEMERIDES_URL = "https://es.wikipedia.org/api/rest_v1/feed/onthisday/all/{month:02d}/{day:02d}"
+EPHEMERIDES_INTERVAL = timedelta(hours=1)  # solo recalcula; la descarga es una vez al día

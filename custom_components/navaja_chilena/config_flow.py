@@ -15,6 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from . import api
 from .api import parse_stop_codes
 from .const import (
+    CONF_EPHEMERIDES,
     CINEMA_NEAREST,
     CINEMA_NONE,
     CINEMARK_THEATERS,
@@ -73,6 +74,9 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
                 CONF_SAINT, default=defaults.get(CONF_SAINT, True)
             ): selector.BooleanSelector(),
             vol.Required(
+                CONF_EPHEMERIDES, default=defaults.get(CONF_EPHEMERIDES, True)
+            ): selector.BooleanSelector(),
+            vol.Required(
                 CONF_CRYPTO, default=defaults.get(CONF_CRYPTO, False)
             ): selector.BooleanSelector(),
             vol.Required(
@@ -108,7 +112,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
     has_any = (
         user_input[CONF_INDICATORS]
         or stops
-        or any(user_input.get(k) for k in (CONF_METRO, CONF_QUAKES, CONF_HOLIDAYS, CONF_AIR, CONF_CRYPTO, CONF_BOLSA, CONF_SAINT))
+        or any(user_input.get(k) for k in (CONF_METRO, CONF_QUAKES, CONF_HOLIDAYS, CONF_AIR, CONF_CRYPTO, CONF_BOLSA, CONF_SAINT, CONF_EPHEMERIDES))
         or user_input.get(CONF_PHARMACY_COMUNA, "").strip()
         or user_input.get(CONF_CINEMA, CINEMA_NONE) != CINEMA_NONE
     )

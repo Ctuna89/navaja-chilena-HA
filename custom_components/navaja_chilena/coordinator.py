@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 from typing import Any, Awaitable, Callable
 
 from homeassistant.core import HomeAssistant
@@ -15,6 +16,7 @@ from .const import (
     CINEMA_INTERVAL,
     BOLSA_INTERVAL,
     CRYPTO_INTERVAL,
+    EPHEMERIDES_INTERVAL,
     CRYPTO_MARKETS,
     DOMAIN,
     INDICATORS_INTERVAL,
@@ -161,3 +163,17 @@ def cinema_coordinator(hass: HomeAssistant, slug: str) -> NavajaCoordinator:
         return await api.fetch_cinemark(session, slug)
 
     return NavajaCoordinator(hass, "cine", CINEMA_INTERVAL, fetch)
+
+
+def ephemerides_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
+    """Descarga una vez al día (es una API pública: se pide con moderación)."""
+    cache: dict[str, Any] = {"day": None, "data": []}
+
+    async def fetch(session: Any) -> dict[str, Any]:
+        today = dt_util.now().astimezone(ZoneInfo(api.METRO_TZ)).date()
+        if cache["day"] != today:
+            cache["data"] = await api.fetch_ephemerides(session, today)
+            cache["day"] = today
+        return {"day": today, "items": cache["data"]}
+
+    return NavajaCoordinator(hass, "efemerides", EPHEMERIDES_INTERVAL, fetch)

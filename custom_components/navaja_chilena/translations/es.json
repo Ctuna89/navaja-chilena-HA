@@ -15,7 +15,8 @@
           "crypto": "Criptomonedas en pesos (Bitcoin y Ethereum, Buda.com)",
           "bolsa": "Bolsa de Santiago: IPSA y su variación diaria",
           "saint": "Santo del día (santoral católico)",
-          "cinema": "Cine Cinemark para ver su cartelera de hoy"
+          "cinema": "Cine Cinemark para ver su cartelera de hoy",
+          "ephemerides": "Efemérides chilenas de hoy (Wikipedia)"
         }
       }
     },
@@ -44,7 +45,8 @@
           "crypto": "Criptomonedas en pesos (Bitcoin y Ethereum, Buda.com)",
           "bolsa": "Bolsa de Santiago: IPSA y su variación diaria",
           "saint": "Santo del día (santoral católico)",
-          "cinema": "Cine Cinemark para ver su cartelera de hoy"
+          "cinema": "Cine Cinemark para ver su cartelera de hoy",
+          "ephemerides": "Efemérides chilenas de hoy (Wikipedia)"
         }
       }
     },

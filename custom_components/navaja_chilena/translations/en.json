@@ -15,7 +15,8 @@
           "crypto": "Cryptocurrencies in CLP (Bitcoin and Ethereum, Buda.com)",
           "bolsa": "Santiago Stock Exchange: IPSA and daily change",
           "saint": "Saint of the day (Catholic calendar)",
-          "cinema": "Cinemark cinema for today's listings"
+          "cinema": "Cinemark cinema for today's listings",
+          "ephemerides": "Chilean 'on this day' events (Wikipedia)"
         }
       }
     },
@@ -44,7 +45,8 @@
           "crypto": "Cryptocurrencies in CLP (Bitcoin and Ethereum, Buda.com)",
           "bolsa": "Santiago Stock Exchange: IPSA and daily change",
           "saint": "Saint of the day (Catholic calendar)",
-          "cinema": "Cinemark cinema for today's listings"
+          "cinema": "Cinemark cinema for today's listings",
+          "ephemerides": "Chilean 'on this day' events (Wikipedia)"
         }
       }
     },
