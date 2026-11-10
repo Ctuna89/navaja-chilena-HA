@@ -708,3 +708,50 @@ async def test_football_options_flow(hass, aioclient_mock, freezer):
                        "football_league": False, "football_national": True})
     assert r["type"] is FlowResultType.CREATE_ENTRY
     assert r["data"]["football_team"] == "2688" and r["data"]["football_national"] is True
+
+
+# ------------------------------------------------------------------ Beneficios
+
+BENEFITS_PAGE = (FIX_DIR / "beneficios_comida_bci.html").read_text()
+
+
+async def _setup_benefits(hass, aioclient_mock, monkeypatch, status=200, **extra):
+    from custom_components.navaja_chilena import api as _api
+    monkeypatch.setattr(_api, "BENEFITS_PAUSE", 0)
+    mock_all(aioclient_mock)
+    one_page = BENEFITS_PAGE.replace("Página 1 de 7", "Página 1 de 1")
+    aioclient_mock.get("https://www.nbeneficios.cl/categorias/ver/comida", text=one_page, status=status)
+    data = {"indicators": ["uf"], "metro": False, "benefit_cards": ["bci"], "benefit_categories": ["comida"], **extra}
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_benefits_today_sensor_and_weekly_cache(hass, aioclient_mock, freezer, monkeypatch):
+    freezer.move_to("2026-11-11 12:00:00-03:00")    # miércoles
+    entry = await _setup_benefits(hass, aioclient_mock, monkeypatch)
+    state = hass.states.get("sensor.descuentos_de_tarjetas_descuentos_de_hoy_comida")
+    assert state is not None and state.state != "unavailable"
+    items = entry.runtime_data.benefits.data
+    expected = sum(1 for b in items if b.applies_on(2, 11) is True)
+    assert int(state.state) == expected
+    assert state.attributes["total_en_categoria"] == len(items)
+    calls = len([c for c in aioclient_mock.mock_calls if "nbeneficios" in str(c[1])])
+    assert calls == 1
+    # Dentro de la semana no vuelve a consultar el sitio.
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    await entry.runtime_data.benefits.async_refresh()
+    assert len([c for c in aioclient_mock.mock_calls if "nbeneficios" in str(c[1])]) == 1
+    # Pasados 7 días sí.
+    freezer.move_to("2026-11-18 12:00:00-03:00")
+    await entry.runtime_data.benefits.async_refresh()
+    assert len([c for c in aioclient_mock.mock_calls if "nbeneficios" in str(c[1])]) == 2
+
+
+async def test_benefits_source_down_is_unavailable_not_empty(hass, aioclient_mock, freezer, monkeypatch):
+    freezer.move_to("2026-11-11 12:00:00-03:00")
+    await _setup_benefits(hass, aioclient_mock, monkeypatch, status=503)
+    state = hass.states.get("sensor.descuentos_de_tarjetas_descuentos_de_hoy_comida")
+    assert state is None or state.state == "unavailable"

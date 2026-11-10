@@ -22,6 +22,8 @@
           "fuel_types": "Combustibles más baratos cerca de tu casa (elige los que usas)",
           "fuel_radius": "Radio de búsqueda de estaciones de servicio",
           "fuel_max_age": "Antigüedad máxima de los precios de combustible",
+          "benefit_cards": "Tus tarjetas de crédito y débito (para ver sus descuentos)",
+          "benefit_categories": "Categorías de descuentos que te interesan (con tus tarjetas)",
           "football_team": "Tu equipo de la Primera División (partidos, resultados y posición)",
           "football_league": "Toda la Primera División (tabla y fechas)",
           "football_national": "La Roja: selección chilena (partidos y resultados)"
@@ -60,6 +62,8 @@
           "fuel_types": "Combustibles más baratos cerca de tu casa (elige los que usas)",
           "fuel_radius": "Radio de búsqueda de estaciones de servicio",
           "fuel_max_age": "Antigüedad máxima de los precios de combustible",
+          "benefit_cards": "Tus tarjetas de crédito y débito (para ver sus descuentos)",
+          "benefit_categories": "Categorías de descuentos que te interesan (con tus tarjetas)",
           "football_team": "Tu equipo de la Primera División (partidos, resultados y posición)",
           "football_league": "Toda la Primera División (tabla y fechas)",
           "football_national": "La Roja: selección chilena (partidos y resultados)"

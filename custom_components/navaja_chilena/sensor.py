@@ -24,7 +24,7 @@ from . import vehicle
 from .vehicle_entity import REASON_TEXT, VehicleMixin
 from .api import FUEL_LABELS
 from .const import FOOTBALL_TEAMS, NATIONAL_TEAM_ID
-from .const import CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
+from .const import BENEFIT_CATEGORIES, BENEFITS_SITE, CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
 
 
 def _device(key: str, name: str) -> DeviceInfo:
@@ -114,6 +114,8 @@ async def async_setup_entry(
             NextMatchSensor(rt.national, entry, NATIONAL_TEAM_ID, "Fútbol: La Roja", "fixtures", "results"),
             LastResultSensor(rt.national, entry, NATIONAL_TEAM_ID, "Fútbol: La Roja", "results"),
         ]
+    if rt.benefits:
+        fixed += [BenefitsSensor(rt.benefits, entry, cat) for cat in rt.benefit_categories]
     if rt.fuel:
         fixed += [FuelSensor(rt.fuel, entry, fuel, rt.fuel_radius, rt.fuel_max_age) for fuel in rt.fuel_types]
     if rt.saint:
@@ -809,6 +811,69 @@ class RevisionMonthSensor(VehicleMixin, SensorEntity):
             "nota": "Mes de preferencia en las plantas, no una fecha límite: tu plazo depende del certificado anterior.",
             "fuente": "ChileAtiende (Subsecretaría de Transportes)",
         }
+
+
+class BenefitsSensor(_Base):
+    """Descuentos de hoy, de tus tarjetas, en una categoría (N Beneficios)."""
+
+    _kind = "descuentos"
+    _attr_icon = "mdi:credit-card-check-outline"
+    _attr_native_unit_of_measurement = "descuentos"
+    MAX_LISTED = 15
+
+    def __init__(self, coordinator, entry, category: str) -> None:
+        super().__init__(coordinator, entry, category)
+        self._category = category
+        self._attr_name = f"Descuentos de hoy: {BENEFIT_CATEGORIES[category]}"
+        self._attr_device_info = _device("descuentos", "Descuentos de tarjetas")
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None
+
+    def _today_date(self):
+        return dt_util.now().astimezone(ZoneInfo(api.METRO_TZ)).date()
+
+    def _split(self) -> tuple[list[api.Benefit], list[api.Benefit], list[api.Benefit]]:
+        mine = [b for b in self.coordinator.data if b.category == self._category]
+        d = self._today_date()
+        today = [b for b in mine if b.applies_on(d.weekday(), d.month, d) is True]
+        unknown = [b for b in mine if b.applies_on(d.weekday(), d.month, d) is None]
+        return mine, today, unknown
+
+    @property
+    def native_value(self) -> int:
+        return len(self._split()[1])
+
+    @staticmethod
+    def _brief(b: api.Benefit) -> dict[str, Any]:
+        return {
+            "comercio": b.merchant,
+            "tarjeta": b.card,
+            "descuento": b.title,
+            "detalle": b.detail,
+            "url": b.url,
+            "imagen": b.image,
+        }
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        mine, today, unknown = self._split()
+        return {
+            "hoy": [self._brief(b) for b in today[: self.MAX_LISTED]],
+            "sin_dia_indicado": [self._brief(b) for b in unknown[: self.MAX_LISTED]],
+            "total_en_categoria": len(mine),
+            "aviso": "Revisa las condiciones de cada beneficio en el sitio del emisor.",
+            "fuente": f"N Beneficios ({BENEFITS_SITE})",
+        }
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+
+        @callback
+        def _refresh(_now: datetime) -> None:
+            self.async_write_ha_state()
+
+        self.async_on_remove(async_track_time_change(self.hass, _refresh, hour=0, minute=0, second=5))
 
 
 class FuelSensor(_Base):

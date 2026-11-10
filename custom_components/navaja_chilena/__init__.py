@@ -16,6 +16,10 @@ from .const import (
     CONF_FOOTBALL_TEAM,
     FOOTBALL_NONE,
     FOOTBALL_TEAMS,
+    BENEFIT_CARDS,
+    BENEFIT_CATEGORIES,
+    CONF_BENEFIT_CARDS,
+    CONF_BENEFIT_CATEGORIES,
     CONF_FUEL_MAX_AGE,
     CONF_FUEL_RADIUS,
     CONF_FUEL_TYPES,
@@ -45,6 +49,7 @@ from .vehicle import VEHICLE_TYPES
 from .coordinator import (
     football_coordinator,
     national_coordinator,
+    benefits_coordinator,
     fuel_coordinator,
     NavajaCoordinator,
     air_coordinator,
@@ -80,6 +85,8 @@ class RuntimeData:
     ephemerides: NavajaCoordinator | None = None
     pharmacy_comuna: str = ""
     fuel: NavajaCoordinator | None = None
+    benefits: NavajaCoordinator | None = None
+    benefit_categories: list[str] = field(default_factory=list)
     football: NavajaCoordinator | None = None
     football_team: str = ""
     football_league: bool = False
@@ -164,6 +171,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         except (TypeError, ValueError):
             data.fuel_max_age = FUEL_DEFAULT_MAX_AGE
         data.fuel = fuel_coordinator(hass)
+    benefit_cards = [c for c in (opts.get(CONF_BENEFIT_CARDS) or []) if c in BENEFIT_CARDS]
+    benefit_cats = [c for c in (opts.get(CONF_BENEFIT_CATEGORIES) or []) if c in BENEFIT_CATEGORIES]
+    if benefit_cards and benefit_cats:
+        data.benefit_categories = benefit_cats
+        data.benefits = benefits_coordinator(hass, benefit_cards, benefit_cats)
     # Los festivos también los necesitan el horario del Metro y la restricción vehicular.
     if data.holidays_visible or opts.get(CONF_METRO) or data.vehicle_digit is not None:
         data.holidays = holidays_coordinator(hass)
@@ -190,7 +202,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     coordinators = [
         c
         for c in (data.indicators, data.metro, data.stops, data.quakes,
-                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.football, data.national)
+                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.benefits, data.football, data.national)
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]

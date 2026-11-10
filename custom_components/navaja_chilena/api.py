@@ -8,12 +8,16 @@ import math
 import re
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import aiohttp
 
 from .const import (
+    BENEFITS_MAX_PAGES,
+    BENEFITS_PAUSE,
+    BENEFITS_SITE,
+    BENEFITS_URL,
     CINEMARK_THEATERS,
     CINEMARK_URL,
     CRYPTO_URL,
@@ -1445,3 +1449,214 @@ def all_matches(data: Any) -> list[Match]:
             if isinstance(value, list):
                 found += [m for m in value if isinstance(m, Match)]
     return found
+
+
+# ------------------------------------------------- Beneficios de tarjetas
+
+DAY_NAMES = ("lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo")
+_ALL_DAYS = frozenset(range(7))
+_DAY_RE = r"(lunes|martes|miercoles|jueves|viernes|sabados?|domingos?)"
+
+
+@dataclass(frozen=True)
+class Benefit:
+    id: str
+    card: str
+    category: str
+    merchant: str
+    title: str
+    detail: str
+    url: str
+    image: str | None
+    days: frozenset[int] | None   # None: el texto no indica días
+    months: frozenset[int] | None = None   # None: el texto no limita a meses
+    until: date | None = None              # fin de vigencia, si el texto lo indica
+
+    def applies_on(self, weekday: int, month: int | None = None, today: date | None = None) -> bool | None:
+        """True/False si el texto indica los días; None si no los indica."""
+        if today is not None and self.until is not None and today > self.until:
+            return False
+        if month is not None and self.months is not None and month not in self.months:
+            return False
+        return None if self.days is None else weekday in self.days
+
+
+def _fold(text: str) -> str:
+    text = unicodedata.normalize("NFD", text.lower())
+    return "".join(c for c in text if not unicodedata.combining(c))
+
+
+def _day_index(name: str) -> int:
+    if name not in DAY_NAMES:
+        name = name[:-1]   # sábados, domingos
+    return DAY_NAMES.index(name)
+
+
+def _days_in(text: str) -> set[int]:
+    days: set[int] = set()
+    for m in re.finditer(rf"{_DAY_RE}\s*(?:a|al|hasta(?: el)?)\s*{_DAY_RE}", text):
+        a, b = _day_index(m.group(1)), _day_index(m.group(2))
+        days.update(range(a, b + 1) if a <= b else [*range(a, 7), *range(0, b + 1)])
+    for m in re.finditer(_DAY_RE, text):
+        days.add(_day_index(m.group(1)))
+    if re.search(r"fin(?:es)? de semana", text):
+        days.update({5, 6})
+    return days
+
+
+def parse_days(text: str) -> frozenset[int] | None:
+    """Días de la semana en que aplica un beneficio, según su texto (lunes=0).
+
+    Devuelve None cuando el texto no menciona días (no se asume nada).
+    """
+    t = _fold(text)
+    exclusion = re.search(r"\b(?:excepto|salvo|menos|exceptuando)\b(.*)", t)
+    base, excluded = (t[: exclusion.start()], _days_in(exclusion.group(1))) if exclusion else (t, set())
+    days = _days_in(base)
+    if not days and re.search(r"todos? los dias|toda la semana|cualquier dia|diari[oa]", base):
+        days = set(_ALL_DAYS)
+    if not days and excluded:
+        days = set(_ALL_DAYS)
+    days -= excluded
+    return frozenset(days) if days else None
+
+
+MONTH_NAMES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+               "agosto", "septiembre", "octubre", "noviembre", "diciembre")
+
+
+def parse_months(text: str) -> frozenset[int] | None:
+    """Meses que limitan el beneficio ("los sábados de enero"); None si no los hay."""
+    t = _fold(text)
+    found = {
+        MONTH_NAMES.index(m.group(1)) + 1
+        for m in re.finditer(rf"\b(?:de|en|del)\s+({'|'.join(MONTH_NAMES)})\b", t)
+    }
+    return frozenset(found) if found else None
+
+
+def parse_until(text: str) -> date | None:
+    """Fin de vigencia: «válida hasta el 31 de diciembre de 2026» o «del 01 al 30 de noviembre de 2026»."""
+    t = _fold(text)
+    months = "|".join(MONTH_NAMES)
+    m = re.search(rf"(?:hasta(?: el)?|al)\s+(\d{{1,2}})\s+de\s+({months})\s+de\s+(\d{{4}})", t)
+    if not m:
+        return None
+    try:
+        return date(int(m.group(3)), MONTH_NAMES.index(m.group(2)) + 1, int(m.group(1)))
+    except ValueError:
+        return None
+
+
+_CARD_SPLIT = re.compile(r'<div class="img-card-corner">')
+
+
+def _clean(raw: str) -> str:
+    return re.sub(r"\s+", " ", html_lib.unescape(re.sub(r"<[^>]+>", " ", raw))).strip()
+
+
+def parse_benefits(page: str) -> list[Benefit]:
+    """Lee los beneficios de una página de listado de N Beneficios."""
+    found: list[Benefit] = []
+    for block in _CARD_SPLIT.split(page)[1:]:
+        link = re.search(r'href="(/beneficios/ver/(\d+)/[^"]*)"', block)
+        title = re.search(r'<h6 class="black black-title">(.*?)</h6>', block, re.S)
+        if not link or not title:
+            continue
+        card_name = _clean(block.split("</div>", 1)[0])
+        category = re.search(r'btn btn-primary[^"]*">(.*?)</div>', block, re.S)
+        merchant = re.search(r'<h6 class="primary-color[^"]*">(.*?)</h6>', block, re.S)
+        detail = re.search(r'card-subtitle">(.*?)</p>', block, re.S)
+        image = re.search(r'data-original="([^"]+)"', block)
+        title_t = _clean(title.group(1))
+        detail_t = _clean(detail.group(1)) if detail else ""
+        found.append(
+            Benefit(
+                id=link.group(2),
+                card=card_name,
+                category=_clean(category.group(1)) if category else "",
+                merchant=_clean(merchant.group(1)) if merchant else "",
+                title=title_t,
+                detail=detail_t,
+                url=BENEFITS_SITE.rstrip("/") + link.group(1),
+                image=image.group(1) if image else None,
+                days=parse_days(f"{detail_t} {title_t}"),
+                months=parse_months(f"{detail_t} {title_t}"),
+                until=parse_until(detail_t),
+            )
+        )
+    return found
+
+
+def benefits_page_count(page: str) -> int:
+    m = re.search(r"P[aá]gina\s+\d+\s+de\s+(\d+)", page)
+    return max(1, int(m.group(1))) if m else 1
+
+
+async def fetch_benefits(
+    session: aiohttp.ClientSession, cards: list[str], categories: list[str], pause: float | None = None
+) -> tuple[list[Benefit], bool]:
+    """Beneficios de las categorías y tarjetas elegidas (una consulta por combinación y página).
+
+    Devuelve (beneficios, completo): completo es False si alguna consulta falló."""
+    import asyncio
+
+    pause = BENEFITS_PAUSE if pause is None else pause
+    by_id: dict[str, Benefit] = {}
+    errors: list[str] = []
+    answered = 0
+    first = True
+    for category in categories:
+        for card in cards:
+            page_no, pages = 1, 1
+            while page_no <= min(pages, BENEFITS_MAX_PAGES):
+                if not first:
+                    await asyncio.sleep(pause)
+                first = False
+                url = f"{BENEFITS_URL.format(category=category)}?tarjeta={card}&page={page_no}"
+                try:
+                    page = await _get_text(session, url)
+                except NavajaApiError as err:
+                    errors.append(str(err))
+                    break
+                answered += 1
+                if page_no == 1:
+                    pages = benefits_page_count(page)
+                for b in parse_benefits(page):
+                    # La categoría queda con el identificador pedido (no el rótulo del sitio).
+                    by_id.setdefault(f"{category}:{b.id}", replace(b, category=category))
+                page_no += 1
+    if not answered:
+        raise NavajaApiError("; ".join(errors[:1]) or "N Beneficios no respondió")
+    return list(by_id.values()), not errors
+
+
+def benefits_due(fetched: datetime | None, today: date, refresh_days: int = 7) -> bool:
+    """Toca descargar: pasaron `refresh_days` desde la última vez, o hoy es día 1 y aún no se hizo hoy."""
+    if fetched is None:
+        return True
+    last = fetched.date()
+    if (today - last).days >= refresh_days:
+        return True
+    return today.day == 1 and last < today
+
+
+def benefit_to_dict(b: Benefit) -> dict[str, Any]:
+    return {
+        "id": b.id, "card": b.card, "category": b.category, "merchant": b.merchant, "title": b.title,
+        "detail": b.detail, "url": b.url, "image": b.image,
+        "days": None if b.days is None else sorted(b.days),
+        "months": None if b.months is None else sorted(b.months),
+        "until": b.until.isoformat() if b.until else None,
+    }
+
+
+def benefit_from_dict(d: dict[str, Any]) -> Benefit:
+    days, months = d.get("days"), d.get("months")
+    return Benefit(
+        id=str(d["id"]), card=d.get("card", ""), category=d.get("category", ""), merchant=d.get("merchant", ""),
+        title=d.get("title", ""), detail=d.get("detail", ""), url=d.get("url", ""), image=d.get("image"),
+        days=None if days is None else frozenset(int(x) for x in days),
+        months=None if months is None else frozenset(int(x) for x in months),
+        until=date.fromisoformat(d["until"]) if d.get("until") else None,
+    )

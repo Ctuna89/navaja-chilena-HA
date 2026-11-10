@@ -181,3 +181,53 @@ FOOTBALL_TEAMS: dict[str, str] = {
     "10144": "Unión La Calera",
     "7427": "Ñublense",
 }
+
+# Beneficios de tarjetas (N Beneficios, un servicio de Infoacción)
+CONF_BENEFIT_CARDS = "benefit_cards"
+CONF_BENEFIT_CATEGORIES = "benefit_categories"
+BENEFITS_URL = "https://www.nbeneficios.cl/categorias/ver/{category}"
+BENEFITS_SITE = "https://www.nbeneficios.cl/"
+BENEFITS_INTERVAL = timedelta(hours=6)      # revisa si toca actualizar; la descarga es semanal y el día 1
+BENEFITS_REFRESH_DAYS = 7
+BENEFITS_MAX_PAGES = 10                     # por tarjeta y categoría
+BENEFITS_PAUSE = 1.0                        # segundos entre consultas al sitio
+BENEFITS_STORE_VERSION = 1
+BENEFIT_CARDS: dict[str, str] = {
+    "bancochile": "Banco de Chile",
+    "bancoestado": "BancoEstado",
+    "bci": "BCI",
+    "bice": "BICE",
+    "cencosud": "Cencosud",
+    "cmr": "CMR Falabella",
+    "copec": "Copec",
+    "itau": "Itaú",
+    "lider": "Lider",
+    "mach": "MACH",
+    "mercadopago": "Mercado Pago",
+    "ripley": "Ripley",
+    "santander": "Santander",
+    "scotiabank": "Scotiabank",
+    "security": "Security",
+    "tenpo": "Tenpo",
+}
+BENEFIT_CATEGORIES: dict[str, str] = {
+    "combustibles": "Combustibles",
+    "comida": "Comida",
+    "tiendas": "Tiendas y supermercados",
+    "salud-belleza": "Salud y belleza",
+    "entretencion": "Entretención",
+    "viajes": "Viajes",
+    "transporte": "Transporte",
+    "vestuario-calzado": "Vestuario y calzado",
+    "hogar": "Hogar",
+    "tecnologia": "Tecnología",
+    "educacion": "Educación",
+    "fitness": "Fitness",
+    "librerias": "Librerías",
+    "mascotas": "Mascotas",
+    "ninos": "Niños",
+    "servicios": "Servicios",
+    "tiempo-libre": "Tiempo libre",
+    "apps": "Apps",
+    "otros": "Otros",
+}
