@@ -14,7 +14,8 @@
           "pharmacy_comuna": "Comuna para farmacias de turno (opcional, ej. Providencia)",
           "crypto": "Criptomonedas en pesos (Bitcoin y Ethereum, Buda.com)",
           "bolsa": "Bolsa de Santiago: IPSA y su variación diaria",
-          "saint": "Santo del día (santoral católico)"
+          "saint": "Santo del día (santoral católico)",
+          "cinema": "Cine Cinemark para ver su cartelera de hoy"
         }
       }
     },
@@ -42,7 +43,8 @@
           "pharmacy_comuna": "Comuna para farmacias de turno (opcional, ej. Providencia)",
           "crypto": "Criptomonedas en pesos (Bitcoin y Ethereum, Buda.com)",
           "bolsa": "Bolsa de Santiago: IPSA y su variación diaria",
-          "saint": "Santo del día (santoral católico)"
+          "saint": "Santo del día (santoral católico)",
+          "cinema": "Cine Cinemark para ver su cartelera de hoy"
         }
       }
     },

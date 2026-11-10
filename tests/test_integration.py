@@ -1,5 +1,7 @@
 """Pruebas dentro de Home Assistant (requieren pytest-homeassistant-custom-component)."""
 
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("pytest_homeassistant_custom_component")
@@ -10,7 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa
 
 from custom_components.navaja_chilena import api  # noqa: E402
 from custom_components.navaja_chilena.const import (  # noqa: E402
-    AIR_URL, CRYPTO_URL, IPSA_URL, DOMAIN, INDICATORS_URL, METRO_URL, PHARMACY_URL, QUAKES_CSN_URL,
+    AIR_URL, CINEMARK_URL, CRYPTO_URL, IPSA_URL, DOMAIN, INDICATORS_URL, METRO_URL, PHARMACY_URL, QUAKES_CSN_URL,
     QUAKES_URL, STOP_URL,
 )
 
@@ -168,3 +170,46 @@ async def test_legacy_entry_does_not_crash(hass, aioclient_mock, monkeypatch):
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.state is config_entries.ConfigEntryState.LOADED
+
+
+CINEMA_HTML = (Path(__file__).parent / "fixtures" / "cinemark_alto_las_condes.html").read_text(encoding="utf-8")
+
+
+async def test_cinema_sensor_shows_today(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 15:00:00-03:00")
+    mock_all(aioclient_mock)
+    aioclient_mock.get(CINEMARK_URL.format(slug="cinemark-alto-las-condes"), text=CINEMA_HTML)
+    entry = MockConfigEntry(domain=DOMAIN, data={**DATA, "cinema": "cinemark-alto-las-condes"})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    s = next(x for x in hass.states.async_all("sensor") if x.name.endswith("Cartelera de hoy"))
+    movies = s.attributes["peliculas"]
+    assert int(s.state) == len(movies) and len(movies) > 5
+    assert s.attributes["cine"] == "Cinemark Alto Las Condes" and s.attributes["fecha"] == "2026-11-10"
+    assert all(m["funciones"] for m in movies) and s.attributes["resumen"].count("\n") == len(movies) - 1
+    nxt = s.attributes["proxima_funcion"]
+    assert nxt and nxt["hora"] >= "15:00"                 # ya pasó la función de las 12:00
+
+
+async def test_cinema_nearest_uses_home_location(hass, aioclient_mock):
+    hass.config.latitude, hass.config.longitude = -33.4489, -70.6693   # Santiago centro
+    mock_all(aioclient_mock)
+    aioclient_mock.get(CINEMARK_URL.format(slug="cinemark-portal-nunoa"), text=CINEMA_HTML)
+    entry = MockConfigEntry(domain=DOMAIN, data={**DATA, "cinema": "nearest"})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.runtime_data.cinema_slug == "cinemark-portal-nunoa"
+
+
+async def test_cinema_down_does_not_break_the_rest(hass, aioclient_mock, monkeypatch):
+    monkeypatch.setattr(api, "metro_is_open", lambda *a, **k: True)
+    mock_all(aioclient_mock)
+    aioclient_mock.get(CINEMARK_URL.format(slug="cinemark-alto-las-condes"), status=503)
+    entry = MockConfigEntry(domain=DOMAIN, data={**DATA, "cinema": "cinemark-alto-las-condes"})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is config_entries.ConfigEntryState.LOADED
+    assert states(hass)["UF"] == "39000.5"

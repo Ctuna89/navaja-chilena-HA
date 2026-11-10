@@ -14,7 +14,8 @@
           "pharmacy_comuna": "Commune for pharmacies on duty (optional, e.g. Providencia)",
           "crypto": "Cryptocurrencies in CLP (Bitcoin and Ethereum, Buda.com)",
           "bolsa": "Santiago Stock Exchange: IPSA and daily change",
-          "saint": "Saint of the day (Catholic calendar)"
+          "saint": "Saint of the day (Catholic calendar)",
+          "cinema": "Cinemark cinema for today's listings"
         }
       }
     },
@@ -42,7 +43,8 @@
           "pharmacy_comuna": "Commune for pharmacies on duty (optional, e.g. Providencia)",
           "crypto": "Cryptocurrencies in CLP (Bitcoin and Ethereum, Buda.com)",
           "bolsa": "Santiago Stock Exchange: IPSA and daily change",
-          "saint": "Saint of the day (Catholic calendar)"
+          "saint": "Saint of the day (Catholic calendar)",
+          "cinema": "Cinemark cinema for today's listings"
         }
       }
     },

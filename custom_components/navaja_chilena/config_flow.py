@@ -15,6 +15,10 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from . import api
 from .api import parse_stop_codes
 from .const import (
+    CINEMA_NEAREST,
+    CINEMA_NONE,
+    CINEMARK_THEATERS,
+    CONF_CINEMA,
     CONF_AIR,
     CONF_BOLSA,
     CONF_CRYPTO,
@@ -71,6 +75,23 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.Required(
                 CONF_CRYPTO, default=defaults.get(CONF_CRYPTO, False)
             ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_CINEMA, default=defaults.get(CONF_CINEMA, CINEMA_NONE)
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=CINEMA_NONE, label="No usar / None"),
+                        selector.SelectOptionDict(
+                            value=CINEMA_NEAREST, label="El más cercano a mi casa / Nearest to home"
+                        ),
+                        *[
+                            selector.SelectOptionDict(value=slug, label=name)
+                            for slug, (name, *_rest) in CINEMARK_THEATERS.items()
+                        ],
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             vol.Optional(
                 CONF_PHARMACY_COMUNA, default=defaults.get(CONF_PHARMACY_COMUNA, "")
             ): selector.TextSelector(),
@@ -89,6 +110,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or stops
         or any(user_input.get(k) for k in (CONF_METRO, CONF_QUAKES, CONF_HOLIDAYS, CONF_AIR, CONF_CRYPTO, CONF_BOLSA, CONF_SAINT))
         or user_input.get(CONF_PHARMACY_COMUNA, "").strip()
+        or user_input.get(CONF_CINEMA, CINEMA_NONE) != CINEMA_NONE
     )
     if not has_any:
         errors["base"] = "nothing_selected"

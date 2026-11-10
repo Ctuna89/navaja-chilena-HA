@@ -15,6 +15,7 @@ Integración para Home Assistant (instalable vía HACS) con datos útiles de Chi
 | Farmacias de turno | Cantidad y detalle de farmacias de turno en tu comuna | MINSAL (Farmanet) | 6 h |
 | Bolsa de Santiago | Último cierre del IPSA, variación en puntos y en %, y cierre anterior | [findic.cl](https://findic.cl) | 30 min |
 | Santoral | Santo del día (y el de mañana), sin internet | incluido en la integración | a medianoche |
+| Cine | Cartelera de hoy de tu cine Cinemark favorito o **el más cercano a tu casa**: películas, horarios, formato, sala y duración | cinemark.cl (lectura de su página) | 3 h |
 | Criptomonedas | Bitcoin y Ethereum en pesos, con variación 24 h y 7 d | [Buda.com](https://www.buda.com) | 5 min |
 
 No requiere claves de API.
@@ -45,6 +46,7 @@ Los ids llevan el nombre del dispositivo como prefijo (por ejemplo `sensor.indic
 - **Sismos**: `sensor.sismos_chile_ultimo_sismo_csn` (magnitud, `referencia`, `profundidad_km`, `fecha` tal como la publica el CSN; sin coordenadas) y `sensor.sismos_chile_ultimo_sismo_con_coordenadas_usgs` (además `latitude`/`longitude`, para la tarjeta de mapa).
 - **IPSA**: `sensor.bolsa_de_santiago_ipsa`: último cierre en puntos; atributos `variacion_puntos`, `variacion_pct`, `fecha_cierre`, `cierre_anterior`, `fecha_cierre_anterior`. Es un dato de cierre diario (la bolsa no opera fines de semana ni feriados).
 - **Santoral**: `sensor.santoral_santo_del_dia`; atributos `fecha` y `mañana`. Usa el santoral católico tradicional (archivo `santoral.py`); otros calendarios pueden asignar un santo distinto a algunos días y se puede editar.
+- **Cine**: `sensor.<nombre del cine>_cartelera_de_hoy`: cantidad de películas hoy; atributos `peliculas` (título, duración, género, póster y `funciones` con hora, formato y sala), `resumen` (texto listo para una tarjeta Markdown), `proxima_funcion` y `fecha`. Las funciones de trasnoche (antes de las 05:00) cuentan para el día anterior.
 - **Criptomonedas**: `sensor.criptomonedas_buda_bitcoin` y `..._ethereum`: precio en CLP; atributos `variacion_24h_pct`, `variacion_7d_pct`, `volumen_24h`.
 - **Feriados**: `sensor.feriados_chile_proximo_feriado` (fecha) y `sensor.feriados_chile_dias_para_el_proximo_feriado`.
 - **Aire y UV**: `sensor.calidad_del_aire_y_uv_pm2_5`, `..._pm10`, `..._indice_de_calidad_del_aire_us_aqi`, `..._indice_uv`.
@@ -58,6 +60,16 @@ espera creciente (hasta 30 min), con un único aviso en el registro.
 La versión anterior usaba otros nombres de entidad y otra configuración. Tras actualizar en HACS (*⋮ → Volver a descargar*)
 y reiniciar, lo más limpio es **eliminar la integración en Dispositivos y servicios y volver a añadirla**.
 Las tarjetas que usaban `sensor.navaja_*` o `sensor.metro_l1` deberán apuntar a los ids nuevos.
+
+### Ejemplo: cartelera en una tarjeta
+
+```yaml
+type: markdown
+title: Cartelera de hoy
+content: "{{ state_attr('sensor.cinemark_alto_las_condes_cartelera_de_hoy', 'resumen') }}"
+```
+
+> Ajusta el id al de tu cine (lo ves en *Dispositivos y servicios*).
 
 ### Ejemplo: último sismo en un mapa
 
@@ -87,6 +99,8 @@ Probadas contra los servicios reales el 2026-11-08 (el código de la integració
 | SINCA (calidad del aire oficial) | ⚠️ 403 desde datacenter; Open-Meteo cubre PM2.5/PM10 |
 | apis.digital.gob.cl (feriados), feriados-cl.netlify.app, api-sismologia-chile.herokuapp.com, api.gael.cl | ❌ caídas o inexistentes (no se usan) |
 | api.cne.cl (combustibles) | ❌ exige cuenta |
+| cinemark.cl | ✅ 22 cines (sin API oficial: se lee el bloque estructurado de cada página; puede cambiar sin aviso) |
+| Cineplanet, Cine Hoyts/Cinépolis | ❌ no incluidos: Cineplanet solo carga con JavaScript y exige un token; Hoyts/Cinépolis están detrás de Cloudflare |
 
 Las respuestas reales están guardadas en `tests/fixtures` y las pruebas las usan. Son servicios comunitarios o sin contrato de estabilidad: su formato puede cambiar.
 
