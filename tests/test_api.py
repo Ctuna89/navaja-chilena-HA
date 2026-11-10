@@ -587,3 +587,53 @@ def test_bencina_validator_rejects_implausible_data():
     bad["descuentos"][1]["dias"] = [8]
     assert len(v.validar(bad)) >= 4
     assert v.validar({"vigencia": "2026-11", "actualizado": "2026-11-01", "descuentos": []})
+
+
+# ------------------------------------------------------------ Red Regional
+
+def _regional_now():
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(1794340000, tz=timezone.utc)
+
+
+def test_regional_codes():
+    assert api.parse_regional_codes("p60094, 1253;merval-01  1253") == ["P60094", "1253", "MERVAL-01"]
+    assert api.parse_regional_codes("") == []
+    with pytest.raises(ValueError):
+        api.parse_regional_codes("ab cd/ef")
+
+
+def test_regional_stop_arrivals_sorted_and_past_dropped():
+    raw = json.loads((Path(__file__).parent / "fixtures/regional_parada_53.json").read_text())
+    stop = api.parse_regional_stop(raw, "53", "Parada de prueba", _regional_now())
+    assert stop.name == "Parada de prueba" and stop.arrivals
+    etas = [a.eta for a in stop.arrivals]
+    assert etas == sorted(etas)
+    assert all(e >= _regional_now().replace(second=0) - __import__("datetime").timedelta(minutes=2) for e in etas)
+    assert {a.direction for a in stop.arrivals} <= {"ida", "regreso"}
+    # con la hora muy adelantada, todo "ya pasó"
+    from datetime import timedelta
+    assert api.parse_regional_stop(raw, "53", "x", _regional_now() + timedelta(days=1)).arrivals == ()
+
+
+def test_regional_alerts_are_plain_text():
+    raw = json.loads((Path(__file__).parent / "fixtures/regional_parada_P60094_alertas.json").read_text())
+    stop = api.parse_regional_stop(raw, "P60094", "x", _regional_now())
+    assert stop.alerts and all("<" not in a and "Alerta GPS" in a for a in stop.alerts)
+
+
+def test_regional_bad_response_is_an_error():
+    with pytest.raises(api.NavajaApiError):
+        api.parse_regional_stop({"foo": 1}, "1", "x", _regional_now())
+
+
+def test_regional_stop_names_from_gtfs():
+    import io, zipfile
+    csv_text = (Path(__file__).parent / "fixtures/regional_stop.csv").read_text()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("stop.csv", csv_text)
+    names = api.parse_regional_stop_names(buf.getvalue())
+    assert names["75"] == "1 Norte esq. 1 Oriente" and len(names) >= 10
+    with pytest.raises(api.NavajaApiError):
+        api.parse_regional_stop_names(b"no es un zip")

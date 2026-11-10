@@ -9,6 +9,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
+from . import api
 from .api import FUEL_LABELS, nearest_theater, parse_stop_codes
 from .const import (
     CONF_FOOTBALL_LEAGUE,
@@ -19,6 +20,10 @@ from .const import (
     BENEFIT_CARDS,
     BENEFIT_CATEGORIES,
     CONF_BENEFIT_CARDS,
+    CONF_REGIONAL_STOPS,
+    CONF_REGIONAL_ZONE,
+    REGIONAL_NONE,
+    REGIONAL_ZONES,
     CONF_BENEFIT_CATEGORIES,
     CONF_FUEL_MAX_AGE,
     CONF_FUEL_RADIUS,
@@ -50,6 +55,7 @@ from .coordinator import (
     football_coordinator,
     national_coordinator,
     benefits_coordinator,
+    regional_coordinator,
     fuel_discounts_coordinator,
     fuel_coordinator,
     NavajaCoordinator,
@@ -88,6 +94,8 @@ class RuntimeData:
     fuel: NavajaCoordinator | None = None
     benefits: NavajaCoordinator | None = None
     fuel_discounts: NavajaCoordinator | None = None
+    regional: NavajaCoordinator | None = None
+    regional_zone: str = ""
     benefit_cards: list[str] = field(default_factory=list)
     benefit_categories: list[str] = field(default_factory=list)
     football: NavajaCoordinator | None = None
@@ -174,6 +182,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         except (TypeError, ValueError):
             data.fuel_max_age = FUEL_DEFAULT_MAX_AGE
         data.fuel = fuel_coordinator(hass)
+    zone = str(opts.get(CONF_REGIONAL_ZONE, REGIONAL_NONE))
+    try:
+        regional_codes = api.parse_regional_codes(str(opts.get(CONF_REGIONAL_STOPS) or ""))
+    except ValueError:
+        regional_codes = []
+    if zone in REGIONAL_ZONES and regional_codes:
+        data.regional_zone = zone
+        data.regional = regional_coordinator(hass, zone, regional_codes)
     benefit_cards = [c for c in (opts.get(CONF_BENEFIT_CARDS) or []) if c in BENEFIT_CARDS]
     benefit_cats = [c for c in (opts.get(CONF_BENEFIT_CATEGORIES) or []) if c in BENEFIT_CATEGORIES]
     if benefit_cards:
@@ -208,7 +224,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     coordinators = [
         c
         for c in (data.indicators, data.metro, data.stops, data.quakes,
-                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.benefits, data.fuel_discounts, data.football, data.national)
+                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.benefits, data.fuel_discounts, data.regional, data.football, data.national)
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]

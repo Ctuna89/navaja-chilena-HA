@@ -1,0 +1,15 @@
+mode;stop_id;name;stop_lat;stop_lon;routes;resource_id;stop_code;stop_url;wheelchair_boarding;location_type;parent_station
+3;75;1 Norte esq. 1 Oriente;-38.76602418353711;-72.75280107203675;1B|2B|2C|55|5A;0;75;;;;
+3;1253;1 Norte esq. 3 Oriente;-38.7235171206206;-72.56267287996006;9C|9D;0;1253;;;;
+3;1255;1 Norte esq. 3 Oriente;-38.7234989970656;-72.56255987243232;9C|9D;0;1255;;;;
+3;89;1 Norte esq. 5 Oriente - Norte;-38.76498202141582;-72.74824450455337;1B|1C|2B|2C|55|5A|5C|5D;0;89;;;;
+3;53;1 Norte esq. 6 Poniente - Norte;-38.76680589931708;-72.75899558450287;1B|2B|2C|55|5A|5B;0;53;;;;
+3;1274;1 Norte esq. Braulio Sandoval - Poniente;-38.719715006275656;-72.56420021917097;2B|2C|4A|9C|9D;0;1274;;;;
+3;1273;1 Norte esq. Ecuador;-38.720306476507645;-72.56388144071423;2C|4A|9C|9D;0;1273;;;;
+3;1259;1 Norte esq. Ziem;-38.72257657878728;-72.56311466985846;2C|4A|9C|9D;0;1259;;;;
+3;1258;1 Norte esq. Ziem - Poniente;-38.7226200151672;-72.56321894576928;2B|2C|4A|9C|9D;0;1258;;;;
+3;61;1 Norte - Norte esq. 2 Poniente;-38.76670810300338;-72.75621945067246;1B|2B|2C|55|5A|5B;0;61;;;;
+3;83;1 Oriente esq. Los Lingues - Oriente;-38.7618603326256;-72.75367125801986;2B|2C|5B|5C;0;83;;;;
+3;82;1 Oriente esq. Los Lingues - Poniente;-38.76171807459184;-72.7537895850325;1C|2B|2C|5B|5C;0;82;;;;
+3;81;1 Oriente esq. Los Maquis;-38.76238348742109;-72.75377344454047;1C|2B|2C|5B|5C;0;81;;;;
+-1;88;1 Orinete esq. 5 Oriente;-38.76507544642377;-72.74824119708964;;0;88;;;;

@@ -16,6 +16,8 @@ from homeassistant.helpers.storage import Store
 from . import api
 from .const import (
     BENEFITS_INTERVAL,
+    REGIONAL_INTERVAL,
+    REGIONAL_NAMES_REFETCH,
     FUEL_DISCOUNTS_INTERVAL,
     BENEFITS_REFRESH_DAYS,
     BENEFITS_STORE_VERSION,
@@ -308,3 +310,34 @@ def fuel_discounts_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
         return await api.fetch_fuel_discounts(session)
 
     return NavajaCoordinator(hass, "descuentos_bencina", FUEL_DISCOUNTS_INTERVAL, fetch)
+
+
+def regional_coordinator(hass: HomeAssistant, zone: str, codes: list[str]) -> NavajaCoordinator:
+    """Paraderos de la Red Regional: llegadas en vivo y alertas. Cada paradero falla por separado."""
+    import uuid
+
+    phone_id = str(uuid.uuid4())   # identificador anónimo que el servicio exige; se genera por instalación
+    names: dict[str, str] = {}
+    state: dict[str, Any] = {"names_at": None}
+
+    async def fetch(session: Any) -> dict[str, api.RegionalStop]:
+        now = dt_util.utcnow()
+        stale = state["names_at"] is None or now - state["names_at"] > REGIONAL_NAMES_REFETCH
+        if stale:
+            try:
+                names.update(await api.fetch_regional_stop_names(session, zone))
+                state["names_at"] = now
+            except api.NavajaApiError as err:   # el nombre es opcional: se usa el código
+                _LOGGER.debug("Red Regional: sin nombres de paraderos (%s)", err)
+        result: dict[str, api.RegionalStop] = {}
+        errors: list[str] = []
+        for code in codes:
+            try:
+                result[code] = await api.fetch_regional_stop(session, zone, code, names.get(code, code), phone_id, now)
+            except api.NavajaApiError as err:
+                errors.append(f"{code}: {err}")
+        if not result:
+            raise api.NavajaApiError("; ".join(errors) or "sin datos")
+        return result
+
+    return NavajaCoordinator(hass, "red_regional", REGIONAL_INTERVAL, fetch)

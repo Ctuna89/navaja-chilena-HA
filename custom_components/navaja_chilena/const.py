@@ -235,3 +235,38 @@ BENEFIT_CATEGORIES: dict[str, str] = {
 # Calendario mensual de descuentos en bencina (archivo del repositorio, renovado cada mes)
 FUEL_DISCOUNTS_URL = "https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/data/bencina.json"
 FUEL_DISCOUNTS_INTERVAL = timedelta(hours=6)
+
+# Red Regional (paraderos de ciudades fuera de Santiago; servicio no oficial de TransApp/DTPR)
+CONF_REGIONAL_ZONE = "regional_zone"
+CONF_REGIONAL_STOPS = "regional_stops"
+REGIONAL_NONE = "none"
+REGIONAL_URL = "https://phone.dtpr.transapp.cl/v7/phone"
+REGIONAL_HEADERS = {"Os-type": "Android", "App-Version": "2.5.1", "Accept": "application/json"}
+REGIONAL_INTERVAL = timedelta(minutes=1)
+REGIONAL_NAMES_REFETCH = timedelta(days=7)
+# Ciudades (clave -> (identificador del servicio, nombre)). Se actualiza si el servicio agrega o cambia ciudades.
+REGIONAL_ZONES: dict[str, tuple[str, str]] = {
+    "arica": ("23d78cd5-58c2-4606-904a-9d9bee4d9025", "Arica"),
+    "iquique": ("b10b7a98-0a6e-427b-b380-a1984e809466", "Iquique"),
+    "tocopilla-cl": ("95d5c8c0-0cb3-489f-b731-80116890df36", "Tocopilla"),
+    "calama-cl": ("58afbdfd-9686-4733-b6f5-104b8917e3e4", "Calama"),
+    "antofagasta": ("f2851f3c-246a-472a-96ab-f557503d15ba", "Antofagasta"),
+    "copiapo": ("cc2cad83-5786-4525-b9e4-4d0d12a23de0", "Copiapó"),
+    "serena": ("1d97f294-5fbc-4ed3-af32-4417214a6d60", "Coquimbo - La Serena"),
+    "ovalle": ("69817f54-ca05-4e26-97cd-018afeb66f6e", "Ovalle"),
+    "valparaiso-cl": ("e944e47c-a4f6-4be2-a8b4-3ed1968062cb", "Gran Valparaíso"),
+    "rm-sur": ("1951b2f1-4a61-4cf3-81a1-94c4ecbfc5b8", "Región Metropolitana"),
+    "rancagua": ("8a359f14-f61b-4c5f-b4b4-6917cfd08ff6", "Rancagua - Machalí"),
+    "talca": ("50cde66c-2b67-4702-afa8-1f190249d9b8", "Talca"),
+    "chillan": ("92288036-1ec2-48fc-8b2e-018fc04933b8", "Chillán"),
+    "concepcion": ("f083f24e-7fee-4fdc-9520-dbbdae877f07", "Gran Concepción"),
+    "villarrica": ("afe43285-f320-4657-9883-a41bf6ca224a", "Villarrica"),
+    "temuco": ("c28e2682-b083-41ba-8827-5caac8b86181", "Temuco"),
+    "valdivia-cl": ("fe2620a2-5301-40dd-b3a8-5870bd646b04", "Valdivia"),
+    "osorno": ("94e8933a-db06-44b5-8b7e-399b73b7daf7", "Osorno"),
+    "ptomontt": ("c4e2b90c-881e-46c5-adb4-a0840d8b002d", "Puerto Montt"),
+    "castro": ("6a723180-2ec3-4c2d-b087-f7790ceb31c7", "Castro"),
+    "quellon-cl": ("c0cfe3c9-cac1-4e91-8bd9-525ce0418fd6", "Quellón"),
+    "puerto natales": ("476385bd-aebc-4d6f-a49b-5131c3019a46", "Puerto Natales"),
+    "punta arenas": ("2fa4a6bc-d598-47ac-a3dc-f7c3b9c8100c", "Punta Arenas"),
+}

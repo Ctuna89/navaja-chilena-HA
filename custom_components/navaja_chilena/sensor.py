@@ -24,7 +24,7 @@ from . import vehicle
 from .vehicle_entity import REASON_TEXT, VehicleMixin
 from .api import FUEL_LABELS
 from .const import FOOTBALL_TEAMS, NATIONAL_TEAM_ID
-from .const import BENEFIT_CATEGORIES, BENEFITS_SITE, CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
+from .const import REGIONAL_ZONES, BENEFIT_CATEGORIES, BENEFITS_SITE, CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
 
 
 def _device(key: str, name: str) -> DeviceInfo:
@@ -114,6 +114,10 @@ async def async_setup_entry(
             NextMatchSensor(rt.national, entry, NATIONAL_TEAM_ID, "Fútbol: La Roja", "fixtures", "results"),
             LastResultSensor(rt.national, entry, NATIONAL_TEAM_ID, "Fútbol: La Roja", "results"),
         ]
+    add_when_ready(
+        rt.regional,
+        lambda data: [RegionalStopSensor(rt.regional, entry, code, rt.regional_zone) for code in data],
+    )
     if rt.fuel_discounts:
         fixed.append(FuelDiscountSensor(rt.fuel_discounts, entry, rt.benefit_cards))
     if rt.benefits:
@@ -269,6 +273,58 @@ class StopSensor(_Base):
                 if s.buses
             },
             "recorridos_sin_buses": [s.id for s in stop.services if not s.buses],
+        }
+
+
+class RegionalStopSensor(_Base):
+    """Próxima llegada a un paradero de la Red Regional (ciudades fuera de Santiago)."""
+
+    _kind = "paradero_regional"
+    _attr_icon = "mdi:bus-stop"
+    _attr_native_unit_of_measurement = "min"
+    MAX_LISTED = 8
+
+    def __init__(self, coordinator, entry, code: str, zone: str) -> None:
+        super().__init__(coordinator, entry, f"{zone}_{code}")
+        self._code = code
+        self._zone = zone
+        self._attr_name = f"Paradero {code}"
+        self._attr_device_info = _device(f"regional_{zone}", f"Paraderos Red Regional: {REGIONAL_ZONES[zone][1]}")
+
+    def _has_data(self) -> bool:
+        return self._code in (self.coordinator.data or {})
+
+    def _stop(self):
+        return self.coordinator.data[self._code]
+
+    @property
+    def native_value(self) -> int | None:
+        stop = self._stop()
+        if not stop.arrivals:
+            return None
+        return max(0, round((stop.arrivals[0].eta - dt_util.utcnow()).total_seconds() / 60))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        stop = self._stop()
+        now = dt_util.utcnow()
+        return {
+            "nombre": stop.name,
+            "ciudad": REGIONAL_ZONES[self._zone][1],
+            "proximas": [
+                {
+                    "servicio": a.route,
+                    "sentido": a.direction,
+                    "llegada": a.eta.isoformat(),
+                    "minutos": max(0, round((a.eta - now).total_seconds() / 60)),
+                    "estimacion": a.label,
+                    "tiempo_real": a.realtime,
+                    "distancia": a.distance,
+                }
+                for a in stop.arrivals[: self.MAX_LISTED]
+            ],
+            "alertas": list(stop.alerts),
+            "fuente": "Red Regional / TransApp (servicio no oficial)",
         }
 
 

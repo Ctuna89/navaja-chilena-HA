@@ -34,6 +34,9 @@ from .const import (
     INDICATORS_URL,
     IPSA_URL,
     METRO_URL,
+    REGIONAL_HEADERS,
+    REGIONAL_URL,
+    REGIONAL_ZONES,
     REQUEST_TIMEOUT,
     STOP_URL,
 )
@@ -76,16 +79,29 @@ def parse_stop_codes(raw: str) -> list[str]:
     return codes
 
 
-async def _get_json(session: aiohttp.ClientSession, url: str) -> Any:
+async def _get_json(session: aiohttp.ClientSession, url: str, headers: dict[str, str] | None = None) -> Any:
     try:
         async with session.get(
-            url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+            url, headers=headers or HEADERS, timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
         ) as resp:
             resp.raise_for_status()
             return await resp.json(content_type=None)
     except aiohttp.ClientResponseError as err:
         raise NavajaApiError(f"Error consultando {url}: {err}", err.status) from err
     except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        raise NavajaApiError(f"Error consultando {url}: {err}") from err
+
+
+async def _get_bytes(session: aiohttp.ClientSession, url: str, headers: dict[str, str] | None = None) -> bytes:
+    try:
+        async with session.get(
+            url, headers=headers or HEADERS, timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+        ) as resp:
+            resp.raise_for_status()
+            return await resp.read()
+    except aiohttp.ClientResponseError as err:
+        raise NavajaApiError(f"Error consultando {url}: {err}", err.status) from err
+    except (aiohttp.ClientError, TimeoutError) as err:
         raise NavajaApiError(f"Error consultando {url}: {err}") from err
 
 
@@ -1740,3 +1756,105 @@ def fuel_discounts_for(
 def fuel_discounts_current(cal: FuelDiscountCalendar, today: date) -> bool:
     """El calendario corresponde al mes en curso."""
     return cal.month == f"{today:%Y-%m}"
+
+
+# ------------------------------------------- Red Regional (paraderos fuera de Santiago)
+
+REGIONAL_CODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9-]{0,19}$")
+_DIRECTIONS = {"I": "ida", "R": "regreso"}
+
+
+@dataclass(frozen=True)
+class RegionalArrival:
+    route: str
+    direction: str
+    eta: datetime
+    label: str          # texto del servicio: "Llegando", "11 a 15 min", "+ de 25 min"
+    realtime: bool
+    distance: str
+
+
+@dataclass(frozen=True)
+class RegionalStop:
+    code: str
+    name: str
+    arrivals: tuple[RegionalArrival, ...]
+    alerts: tuple[str, ...]
+
+
+def parse_regional_codes(raw: str) -> list[str]:
+    """Códigos de paradero escritos por el usuario (separados por coma, espacio o punto y coma)."""
+    codes: list[str] = []
+    for part in re.split(r"[,;\s]+", raw.strip().upper()):
+        if not part:
+            continue
+        if not REGIONAL_CODE_RE.match(part):
+            raise ValueError(part)
+        if part not in codes:
+            codes.append(part)
+    return codes
+
+
+def _plain(text: Any) -> str:
+    return re.sub(r"\s+", " ", html_lib.unescape(re.sub(r"<[^>]+>", " ", str(text or "")))).strip()
+
+
+def parse_regional_stop(raw: Any, code: str, name: str, now: datetime) -> RegionalStop:
+    """Llegadas (ordenadas por hora estimada) y alertas de un paradero."""
+    if not isinstance(raw, dict) or not isinstance(raw.get("predictions"), list):
+        raise NavajaApiError(f"Respuesta inesperada para el paradero {code}")
+    arrivals: list[RegionalArrival] = []
+    for p in raw["predictions"]:
+        try:
+            eta = datetime.fromtimestamp(float(p["epochTime"]), tz=ZoneInfo("UTC"))
+            route = str(p["route"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if eta < now - timedelta(minutes=2):
+            continue   # bus que ya pasó
+        arrivals.append(
+            RegionalArrival(
+                route=route,
+                direction=_DIRECTIONS.get(str(p.get("direction")), str(p.get("direction") or "")),
+                eta=eta,
+                label=str(p.get("timeLabel") or ""),
+                realtime=bool(p.get("realtime")),
+                distance=str(p.get("distanceLabel") or ""),
+            )
+        )
+    arrivals.sort(key=lambda a: a.eta)
+    alerts = tuple(
+        t for t in (_plain(a.get("message")) for a in raw.get("alerts") or [] if isinstance(a, dict)) if t
+    )
+    return RegionalStop(code, name, tuple(arrivals), alerts)
+
+
+def parse_regional_stop_names(zip_bytes: bytes) -> dict[str, str]:
+    """Nombres de paradero (código -> nombre) desde el GTFS de la ciudad."""
+    import csv
+    import io
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+            rows = csv.DictReader(io.TextIOWrapper(z.open("stop.csv"), encoding="utf-8-sig"), delimiter=";")
+            return {r["stop_code"].upper(): r["name"] for r in rows if r.get("stop_code") and r.get("name")}
+    except (zipfile.BadZipFile, KeyError, ValueError) as err:
+        raise NavajaApiError(f"GTFS inválido: {err}") from err
+
+
+async def fetch_regional_stop_names(session: aiohttp.ClientSession, zone: str) -> dict[str, str]:
+    zone_id = REGIONAL_ZONES[zone][0]
+    return parse_regional_stop_names(
+        await _get_bytes(session, f"{REGIONAL_URL}/{zone_id}/gtfs/download/3", REGIONAL_HEADERS)
+    )
+
+
+async def fetch_regional_stop(
+    session: aiohttp.ClientSession, zone: str, code: str, name: str, phone_id: str, now: datetime
+) -> RegionalStop:
+    zone_id = REGIONAL_ZONES[zone][0]
+    raw = await _get_json(
+        session, f"{REGIONAL_URL}/{zone_id}/stopInfo?stopCode={code}&mode=3&phoneId={phone_id}", REGIONAL_HEADERS
+    )
+    return parse_regional_stop(raw, code, name, now)

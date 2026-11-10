@@ -1,0 +1,32 @@
+{
+ "events": [],
+ "alerts": [
+  {
+   "author": "Red",
+   "message": "<div>🚨 <strong>Alerta GPS</strong>: Servicio <strong>302 (Ida)</strong> no está enviando información en tiempo real.🛰️🚌</div>",
+   "externalId": "b273dd28-e28a-45c5-bc2e-4832c5ed684b",
+   "urlImage": "https://dtpr-static-bucket.s3.us-east-1.amazonaws.com/alerta_red.png",
+   "useful": 71,
+   "useless": 44
+  },
+  {
+   "author": "Red",
+   "message": "<div>🚨 <strong>Alerta GPS</strong>: Servicio <strong>304 (Ida)</strong> no está enviando información en tiempo real.🛰️🚌</div>",
+   "externalId": "bbada769-3265-4ec3-91fe-28956cef491e",
+   "urlImage": "https://dtpr-static-bucket.s3.us-east-1.amazonaws.com/alerta_red.png",
+   "useful": 223,
+   "useless": 166
+  }
+ ],
+ "predictions": [],
+ "routeInfo": [
+  {
+   "servicio": "302",
+   "msg": "Bus pasa cada 8 minutos aprox."
+  },
+  {
+   "servicio": "304",
+   "msg": "Bus pasa cada 20 minutos aprox."
+  }
+ ]
+}
