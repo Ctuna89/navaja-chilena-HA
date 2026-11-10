@@ -58,6 +58,7 @@ El asistente te pregunta qué quieres activar:
 - tu **comuna** para las farmacias de turno,
 - tu **equipo** de la Primera División (o toda la liga) y **La Roja**, para ver partidos, resultados y tabla,
 - los **combustibles** que usas (93, 95, 97 o diésel), el **radio** de búsqueda alrededor de tu casa y la **antigüedad máxima** de los precios,
+- la **ciudad y los paraderos** de la Red Regional (si vives fuera de Santiago),
 - tus **tarjetas** (descuentos en bencina de hoy) y las **categorías** de descuentos que te interesan (combustibles, comida, salud y belleza, etc.),
 - el **último dígito de tu patente** y el tipo de vehículo, para la restricción vehicular y la revisión técnica,
 - tu **cine** Cinemark: uno de los 22 cines del país, o *«El más cercano a mi casa»* según la ubicación de tu Home Assistant.
@@ -93,6 +94,18 @@ actualización cada 2 minutos.
 ### 🚌 Paraderos
 `sensor.paraderos_red_movilidad_paradero_<código>` · minutos para el próximo bus · actualización cada minuto.
 Atributos: `nombre`, `estado`, `recorridos` (cada recorrido con sus minutos y buses en camino) y `recorridos_sin_buses`.
+
+### 🚍 Paraderos de la Red Regional (ciudades fuera de Santiago)
+`sensor.paraderos_red_regional_<ciudad>_paradero_<código>` y `binary_sensor.paraderos_red_regional_<ciudad>_alertas_del_servicio` · minutos hasta la próxima
+llegada a tus paraderos en las ciudades de la Red Regional (Arica, Iquique, Antofagasta, Copiapó, La Serena–Coquimbo, Gran Valparaíso, Rancagua, Talca, Chillán, Gran
+Concepción, Temuco, Valdivia, Osorno, Puerto Montt, Punta Arenas y más) · actualización cada minuto.
+
+- Eliges **la ciudad** y escribes los **códigos de paradero** (el que aparece en el letrero o en la app Red Regional, por ejemplo `75` o `P60094`); se comprueba que existan en esa ciudad.
+- Atributos del sensor: `nombre` del paradero, `ciudad`, `proximas` (hasta 8 llegadas con servicio, sentido, hora estimada, minutos, la estimación del servicio —«Llegando», «11 a 15 min», «+ de 25 min»—,
+  si es **en tiempo real** y la distancia del bus) y `alertas`.
+- El sensor binario se enciende cuando el servicio informa alertas que afectan al paradero (por ejemplo, «el servicio 302 no está enviando información en tiempo real»).
+- Si el servicio no responde, solo esos sensores quedan sin datos; el resto de la integración sigue funcionando.
+- Los datos vienen de **TransApp / DTPR**, el sistema detrás de la app Red Regional. Es un servicio **no oficial y sin documentación pública**: puede cambiar sin aviso. Este módulo no está afiliado al Ministerio de Transportes ni a los operadores.
 
 ### 🌋 Sismos
 - `sensor.sismos_chile_ultimo_sismo_csn`: magnitud del último sismo del Centro Sismológico Nacional, con `referencia`
@@ -486,6 +499,28 @@ title: Próximo bus
 entities:
   - entity: sensor.paraderos_red_movilidad_paradero_pc615
     name: PC615
+```
+
+### 🚍 Paraderos de la Red Regional
+Próximas llegadas a un paradero fuera de Santiago (cambia la ciudad y el código por los tuyos).
+
+![Próximas llegadas a un paradero de la Red Regional en Temuco, con estimación y distancia](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/paraderos-regional.png)
+
+```yaml
+type: markdown
+title: 🚍 Paradero 53 · Temuco
+content: |
+  {% set llegadas = state_attr('sensor.paraderos_red_regional_temuco_paradero_53', 'proximas') or [] %}
+  {% if llegadas | length == 0 %}
+  Sin buses próximos.
+  {% else %}
+  {% for b in llegadas[:5] %}
+  - **{{ b.servicio }}** ({{ b.sentido }}) · {{ b.estimacion }} · {{ b.distancia }}{{ ' · en vivo' if b.tiempo_real }}
+  {% endfor %}
+  {% endif %}
+  {% for a in state_attr('sensor.paraderos_red_regional_temuco_paradero_53', 'alertas') or [] %}
+  ⚠️ {{ a }}
+  {% endfor %}
 ```
 
 ### 🌋 Sismos
@@ -1042,6 +1077,7 @@ necesidad de registrarte.
 | Combustibles | [Bencina en Línea](https://www.bencinaenlinea.cl) (Comisión Nacional de Energía) |
 | Descuentos en bencina | Calendario mensual del repositorio ([`data/bencina.json`](data/bencina.json)); cada descuento cita su fuente (Copec, Shell, Aramco, bancos y prensa) |
 | Descuentos de tarjetas | [N Beneficios](https://www.nbeneficios.cl), un servicio de Infoacción (los beneficios, logos e imágenes pertenecen a sus emisores) |
+| Paraderos de la Red Regional | TransApp / DTPR (servicio no oficial). Referencia de la API: [edwinroket/red-regional-api](https://github.com/edwinroket/red-regional-api) y [frabarz/hass-red-regional](https://github.com/frabarz/hass-red-regional) (integración para Home Assistant, licencia MIT); este módulo es una implementación propia |
 | Restricción vehicular | [Ministerio de Transportes](https://mtt.gob.cl/restriccion-vehicular-2026/): Resolución Exenta N° 1698/2026 (Seremi RM) |
 | Revisión técnica | [ChileAtiende](https://www.chileatiende.gob.cl/fichas/23978) (Subsecretaría de Transportes) |
 | Criptomonedas | [Buda.com](https://www.buda.com) |
@@ -1049,6 +1085,12 @@ necesidad de registrarte.
 Los textos de Wikipedia están bajo licencia [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es); cada
 efeméride indica su fuente y enlaza a su artículo. Los nombres y marcas pertenecen a sus respectivos titulares; Navaja Chilena
 es un proyecto independiente y no está afiliado a ninguno de ellos.
+
+### Agradecimientos
+
+Los paraderos de la Red Regional se apoyan en el trabajo de reverse engineering de [edwinroket/red-regional-api](https://github.com/edwinroket/red-regional-api) (documentación de la API y SDK) y en
+[frabarz/hass-red-regional](https://github.com/frabarz/hass-red-regional), la integración de Home Assistant que lo llevó a la plataforma (licencia MIT). Si lo que necesitas son
+solo esos paraderos, con mapa de buses en vivo, esa integración es una excelente opción. Gracias a ambos por abrir el camino.
 
 ## Si vienes de la versión 1.x
 

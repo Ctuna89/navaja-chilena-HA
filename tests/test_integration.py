@@ -777,3 +777,94 @@ async def test_fuel_discount_sensor_today_and_stale_month(hass, aioclient_mock, 
     await hass.async_block_till_done()
     state = hass.states.get("sensor.combustibles_descuentos_en_bencina_hoy")
     assert state.state in ("unknown", "unavailable") and "motivo" in state.attributes
+
+
+# ---------------------------------------------------------------- Red Regional
+
+import io as _io
+import zipfile as _zip
+
+TEMUCO_ID = "c28e2682-b083-41ba-8827-5caac8b86181"
+CONCEPCION_ID = "f083f24e-7fee-4fdc-9520-dbbdae877f07"
+
+
+def _regional_gtfs() -> bytes:
+    buf = _io.BytesIO()
+    with _zip.ZipFile(buf, "w") as z:
+        z.writestr("stop.csv", (FIX_DIR / "regional_stop.csv").read_text())
+    return buf.getvalue()
+
+
+async def _setup_regional(hass, aioclient_mock, zone_id, zone, stops, fixture, gtfs_status=200, **extra):
+    import json as _json
+    from custom_components.navaja_chilena.const import REGIONAL_URL
+    mock_all(aioclient_mock)
+    aioclient_mock.get(f"{REGIONAL_URL}/{zone_id}/gtfs/download/3", content=_regional_gtfs(), status=gtfs_status)
+    aioclient_mock.get(f"{REGIONAL_URL}/{zone_id}/stopInfo", json=_json.loads((FIX_DIR / fixture).read_text()))
+    data = {"indicators": ["uf"], "metro": False, "regional_zone": zone, "regional_stops": stops, **extra}
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_regional_stop_sensor_next_arrival(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 19:46:40+00:00")
+    entry = await _setup_regional(hass, aioclient_mock, TEMUCO_ID, "temuco", "75, 53", "regional_parada_53.json")
+    state = hass.states.get("sensor.paraderos_red_regional_temuco_paradero_75")
+    assert state is not None and state.state not in ("unknown", "unavailable")
+    assert state.attributes["nombre"] == "1 Norte esq. 1 Oriente" and state.attributes["ciudad"] == "Temuco"
+    assert state.attributes["proximas"] and state.attributes["proximas"][0]["servicio"]
+    assert hass.states.get("binary_sensor.paraderos_red_regional_temuco_alertas_del_servicio").state == "off"
+    # Cada paradero se pide con las cabeceras que el servicio exige.
+    calls = [c for c in aioclient_mock.mock_calls if "stopInfo" in str(c[1])]
+    assert len(calls) == 2 and calls[0][3]["Os-type"] == "Android"
+
+
+async def test_regional_alerts_binary_sensor(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 19:46:40+00:00")
+    await _setup_regional(hass, aioclient_mock, CONCEPCION_ID, "concepcion", "P60094", "regional_parada_P60094_alertas.json")
+    state = hass.states.get("binary_sensor.paraderos_red_regional_gran_concepcion_alertas_del_servicio")
+    assert state is not None and state.state == "on"
+    assert "Alerta GPS" in state.attributes["alertas"][0]
+
+
+async def test_regional_names_failure_falls_back_to_code(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 19:46:40+00:00")
+    entry = await _setup_regional(hass, aioclient_mock, TEMUCO_ID, "temuco", "53", "regional_parada_53.json", gtfs_status=503)
+    state = hass.states.get("sensor.paraderos_red_regional_temuco_paradero_53")
+    assert state is not None and state.attributes["nombre"] == "53"
+
+
+async def test_regional_source_down_does_not_break_the_rest(hass, aioclient_mock, freezer):
+    from custom_components.navaja_chilena.const import REGIONAL_URL
+    freezer.move_to("2026-11-10 19:46:40+00:00")
+    mock_all(aioclient_mock)
+    aioclient_mock.get(f"{REGIONAL_URL}/{TEMUCO_ID}/gtfs/download/3", status=503)
+    aioclient_mock.get(f"{REGIONAL_URL}/{TEMUCO_ID}/stopInfo", status=503)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False, "regional_zone": "temuco", "regional_stops": "53"})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.indicadores_economicos_uf") is not None
+    assert hass.states.get("sensor.paraderos_red_regional_temuco_paradero_53") is None
+
+
+async def test_regional_config_flow_validation(hass, aioclient_mock):
+    from custom_components.navaja_chilena.const import REGIONAL_URL
+    mock_all(aioclient_mock)
+    aioclient_mock.get(f"{REGIONAL_URL}/{TEMUCO_ID}/gtfs/download/3", content=_regional_gtfs())
+    base = {"indicators": ["uf"], "metro": False}
+
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+
+    async def submit(extra):
+        return await hass.config_entries.flow.async_configure(flow["flow_id"], {**base, **extra})
+
+    assert (await submit({"regional_zone": "temuco", "regional_stops": ""}))["errors"] == {"regional_stops": "regional_needs_stops"}
+    assert (await submit({"regional_zone": "none", "regional_stops": "75"}))["errors"] == {"regional_zone": "regional_needs_zone"}
+    assert (await submit({"regional_zone": "temuco", "regional_stops": "a/b"}))["errors"] == {"regional_stops": "invalid_regional_stop"}
+    assert (await submit({"regional_zone": "temuco", "regional_stops": "NOEXISTE9"}))["errors"] == {"regional_stops": "regional_stop_not_found"}
+    ok = await submit({"regional_zone": "temuco", "regional_stops": "75, 53"})
+    assert ok["type"] == FlowResultType.CREATE_ENTRY and ok["data"]["regional_stops"] == "75, 53"

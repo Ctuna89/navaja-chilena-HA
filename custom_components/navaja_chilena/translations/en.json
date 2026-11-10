@@ -22,6 +22,8 @@
           "fuel_types": "Cheapest fuel near your home (choose the ones you use)",
           "fuel_radius": "Search radius for gas stations",
           "fuel_max_age": "Maximum age of fuel prices",
+          "regional_zone": "Red Regional city (bus stops outside Santiago)",
+          "regional_stops": "Red Regional stop codes (comma separated, e.g. 1253, P60094)",
           "benefit_cards": "Your credit/debit cards (to see their discounts)",
           "benefit_categories": "Discount categories you care about (for your cards)",
           "football_team": "Your Chilean Primera División team (matches, results and position)",
@@ -33,7 +35,11 @@
     "error": {
       "invalid_stop": "Invalid bus stop code. Use a format like PC615.",
       "nothing_selected": "Select at least one indicator, the Metro or a bus stop.",
-      "stop_not_found": "That bus stop does not exist in Red Movilidad. Check the code (e.g. PC615)."
+      "stop_not_found": "That bus stop does not exist in Red Movilidad. Check the code (e.g. PC615).",
+      "invalid_regional_stop": "Invalid stop code. Use letters, numbers and hyphens (e.g. P60094).",
+      "regional_needs_stops": "Enter at least one Red Regional stop.",
+      "regional_needs_zone": "Choose the city of those stops.",
+      "regional_stop_not_found": "That stop does not exist in the chosen city. Check the code on the sign or in the Red Regional app."
     },
     "abort": {
       "already_configured": "Navaja Chilena is already configured."
@@ -62,6 +68,8 @@
           "fuel_types": "Cheapest fuel near your home (choose the ones you use)",
           "fuel_radius": "Search radius for gas stations",
           "fuel_max_age": "Maximum age of fuel prices",
+          "regional_zone": "Red Regional city (bus stops outside Santiago)",
+          "regional_stops": "Red Regional stop codes (comma separated, e.g. 1253, P60094)",
           "benefit_cards": "Your credit/debit cards (to see their discounts)",
           "benefit_categories": "Discount categories you care about (for your cards)",
           "football_team": "Your Chilean Primera División team (matches, results and position)",
@@ -73,7 +81,11 @@
     "error": {
       "invalid_stop": "Invalid bus stop code. Use a format like PC615.",
       "nothing_selected": "Select at least one indicator, the Metro or a bus stop.",
-      "stop_not_found": "That bus stop does not exist in Red Movilidad. Check the code (e.g. PC615)."
+      "stop_not_found": "That bus stop does not exist in Red Movilidad. Check the code (e.g. PC615).",
+      "invalid_regional_stop": "Invalid stop code. Use letters, numbers and hyphens (e.g. P60094).",
+      "regional_needs_stops": "Enter at least one Red Regional stop.",
+      "regional_needs_zone": "Choose the city of those stops.",
+      "regional_stop_not_found": "That stop does not exist in the chosen city. Check the code on the sign or in the Red Regional app."
     }
   },
   "entity": {

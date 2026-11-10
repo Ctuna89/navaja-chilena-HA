@@ -25,6 +25,10 @@ from .const import (
     BENEFIT_CARDS,
     BENEFIT_CATEGORIES,
     CONF_BENEFIT_CARDS,
+    CONF_REGIONAL_STOPS,
+    CONF_REGIONAL_ZONE,
+    REGIONAL_NONE,
+    REGIONAL_ZONES,
     CONF_BENEFIT_CATEGORIES,
     CONF_FUEL_MAX_AGE,
     CONF_FUEL_RADIUS,
@@ -165,6 +169,23 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
                 )
             ),
             vol.Required(
+                CONF_REGIONAL_ZONE, default=defaults.get(CONF_REGIONAL_ZONE, REGIONAL_NONE)
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=REGIONAL_NONE, label="No usar / None"),
+                        *[
+                            selector.SelectOptionDict(value=k, label=name)
+                            for k, (_id, name) in sorted(REGIONAL_ZONES.items(), key=lambda kv: kv[1][1])
+                        ],
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                CONF_REGIONAL_STOPS, default=defaults.get(CONF_REGIONAL_STOPS, "")
+            ): selector.TextSelector(),
+            vol.Required(
                 CONF_BENEFIT_CARDS, default=defaults.get(CONF_BENEFIT_CARDS, [])
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
@@ -215,6 +236,15 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         stops = parse_stop_codes(user_input.get(CONF_STOPS, ""))
     except ValueError:
         return user_input, {CONF_STOPS: "invalid_stop"}
+    zone = str(user_input.get(CONF_REGIONAL_ZONE, REGIONAL_NONE))
+    try:
+        regional = api.parse_regional_codes(user_input.get(CONF_REGIONAL_STOPS, ""))
+    except ValueError:
+        return user_input, {CONF_REGIONAL_STOPS: "invalid_regional_stop"}
+    if zone != REGIONAL_NONE and not regional:
+        return user_input, {CONF_REGIONAL_STOPS: "regional_needs_stops"}
+    if zone == REGIONAL_NONE and regional:
+        return user_input, {CONF_REGIONAL_ZONE: "regional_needs_zone"}
     has_any = (
         user_input[CONF_INDICATORS]
         or stops
@@ -222,6 +252,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or user_input.get(CONF_PHARMACY_COMUNA, "").strip()
         or bool(user_input.get(CONF_FUEL_TYPES))
         or bool(user_input.get(CONF_BENEFIT_CARDS))
+        or (zone != REGIONAL_NONE and bool(regional))
         or str(user_input.get(CONF_FOOTBALL_TEAM, FOOTBALL_NONE)) != FOOTBALL_NONE
         or bool(user_input.get(CONF_FOOTBALL_LEAGUE))
         or bool(user_input.get(CONF_FOOTBALL_NATIONAL))
@@ -234,6 +265,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         **user_input,
         CONF_STOPS: ", ".join(stops),
         CONF_PHARMACY_COMUNA: user_input.get(CONF_PHARMACY_COMUNA, "").strip(),
+        CONF_REGIONAL_STOPS: ", ".join(regional),
     }, errors
 
 
@@ -252,6 +284,19 @@ async def _check_stops(hass, stops: list[str]) -> dict[str, str]:
     return {}
 
 
+async def _check_regional(hass, zone: str, codes: list[str]) -> dict[str, str]:
+    """Rechaza paraderos que no existen en la ciudad. Si no se puede comprobar, no se bloquea."""
+    if zone == REGIONAL_NONE or not codes:
+        return {}
+    try:
+        names = await api.fetch_regional_stop_names(async_get_clientsession(hass), zone)
+    except api.NavajaApiError:
+        return {}
+    if names and any(c not in names for c in codes):
+        return {CONF_REGIONAL_STOPS: "regional_stop_not_found"}
+    return {}
+
+
 class NavajaConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
@@ -265,6 +310,10 @@ class NavajaConfigFlow(ConfigFlow, domain=DOMAIN):
             cleaned, errors = _validate(user_input)
             if not errors:
                 errors = await _check_stops(self.hass, parse_stop_codes(cleaned[CONF_STOPS]))
+            if not errors:
+                errors = await _check_regional(
+                    self.hass, str(cleaned.get(CONF_REGIONAL_ZONE, REGIONAL_NONE)),
+                    api.parse_regional_codes(cleaned.get(CONF_REGIONAL_STOPS, "")))
             if not errors:
                 return self.async_create_entry(title="Navaja Chilena", data=cleaned)
         return self.async_show_form(
@@ -286,6 +335,10 @@ class NavajaOptionsFlow(OptionsFlow):
             cleaned, errors = _validate(user_input)
             if not errors:
                 errors = await _check_stops(self.hass, parse_stop_codes(cleaned[CONF_STOPS]))
+            if not errors:
+                errors = await _check_regional(
+                    self.hass, str(cleaned.get(CONF_REGIONAL_ZONE, REGIONAL_NONE)),
+                    api.parse_regional_codes(cleaned.get(CONF_REGIONAL_STOPS, "")))
             if not errors:
                 return self.async_create_entry(data=cleaned)
         current = {**self.config_entry.data, **self.config_entry.options}
