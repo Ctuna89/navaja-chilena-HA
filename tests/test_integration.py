@@ -193,6 +193,9 @@ async def test_cinema_sensor_shows_today(hass, aioclient_mock, freezer):
     assert all(m["funciones"] for m in movies) and s.attributes["resumen"].count("\n") == len(movies) - 1
     nxt = s.attributes["proxima_funcion"]
     assert nxt and nxt["hora"] >= "15:00"                 # ya pasó la función de las 12:00
+    assert nxt["poster"].startswith("https://cdn.cinemark.cl/content/posters/")
+    assert s.attributes["entity_picture"] == nxt["poster"]    # la tarjeta nativa muestra el póster
+    assert all(m["poster"] for m in movies)
 
 
 async def test_cinema_nearest_uses_home_location(hass, aioclient_mock):

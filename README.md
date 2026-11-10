@@ -107,8 +107,8 @@ dirección, horario, teléfono y coordenadas) · datos del servicio Farmanet del
 
 ### 🎬 Cartelera de cine
 `sensor.<nombre del cine>_cartelera_de_hoy` · cantidad de películas en cartelera hoy · actualización cada 3 horas.
-Atributos: `peliculas` (título, duración, género, póster y las funciones con hora, formato y sala), `resumen` (texto listo para
-una tarjeta), `proxima_funcion` y `fecha`. Las funciones de trasnoche (antes de las 05:00) cuentan para el día anterior.
+Atributos: `peliculas` (título, duración, género, `poster` y las funciones con hora, formato y sala), `resumen` (texto listo para
+una tarjeta), `proxima_funcion` (con su `poster`) y `fecha`. La imagen de la entidad es el póster de la próxima función. Las funciones de trasnoche (antes de las 05:00) cuentan para el día anterior.
 Cines disponibles: los 22 de **Cinemark** en Chile.
 
 ### 🇨🇱 Efemérides
@@ -476,20 +476,56 @@ content: |
 
 ### 🎬 Cine
 
-Cartelera de hoy con los horarios de cada película (el ejemplo muestra las 6 primeras; quita `[:6]` para verlas todas):
+Cartelera de hoy con el póster de cada película (el ejemplo muestra las 6 primeras; quita `[:6]` para verlas todas):
 
-![Cartelera de cine con los horarios](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/cine-cartelera.png)
+![Cartelera de cine con el póster y los horarios de cada película](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/cine-cartelera.png)
 
 ```yaml
 type: markdown
 title: Cartelera de hoy
 content: |
-  {% set p = state_attr('sensor.cinemark_alto_las_condes_cartelera_de_hoy', 'peliculas') %}
-  {% for m in p[:6] %}
-  **{{ m.titulo }}** · {{ m.duracion_min }} min  
-  {{ m.funciones | map(attribute='hora') | join(' · ') }}
-
+  <table>
+  {% for m in state_attr('sensor.cinemark_alto_las_condes_cartelera_de_hoy', 'peliculas')[:6] %}
+  <tr>
+  <td>{% if m.poster %}<img src="{{ m.poster }}" width="70">{% endif %}</td>
+  <td><b>{{ m.titulo }}</b> · {{ m.duracion_min }} min<br>{{ m.funciones | map(attribute='hora') | join(' · ') }}</td>
+  </tr>
   {% endfor %}
+  </table>
+```
+
+Próxima función con su póster:
+
+![Póster y hora de la próxima función](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/cine-proxima.png)
+
+```yaml
+type: markdown
+title: Próxima función
+content: |
+  {% set n = state_attr('sensor.cinemark_alto_las_condes_cartelera_de_hoy', 'proxima_funcion') %}
+  {% if n %}
+  <table>
+  <tr>
+  <td>{% if n.poster %}<img src="{{ n.poster }}" width="110">{% endif %}</td>
+  <td><b>{{ n.titulo }}</b><br>a las {{ n.hora }}</td>
+  </tr>
+  </table>
+  {% else %}
+  Hoy no quedan más funciones.
+  {% endif %}
+```
+
+El sensor también entrega el póster de la próxima función como imagen de la entidad, así que las tarjetas que muestran la
+imagen de una entidad (como `tile`) lo usan directamente:
+
+![Tarjeta con el póster de la próxima película como imagen](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/cine-picture.png)
+
+```yaml
+type: tile
+entity: sensor.cinemark_alto_las_condes_cartelera_de_hoy
+name: Cartelera de hoy
+show_entity_picture: true
+vertical: true
 ```
 
 Versión corta (texto ya armado por la integración) y próxima función:
