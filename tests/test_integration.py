@@ -84,6 +84,9 @@ async def test_metro_states(hass, aioclient_mock, monkeypatch):
     await setup(hass, aioclient_mock)
     st = states(hass)
     assert st["Línea 1"] == "operativa"          # no listada = sin incidentes
+    line1 = next(x for x in hass.states.async_all("sensor") if x.name.endswith("Línea 1"))
+    assert line1.attributes["device_class"] == "enum"
+    assert line1.attributes["options"] == ["operativa", "con_problemas", "cerrada"]   # estados traducibles
     assert st["Línea 2"] == "con_problemas"
     assert st["UF"] == "39000.5"
     assert st["Paradero PC615"] == "5"

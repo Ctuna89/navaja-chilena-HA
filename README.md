@@ -76,6 +76,7 @@ Disponibles: UF, dólar observado, euro, UTM, IPC, IVP, Imacec, TPM, libra de co
 `sensor.metro_de_santiago_linea_1` … `_linea_6` y `_linea_4a` · estado `operativa`, `con_problemas` o `cerrada` ·
 actualización cada 2 minutos.
 
+- Los estados se muestran como «Operativa», «Con problemas» y «Cerrada» (en la interfaz en español).
 - Atributos: `mensaje`, `estaciones` (estado de cada una), `estaciones_con_problemas`, `horario_apertura` y `horario_cierre`.
 - **Horario de servicio** (hora de Santiago): lunes a viernes 06:00–23:00, sábado 06:30–23:00, domingo y festivos 07:30–23:00.
   Fuera de ese horario todas las líneas y estaciones figuran como `cerrada`. Para que los festivos cuenten como domingo, activa también el módulo de feriados.
@@ -124,11 +125,14 @@ integración (`santoral.py`), funciona sin internet y puedes editarlo si tu cale
 
 ## Tarjetas de ejemplo
 
-Listas para copiar y pegar: usan solo tarjetas que ya trae Home Assistant, sin instalar nada extra. En tu panel pulsa
+Listas para copiar y pegar: usan solo tarjetas que ya trae Home Assistant, sin instalar nada extra. Las imágenes son
+capturas reales de Home Assistant (los valores cambian con el tiempo). En tu panel pulsa
 *⋮ → Editar panel → Añadir tarjeta → Manual* y pega el YAML. Reemplaza el cine, la comuna y los paraderos de los ejemplos
 por los tuyos (los ids los ves en *Ajustes → Dispositivos y servicios → Navaja Chilena*).
 
 ### 💰 Indicadores económicos
+
+![Tarjetas con UF, dólar, euro y UTM](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/indicadores-resumen.png)
 
 ```yaml
 type: grid
@@ -156,6 +160,8 @@ cards:
 
 Evolución del dólar en el último mes:
 
+![Gráfico del dólar en los últimos 30 días](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/indicadores-grafico.png)
+
 ```yaml
 type: statistics-graph
 title: Dólar (30 días)
@@ -164,10 +170,13 @@ entities:
 stat_types:
   - mean
 days_to_show: 30
+period: day
 chart_type: line
 ```
 
 Con la fecha del valor (atributo `fecha`):
+
+![Lista de valores del día con su fecha](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/indicadores-detalle.png)
 
 ```yaml
 type: entities
@@ -185,16 +194,17 @@ entities:
 
 ### 📈 Bolsa de Santiago (IPSA)
 
+![Tarjeta del IPSA](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/ipsa-tarjeta.png)
+
 ```yaml
 type: tile
 entity: sensor.bolsa_de_santiago_ipsa
 name: IPSA
-state_content:
-  - state
-  - variacion_pct
 ```
 
 Detalle del cierre:
+
+![Detalle del último cierre del IPSA](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/ipsa-detalle.png)
 
 ```yaml
 type: entities
@@ -220,34 +230,40 @@ entities:
 
 ### 🪙 Criptomonedas
 
+![Bitcoin y Ethereum con su variación de 24 horas](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/criptomonedas.png)
+
 ```yaml
-type: grid
+type: entities
 title: Criptomonedas
-columns: 2
-square: false
-cards:
-  - type: tile
-    entity: sensor.criptomonedas_buda_bitcoin
+entities:
+  - entity: sensor.criptomonedas_buda_bitcoin
     name: Bitcoin
-    state_content:
-      - state
-      - variacion_24h_pct
-  - type: tile
-    entity: sensor.criptomonedas_buda_ethereum
+  - type: attribute
+    entity: sensor.criptomonedas_buda_bitcoin
+    attribute: variacion_24h_pct
+    name: Variación 24 h
+    suffix: "%"
+  - entity: sensor.criptomonedas_buda_ethereum
     name: Ethereum
-    state_content:
-      - state
-      - variacion_24h_pct
+  - type: attribute
+    entity: sensor.criptomonedas_buda_ethereum
+    attribute: variacion_24h_pct
+    name: Variación 24 h
+    suffix: "%"
 ```
 
 ### 🚇 Metro de Santiago
 
 Las siete líneas, con el color de cada una:
 
+![Estado de las siete líneas del Metro](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/metro-lineas.png)
+
+*Ejemplo con un incidente simulado en la Línea 2.*
+
 ```yaml
 type: grid
 title: Metro de Santiago
-columns: 4
+columns: 3
 square: false
 cards:
   - type: tile
@@ -282,6 +298,10 @@ cards:
 
 Resumen con las estaciones afectadas (o el aviso de que el Metro está cerrado):
 
+![Resumen del estado de la red del Metro](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/metro-estado.png)
+
+*Ejemplo con un incidente simulado en la Línea 2.*
+
 ```yaml
 type: markdown
 title: Estado de la red
@@ -307,6 +327,8 @@ content: |
 
 ### 🚌 Paraderos
 
+![Minutos para el próximo bus por recorrido](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/paradero-detalle.png)
+
 ```yaml
 type: markdown
 title: Paradero PC615
@@ -324,6 +346,8 @@ content: |
 ```
 
 Varios paraderos de un vistazo:
+
+![Vista rápida de un paradero](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/paradero-vistazo.png)
 
 ```yaml
 type: glance
@@ -348,6 +372,8 @@ default_zoom: 6
 
 Último sismo del Centro Sismológico Nacional, en palabras:
 
+![Último sismo del Centro Sismológico Nacional](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/sismo-csn.png)
+
 ```yaml
 type: markdown
 title: Último sismo (CSN)
@@ -358,6 +384,8 @@ content: |
 ```
 
 ### 📅 Feriados
+
+![Próximo feriado y días que faltan](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/feriados-tarjetas.png)
 
 ```yaml
 type: grid
@@ -376,6 +404,8 @@ cards:
 
 Con el nombre del feriado:
 
+![Nombre del próximo feriado](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/feriados-texto.png)
+
 ```yaml
 type: markdown
 content: |
@@ -386,6 +416,8 @@ content: |
 ```
 
 ### 🌫️ Calidad del aire y UV
+
+![Medidores de calidad del aire e índice UV](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/aire-uv.png)
 
 ```yaml
 type: grid
@@ -421,6 +453,10 @@ cards:
 
 ### 💊 Farmacias de turno
 
+![Lista de farmacias de turno](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/farmacias.png)
+
+*Datos de ejemplo.*
+
 ```yaml
 type: markdown
 title: Farmacias de turno
@@ -440,14 +476,16 @@ content: |
 
 ### 🎬 Cine
 
-Cartelera de hoy con los horarios de cada película:
+Cartelera de hoy con los horarios de cada película (el ejemplo muestra las 6 primeras; quita `[:6]` para verlas todas):
+
+![Cartelera de cine con los horarios](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/cine-cartelera.png)
 
 ```yaml
 type: markdown
 title: Cartelera de hoy
 content: |
   {% set p = state_attr('sensor.cinemark_alto_las_condes_cartelera_de_hoy', 'peliculas') %}
-  {% for m in p %}
+  {% for m in p[:6] %}
   **{{ m.titulo }}** · {{ m.duracion_min }} min  
   {{ m.funciones | map(attribute='hora') | join(' · ') }}
 
@@ -455,6 +493,8 @@ content: |
 ```
 
 Versión corta (texto ya armado por la integración) y próxima función:
+
+![Cartelera de cine en versión corta con la próxima función](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/cine-resumen.png)
 
 ```yaml
 type: markdown
@@ -470,12 +510,14 @@ content: |
 
 Las de hoy, con su fuente:
 
+![Efemérides chilenas de hoy](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/efemerides-hoy.png)
+
 ```yaml
 type: markdown
 title: Un día como hoy
 content: |
   {% for e in state_attr('sensor.efemerides_chilenas_efemerides_de_hoy', 'efemerides') %}
-  **{{ e.anio if e.anio else '—' }}** · {{ e.texto }} _({{ e.fuente }})_
+  {% if e.anio %}**{{ e.anio }}** · {% endif %}{{ e.texto }} _({{ e.fuente }})_
 
   {% else %}
   Sin efemérides chilenas registradas para hoy.
@@ -484,17 +526,28 @@ content: |
 
 Próximo día significativo:
 
+![Próximo día significativo](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/efemerides-proximo.png)
+
 ```yaml
-type: tile
-entity: sensor.efemerides_chilenas_proximo_dia_significativo
-name: Próximo día significativo
-icon: mdi:calendar-arrow-right
-state_content:
-  - state
-  - dias_restantes
+type: entities
+title: Próximo día significativo
+entities:
+  - entity: sensor.efemerides_chilenas_proximo_dia_significativo
+    name: Día
+  - type: attribute
+    entity: sensor.efemerides_chilenas_proximo_dia_significativo
+    attribute: fecha
+    name: Fecha
+  - type: attribute
+    entity: sensor.efemerides_chilenas_proximo_dia_significativo
+    attribute: dias_restantes
+    name: Faltan
+    suffix: día(s)
 ```
 
 ### ✝️ Santoral
+
+![Santo del día](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/santoral.png)
 
 ```yaml
 type: markdown
@@ -506,18 +559,17 @@ content: |
 
 ### ☀️ Resumen del día (todo junto)
 
+![Resumen del día](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/resumen-del-dia.png)
+
 ```yaml
 type: markdown
 title: Buen día 🇨🇱
 content: |
   **{{ states('sensor.santoral_santo_del_dia') }}**
 
-  💵 UF ${{ '{:,.0f}'.format(states('sensor.indicadores_economicos_uf') | float(0)) | replace(',', '.') }} ·
-  Dólar ${{ '{:,.0f}'.format(states('sensor.indicadores_economicos_dolar_observado') | float(0)) | replace(',', '.') }}
-
-  📈 IPSA {{ '{:,.0f}'.format(states('sensor.bolsa_de_santiago_ipsa') | float(0)) | replace(',', '.') }}
-  ({{ state_attr('sensor.bolsa_de_santiago_ipsa', 'variacion_pct') }} %)
-
+  💵 UF ${{ '{:,.0f}'.format(states('sensor.indicadores_economicos_uf') | float(0)) | replace(',', '.') }}  
+  💲 Dólar ${{ '{:,.0f}'.format(states('sensor.indicadores_economicos_dolar_observado') | float(0)) | replace(',', '.') }}  
+  📈 IPSA {{ '{:,.0f}'.format(states('sensor.bolsa_de_santiago_ipsa') | float(0)) | replace(',', '.') }} ({{ state_attr('sensor.bolsa_de_santiago_ipsa', 'variacion_pct') }} %)  
   🇨🇱 {{ states('sensor.efemerides_chilenas_efemerides_de_hoy') }}
 ```
 
