@@ -28,7 +28,7 @@ Cada descuento:
 
 1. **Investigar** los descuentos del mes y año en curso. Consultas útiles: `descuentos bencina <mes> <año>`, `Copec promociones <mes> <año>`,
    `Shell descuentos <mes> <año> App Shell`, `Aramco descuentos <mes> <año>`, `<banco> descuento combustible <mes> <año>`.
-2. **Fuentes oficiales primero**: [Copec – Promociones](https://ww2.copec.cl/personas/promociones), la página de Shell/Enex y de Aramco, y las páginas de beneficios de cada banco o tarjeta
+2. **Fuentes oficiales primero** (lee las páginas con `curl -sS -L`; las páginas de Copec y la prensa se cargan sin JavaScript): [Copec – Promociones](https://ww2.copec.cl/personas/promociones), la página de Shell/Enex y de Aramco, y las páginas de beneficios de cada banco o tarjeta
    (Rutpay de BancoEstado, Banco de Chile, BCI, Itaú, Tenpo, Santander, Scotiabank, etc.).
 3. **Contrastar** con al menos dos guías de prensa del mismo mes (La Tercera, BioBioChile, Chócale, Autofact, Meganoticias, Encancha).
 4. **Verificar que cada dato sea del mes actual**: muchos resultados son de meses o años anteriores. Si un convenio solo aparece en meses anteriores,
@@ -36,7 +36,6 @@ Cada descuento:
 5. **Incluir solo lo que se pudo respaldar**, con su `fuente`. Un descuento sin respaldo no se agrega.
 6. Actualizar `vigencia` y `actualizado`.
 7. **Validar**: `python data/validar.py --mes-actual` debe terminar con `OK` (formato, tarjetas conocidas, fuentes https, montos plausibles, mes en curso).
-8. **Publicar** sin cambiar la versión de la integración (el archivo se lee desde `main`): commit directo a `main` solo de `data/bencina.json`.
-   Si no se puede escribir en `main`, abrir un pull request desde una rama `datos/bencina-AAAA-MM`: el workflow *Datos de bencina* lo valida y lo fusiona solo.
+8. **Publicar** sin cambiar la versión de la integración (el archivo se lee desde `main`): un pull request que solo cambie `data/bencina.json`. Si la rama se llama `datos/bencina-AAAA-MM`, el workflow *Datos de bencina* lo valida y lo fusiona solo; la tarea mensual lo abre desde su rama de trabajo y lo fusiona con las herramientas de GitHub.
 
 Colaboradores: un pull request desde una rama `datos/bencina-*` que solo cambie este archivo se valida y fusiona automáticamente; cualquier otro cambio sigue el flujo normal.

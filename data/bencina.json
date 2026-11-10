@@ -1,62 +1,294 @@
 {
   "vigencia": "2026-11",
   "actualizado": "2026-11-10",
-  "nota": "Calendario mensual de descuentos en bencina. Lo renueva un PR cada mes; cada fila trae su fuente. Los días van de 1 (lunes) a 7 (domingo).",
+  "nota": "Calendario mensual de descuentos en bencina, renovado cada mes. Cada fila trae su fuente; confirmado=true solo cuando la fuente es oficial del mes (Copec). Los días van de 1 (lunes) a 7 (domingo).",
   "descuentos": [
     {
-      "dias": [2],
-      "estaciones": ["Copec"],
-      "tarjeta": "itau",
-      "tarjeta_nombre": "Itaú Legend",
+      "dias": [
+        1
+      ],
+      "estaciones": [
+        "Copec"
+      ],
+      "tarjeta": "cencosud",
+      "tarjeta_nombre": "Cencosud Scotiabank Mastercard",
       "monto": "$100/L",
       "ahorro_clp_litro": 100,
-      "detalle": "Solo tarjeta Legend. Crédito, código Itaú en app Copec",
+      "detalle": "Pagando con la tarjeta asociada a la app Copec",
       "confirmado": true,
       "fuente": "https://ww2.copec.cl/personas/promociones"
     },
     {
-      "dias": [2],
-      "estaciones": ["Copec"],
+      "dias": [
+        1
+      ],
+      "estaciones": [
+        "Copec"
+      ],
+      "tarjeta": "cencosud",
+      "tarjeta_nombre": "Jumbo Prime",
+      "monto": "$100/L",
+      "ahorro_clp_litro": 100,
+      "detalle": "Con el código enviado por Jumbo Prime",
+      "confirmado": true,
+      "fuente": "https://ww2.copec.cl/personas/promociones"
+    },
+    {
+      "dias": [
+        1
+      ],
+      "estaciones": [
+        "Shell"
+      ],
+      "tarjeta": "mercadopago",
+      "tarjeta_nombre": "Mercado Pago",
+      "monto": "$50/L",
+      "ahorro_clp_litro": 50,
+      "detalle": "Cuenta o prepago Mercado Pago · tope $4.000 en una carga de hasta 80 L al mes",
+      "confirmado": false,
+      "fuente": "https://www.latercera.com/servicios/noticia/los-descuentos-para-ahorrar-hasta-300-en-bencina-durante-noviembre/"
+    },
+    {
+      "dias": [
+        2
+      ],
+      "estaciones": [
+        "Copec"
+      ],
+      "tarjeta": "lider",
+      "tarjeta_nombre": "Lider BCI",
+      "monto": "$100/L",
+      "ahorro_clp_litro": 100,
+      "detalle": "Pagando con la tarjeta Lider BCI en la app Copec",
+      "confirmado": true,
+      "fuente": "https://ww2.copec.cl/personas/promociones"
+    },
+    {
+      "dias": [
+        2
+      ],
+      "estaciones": [
+        "Copec"
+      ],
+      "tarjeta": "itau",
+      "tarjeta_nombre": "Itaú Legend",
+      "monto": "$100/L",
+      "ahorro_clp_litro": 100,
+      "detalle": "Solo tarjetas de crédito Legend · con el código enviado por Itaú",
+      "confirmado": true,
+      "fuente": "https://ww2.copec.cl/personas/promociones"
+    },
+    {
+      "dias": [
+        2
+      ],
+      "estaciones": [
+        "Copec"
+      ],
       "tarjeta": "bancoestado",
       "tarjeta_nombre": "Rutpay BancoEstado",
       "monto": "$50/L",
       "ahorro_clp_litro": 50,
-      "detalle": "QR en app Rutpay · máximo 50 L por carga",
+      "detalle": "Escaneando el código QR desde la app Rutpay",
       "confirmado": true,
-      "fuente": "https://www.bancoestado.cl/content/bancoestado-public/cl/es/home/inicio---rutpay-bancoestado.html"
+      "fuente": "https://ww2.copec.cl/personas/promociones"
     },
     {
-      "dias": [3],
-      "estaciones": ["Shell"],
-      "tarjeta": "bancochile",
-      "tarjeta_nombre": "Banco de Chile / Edwards",
+      "dias": [
+        3
+      ],
+      "estaciones": [
+        "Copec"
+      ],
+      "tarjeta": "scotiabank",
+      "tarjeta_nombre": "Visa Scotiabank",
+      "monto": "desde $50/L",
+      "ahorro_clp_litro": 50,
+      "detalle": "Tarjeta de crédito Visa asociada a la app Copec",
+      "confirmado": true,
+      "fuente": "https://ww2.copec.cl/personas/promociones"
+    },
+    {
+      "dias": [
+        3
+      ],
+      "estaciones": [
+        "Shell"
+      ],
+      "tarjeta": "cmr",
+      "tarjeta_nombre": "CMR / Banco Falabella",
       "monto": "$100/L",
       "ahorro_clp_litro": 100,
-      "detalle": "Crédito · App Shell",
+      "detalle": "Tarjetas de crédito Banco Falabella · tope $7.000 en una carga de hasta 70 L, dos cargas al mes",
       "confirmado": false,
-      "fuente": "https://www.meganoticias.cl/dato-util/529815-descuentos-en-bencinas-disponibles-tras-nueva-alza-de-combustibles-de-este-jueves-dcv-20-08-2026.html"
+      "fuente": "https://www.latercera.com/servicios/noticia/los-descuentos-para-ahorrar-hasta-300-en-bencina-durante-noviembre/"
     },
     {
-      "dias": [4],
-      "estaciones": ["Copec"],
+      "dias": [
+        3
+      ],
+      "estaciones": [
+        "Aramco"
+      ],
+      "tarjeta": "ripley",
+      "tarjeta_nombre": "Banco Ripley",
+      "monto": "$100–$150/L",
+      "detalle": "Crédito o débito físico, por la app Aramco Estaciones · $100 Plus, $125 Silver, $150 Gold · tope $8.000 al mes",
+      "confirmado": false,
+      "fuente": "https://www.latercera.com/servicios/noticia/los-descuentos-para-ahorrar-hasta-300-en-bencina-durante-noviembre/"
+    },
+    {
+      "dias": [
+        4
+      ],
+      "estaciones": [
+        "Copec"
+      ],
       "tarjeta": "bci",
       "tarjeta_nombre": "BCI",
       "monto": "7% de cashback",
       "porcentaje": 7,
-      "detalle": "Crédito · App Copec · activar BciPlus+ · tope diario $7.000",
+      "detalle": "Tarjeta de crédito BCI en la app Copec · cashback desde BCI · tope diario $7.000",
       "confirmado": true,
+      "fuente": "https://ww2.copec.cl/personas/promociones"
+    },
+    {
+      "dias": [
+        4
+      ],
+      "estaciones": [
+        "Shell"
+      ],
+      "tarjeta": "scotiabank",
+      "tarjeta_nombre": "Visa Scotiabank",
+      "monto": "hasta $200/L",
+      "detalle": "Crédito y débito Visa Scotiabank por la app Shell · tope 40 L por carga, una carga diaria y dos al mes",
+      "confirmado": false,
       "fuente": "https://www.latercera.com/servicios/noticia/los-descuentos-para-ahorrar-hasta-300-en-bencina-durante-noviembre/"
     },
     {
-      "dias": [5],
-      "estaciones": ["Copec", "Shell", "Aramco"],
+      "dias": [
+        5
+      ],
+      "estaciones": [
+        "Copec"
+      ],
       "tarjeta": "tenpo",
       "tarjeta_nombre": "Tenpo",
       "monto": "desde $50/L",
       "ahorro_clp_litro": 50,
-      "detalle": "Cashback pagando con la app",
+      "detalle": "Tarjeta Tenpo Mastercard · cashback con tope $4.000 en Tenpesos y máximo 2 compras al mes",
       "confirmado": true,
-      "fuente": "https://chocale.cl/2026/11/descuentos-en-bencinas-combustibles-noviembre-copec-arambo-shell-2026/"
+      "fuente": "https://ww2.copec.cl/personas/promociones"
+    },
+    {
+      "dias": [
+        5
+      ],
+      "estaciones": [
+        "Shell"
+      ],
+      "tarjeta": "tenpo",
+      "tarjeta_nombre": "Tenpo",
+      "monto": "hasta $300/L",
+      "detalle": "Cashback por la app Shell · tope $4.000 por carga diaria y dos cargas al mes",
+      "confirmado": false,
+      "fuente": "https://www.latercera.com/servicios/noticia/los-descuentos-para-ahorrar-hasta-300-en-bencina-durante-noviembre/"
+    },
+    {
+      "dias": [
+        5
+      ],
+      "estaciones": [
+        "Aramco"
+      ],
+      "tarjeta": "tenpo",
+      "tarjeta_nombre": "Tenpo",
+      "monto": "$50–$300/L",
+      "detalle": "Crédito o prepago por la app Aramco Estaciones · tope $4.000 por viernes, máximo 2 transacciones al mes, compra mínima $5.000",
+      "confirmado": false,
+      "fuente": "https://www.latercera.com/servicios/noticia/los-descuentos-para-ahorrar-hasta-300-en-bencina-durante-noviembre/"
+    },
+    {
+      "dias": [
+        6
+      ],
+      "estaciones": [
+        "Copec"
+      ],
+      "tarjeta": "mach",
+      "tarjeta_nombre": "MACHBANK",
+      "monto": "$100/L",
+      "ahorro_clp_litro": 100,
+      "detalle": "Tarjeta de crédito MACHBANK asociada a la app Copec",
+      "confirmado": true,
+      "fuente": "https://ww2.copec.cl/personas/promociones"
+    },
+    {
+      "dias": [
+        7
+      ],
+      "estaciones": [
+        "Copec"
+      ],
+      "tarjeta": "bice",
+      "tarjeta_nombre": "BICE Limitless",
+      "monto": "$100/L",
+      "ahorro_clp_litro": 100,
+      "detalle": "Tarjeta de crédito Limitless asociada a la app Copec",
+      "confirmado": true,
+      "fuente": "https://ww2.copec.cl/personas/promociones"
+    },
+    {
+      "dias": [
+        7
+      ],
+      "estaciones": [
+        "Shell"
+      ],
+      "tarjeta": "bice",
+      "tarjeta_nombre": "BICE",
+      "monto": "$100/L",
+      "ahorro_clp_litro": 100,
+      "detalle": "Tarjetas de crédito BICE por la app Shell · tope $5.000 en una carga al mes",
+      "confirmado": false,
+      "fuente": "https://www.latercera.com/servicios/noticia/los-descuentos-para-ahorrar-hasta-300-en-bencina-durante-noviembre/"
+    },
+    {
+      "dias": [
+        7
+      ],
+      "estaciones": [
+        "Shell"
+      ],
+      "tarjeta": "security",
+      "tarjeta_nombre": "Banco Security",
+      "monto": "$100/L",
+      "ahorro_clp_litro": 100,
+      "detalle": "Tarjetas de crédito Security por la app Shell · tope $5.000 en una carga al mes",
+      "confirmado": false,
+      "fuente": "https://www.latercera.com/servicios/noticia/los-descuentos-para-ahorrar-hasta-300-en-bencina-durante-noviembre/"
+    },
+    {
+      "dias": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "estaciones": [
+        "Copec"
+      ],
+      "tarjeta": "copec",
+      "tarjeta_nombre": "Copec Pay",
+      "monto": "$10/L",
+      "ahorro_clp_litro": 10,
+      "detalle": "Pagando con la cuenta digital Copec Pay desde la app Copec",
+      "confirmado": true,
+      "fuente": "https://ww2.copec.cl/personas/promociones"
     }
   ]
 }

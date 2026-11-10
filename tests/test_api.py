@@ -18,6 +18,7 @@ for name in ("const", "api", "santoral"):
     sys.modules[f"nc.{name}"] = mod
     spec.loader.exec_module(mod)
 api = sys.modules["nc.api"]
+api_const = sys.modules["nc.const"]
 
 
 def test_stop_codes():
@@ -548,9 +549,9 @@ def _calendar():
 
 def test_fuel_discount_calendar_file_is_valid():
     cal = _calendar()
-    assert cal.month == "2026-11" and len(cal.items) == 5
+    assert len(cal.items) >= 5
     assert all(d.source.startswith("https://") for d in cal.items)
-    assert {d.card for d in cal.items} <= {"itau", "bancoestado", "bancochile", "bci", "tenpo"}
+    assert {d.card for d in cal.items} <= set(api_const.BENEFIT_CARDS)
 
 
 def test_fuel_discounts_for_today_and_next():
