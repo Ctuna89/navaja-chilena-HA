@@ -9,8 +9,12 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .api import parse_stop_codes
+from .api import nearest_theater, parse_stop_codes
 from .const import (
+    CINEMA_NEAREST,
+    CINEMA_NONE,
+    CINEMARK_THEATERS,
+    CONF_CINEMA,
     DEFAULT_INDICATORS,
     CONF_AIR,
     CONF_BOLSA,
@@ -27,6 +31,7 @@ from .coordinator import (
     NavajaCoordinator,
     air_coordinator,
     bolsa_coordinator,
+    cinema_coordinator,
     crypto_coordinator,
     holidays_coordinator,
     pharmacy_coordinator,
@@ -51,6 +56,8 @@ class RuntimeData:
     crypto: NavajaCoordinator | None = None
     bolsa: NavajaCoordinator | None = None
     saint: bool = False
+    cinema: NavajaCoordinator | None = None
+    cinema_slug: str = ""
     pharmacy_comuna: str = ""
     indicator_codes: list[str] = field(default_factory=list)
 
@@ -110,6 +117,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     if opts.get(CONF_BOLSA):
         data.bolsa = bolsa_coordinator(hass)
     data.saint = bool(opts.get(CONF_SAINT))
+    cinema = opts.get(CONF_CINEMA, CINEMA_NONE)
+    if cinema == CINEMA_NEAREST:
+        cinema = nearest_theater(hass.config.latitude, hass.config.longitude)
+    if cinema in CINEMARK_THEATERS:
+        data.cinema_slug = cinema
+        data.cinema = cinema_coordinator(hass, cinema)
     comuna = (opts.get(CONF_PHARMACY_COMUNA) or "").strip()
     if comuna:
         data.pharmacy_comuna = comuna
@@ -118,7 +131,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     coordinators = [
         c
         for c in (data.indicators, data.metro, data.stops, data.quakes,
-                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa)
+                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema)
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]

@@ -211,3 +211,43 @@ def test_santoral_complete():
     assert santoral.saint_of(date(2026, 7, 16)) == "Nuestra Señora del Carmen"
     assert santoral.saint_of(date(2026, 11, 1)) == "Todos los Santos"
     assert santoral.saint_of(date(2026, 12, 25)).startswith("Natividad")
+
+
+def test_cinemark_real_page():
+    html = (FIX / "cinemark_alto_las_condes.html").read_text(encoding="utf-8")
+    c = api.parse_cinemark(html)
+    assert c.name == "Cinemark Alto Las Condes" and len(c.screenings) == 90
+    first = c.screenings[0]
+    # La hora escrita (12:00) es la hora local; el sufijo "Z-05:00" es erróneo y se ignora.
+    assert first.start.strftime("%Y-%m-%d %H:%M") == "2026-11-10 12:00"
+    assert first.start.utcoffset().total_seconds() in (-3 * 3600, -4 * 3600)
+    assert first.title and first.screen and first.video_format and first.duration_min
+    assert {s.listing_day.isoformat() for s in c.screenings} == {"2026-11-10", "2026-11-11"}
+
+
+def test_cinemark_late_night_belongs_to_previous_day():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("America/Santiago")
+    assert api.listing_day(datetime(2026, 11, 11, 0, 30, tzinfo=tz)).isoformat() == "2026-11-10"
+    assert api.listing_day(datetime(2026, 11, 11, 5, 0, tzinfo=tz)).isoformat() == "2026-11-11"
+
+
+def test_cinemark_invalid_pages():
+    for bad in ("", "<html></html>",
+                '<script type="application/ld+json">{"@type":"Movie"}</script>',
+                '<script type="application/ld+json">no es json</script>'):
+        with pytest.raises(api.NavajaApiError):
+            api.parse_cinemark(bad)
+
+
+def test_duration_parsing():
+    d = api._duration_min
+    assert d("PT2H15M") == 135 and d("PT90M") == 90 and d("PT2H") == 120
+    assert d("") is None and d(None) is None and d("PT") is None
+
+
+def test_nearest_theater():
+    assert api.nearest_theater(-33.4489, -70.6693) == "cinemark-portal-nunoa"   # Santiago centro
+    assert api.nearest_theater(-36.82, -73.05) == "cinemark-mallplaza-mirador-bio-bio"
+    assert api.nearest_theater(-18.48, -70.31) == "cinemark-mallplaza-arica"

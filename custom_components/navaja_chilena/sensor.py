@@ -20,7 +20,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import NavajaConfigEntry, api
 from .santoral import saint_of
-from .const import CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
+from .const import CINEMARK_THEATERS, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
 
 
 def _device(key: str, name: str) -> DeviceInfo:
@@ -92,6 +92,8 @@ async def async_setup_entry(
         fixed.append(PharmacySensor(rt.pharmacy, entry, rt.pharmacy_comuna))
     if rt.saint:
         fixed.append(SaintSensor(entry))
+    if rt.cinema:
+        fixed.append(CinemaSensor(rt.cinema, entry, rt.cinema_slug))
     async_add_entities(fixed)
 
 
@@ -465,3 +467,74 @@ class SaintSensor(SensorEntity):
                 self.hass, lambda _now: self.async_write_ha_state(), hour=0, minute=0, second=5
             )
         )
+
+
+def _hm(minutes: int | None) -> str:
+    return "" if not minutes else f"{minutes // 60}h{minutes % 60:02d}"
+
+
+class CinemaSensor(_Base):
+    """Cartelera de hoy del cine elegido (Cinemark)."""
+
+    _kind = "cine"
+    _attr_icon = "mdi:movie-open"
+    _attr_native_unit_of_measurement = "películas"
+
+    def __init__(self, coordinator, entry, slug: str) -> None:
+        super().__init__(coordinator, entry, slug)
+        name = CINEMARK_THEATERS[slug][0]
+        self._attr_name = "Cartelera de hoy"
+        self._attr_device_info = _device(f"cine_{slug}", name)
+        self._theater_name = name
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None
+
+    def _today(self) -> list:
+        today = api.listing_day(dt_util.now().astimezone(ZoneInfo(api.METRO_TZ)))
+        return [s for s in self.coordinator.data.screenings if s.listing_day == today]
+
+    def _movies(self) -> list[dict[str, Any]]:
+        movies: dict[str, dict[str, Any]] = {}
+        for s in self._today():
+            m = movies.setdefault(
+                s.title,
+                {
+                    "titulo": s.title,
+                    "duracion_min": s.duration_min,
+                    "genero": s.genre,
+                    "poster": s.poster,
+                    "url": s.url,
+                    "funciones": [],
+                },
+            )
+            m["funciones"].append(
+                {"hora": s.start.strftime("%H:%M"), "formato": s.video_format, "sala": s.screen}
+            )
+        return list(movies.values())
+
+    @property
+    def native_value(self) -> int:
+        return len(self._movies())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        movies = self._movies()
+        now = dt_util.now().astimezone(ZoneInfo(api.METRO_TZ))
+        upcoming = next((s for s in self._today() if s.start >= now), None)
+        summary = "\n".join(
+            f"{m['titulo']} ({_hm(m['duracion_min'])}): "
+            + ", ".join(f["hora"] for f in m["funciones"])
+            for m in movies
+        )
+        return {
+            "cine": self._theater_name,
+            "fecha": api.listing_day(now).isoformat(),
+            "peliculas": movies,
+            "resumen": summary,
+            "proxima_funcion": (
+                {"titulo": upcoming.title, "hora": upcoming.start.strftime("%H:%M")}
+                if upcoming
+                else None
+            ),
+        }

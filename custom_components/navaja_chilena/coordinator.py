@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from . import api
 from .const import (
+    CINEMA_INTERVAL,
     BOLSA_INTERVAL,
     CRYPTO_INTERVAL,
     CRYPTO_MARKETS,
@@ -153,3 +154,10 @@ def holidays_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
 
 def bolsa_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
     return NavajaCoordinator(hass, "bolsa", BOLSA_INTERVAL, api.fetch_ipsa)
+
+
+def cinema_coordinator(hass: HomeAssistant, slug: str) -> NavajaCoordinator:
+    async def fetch(session: Any) -> api.Cinema:
+        return await api.fetch_cinemark(session, slug)
+
+    return NavajaCoordinator(hass, "cine", CINEMA_INTERVAL, fetch)

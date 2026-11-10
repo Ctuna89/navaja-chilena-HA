@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import math
 import re
-from datetime import datetime, time
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 from dataclasses import dataclass, field
 from typing import Any
@@ -11,6 +13,8 @@ from typing import Any
 import aiohttp
 
 from .const import (
+    CINEMARK_THEATERS,
+    CINEMARK_URL,
     CRYPTO_URL,
     INDICATORS_FALLBACK_URL,
     INDICATORS_URL,
@@ -63,6 +67,19 @@ async def _get_json(session: aiohttp.ClientSession, url: str) -> Any:
         ) as resp:
             resp.raise_for_status()
             return await resp.json(content_type=None)
+    except aiohttp.ClientResponseError as err:
+        raise NavajaApiError(f"Error consultando {url}: {err}", err.status) from err
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        raise NavajaApiError(f"Error consultando {url}: {err}") from err
+
+
+async def _get_text(session: aiohttp.ClientSession, url: str) -> str:
+    try:
+        async with session.get(
+            url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+        ) as resp:
+            resp.raise_for_status()
+            return await resp.text()
     except aiohttp.ClientResponseError as err:
         raise NavajaApiError(f"Error consultando {url}: {err}", err.status) from err
     except (aiohttp.ClientError, TimeoutError, ValueError) as err:
@@ -334,7 +351,6 @@ async def fetch_stop(session: aiohttp.ClientSession, code: str) -> StopInfo:
 
 # --------------------------------------------------------------------- Sismos
 
-from datetime import date  # noqa: E402
 import unicodedata  # noqa: E402
 
 from .const import (  # noqa: E402
@@ -689,3 +705,110 @@ def parse_stock_index(data: Any) -> StockIndex:
 
 async def fetch_ipsa(session: aiohttp.ClientSession) -> StockIndex:
     return parse_stock_index(await _get_json(session, IPSA_URL))
+
+
+# ----------------------------------------------------------------------- Cines
+
+
+@dataclass(frozen=True)
+class Screening:
+    """Una función de cine."""
+
+    title: str
+    start: datetime  # hora local de Chile (con zona)
+    screen: str | None
+    video_format: str | None
+    duration_min: int | None
+    genre: str | None
+    poster: str | None
+    url: str | None
+
+    @property
+    def listing_day(self) -> date:
+        """Día de cartelera: las funciones de trasnoche (antes de las 05:00) cuentan para el día anterior."""
+        return listing_day(self.start)
+
+
+def listing_day(moment: datetime) -> date:
+    return (moment - timedelta(hours=5)).date()
+
+
+@dataclass(frozen=True)
+class Cinema:
+    name: str
+    screenings: list[Screening]
+
+
+_LD_RE = re.compile(r'<script type="application/ld\+json"[^>]*>(.*?)</script>', re.S)
+_START_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})")
+
+
+def _duration_min(iso: Any) -> int | None:
+    m = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?", str(iso or ""))
+    if not m or not (m.group(1) or m.group(2)):
+        return None
+    return int(m.group(1) or 0) * 60 + int(m.group(2) or 0)
+
+
+def parse_cinemark(html: str) -> Cinema:
+    """Interpreta la página de un cine de cinemark.cl (schema.org MovieTheater).
+
+    Cinemark serializa la hora como `2026-11-10T12:40:00.000Z-05:00`: el sufijo es
+    erróneo y la hora escrita (12:40) es la hora local de Chile; no se convierte.
+    """
+    theater: dict | None = None
+    for block in _LD_RE.findall(html):
+        try:
+            data = json.loads(block)
+        except ValueError:
+            continue
+        if isinstance(data, dict) and data.get("@type") == "MovieTheater":
+            theater = data
+            break
+    if theater is None:
+        raise NavajaApiError("La página del cine no trae la cartelera")
+    tz = ZoneInfo(METRO_TZ)
+    screenings: list[Screening] = []
+    for ev in theater.get("event") or []:
+        if not isinstance(ev, dict):
+            continue
+        m = _START_RE.match(str(ev.get("startDate", "")))
+        movie = ev.get("workPresented") or {}
+        if not m or not movie.get("name"):
+            continue
+        year, month, day, hour, minute = map(int, m.groups())
+        loc = str((ev.get("location") or {}).get("name") or "")
+        screen = loc.rsplit(" - ", 1)[1] if " - " in loc else None
+        screenings.append(
+            Screening(
+                title=str(movie["name"]).strip(),
+                start=datetime(year, month, day, hour, minute, tzinfo=tz),
+                screen=screen,
+                video_format=ev.get("videoFormat") or None,
+                duration_min=_duration_min(movie.get("duration")),
+                genre=movie.get("genre") or None,
+                poster=movie.get("image") or None,
+                url=(ev.get("offers") or {}).get("url") or None,
+            )
+        )
+    screenings.sort(key=lambda s: s.start)
+    return Cinema(name=str(theater.get("name") or ""), screenings=screenings)
+
+
+async def fetch_cinemark(session: aiohttp.ClientSession, slug: str) -> Cinema:
+    return parse_cinemark(await _get_text(session, CINEMARK_URL.format(slug=slug)))
+
+
+def nearest_theater(lat: float, lon: float) -> str:
+    """Slug del cine Cinemark más cercano a unas coordenadas (distancia en línea recta)."""
+
+    def dist(slug: str) -> float:
+        _, _, tlat, tlon = CINEMARK_THEATERS[slug]
+        p1, p2 = math.radians(lat), math.radians(tlat)
+        a = (
+            math.sin((p2 - p1) / 2) ** 2
+            + math.cos(p1) * math.cos(p2) * math.sin(math.radians(tlon - lon) / 2) ** 2
+        )
+        return 6371 * 2 * math.asin(math.sqrt(a))
+
+    return min(CINEMARK_THEATERS, key=dist)
