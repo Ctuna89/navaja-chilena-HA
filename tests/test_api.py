@@ -676,3 +676,22 @@ def test_news_merge_sorts_dedupes_and_limits():
     data = {"nacional": [mk("a", 1, "https://x/a"), mk("b", 5, "https://x/b"), mk("a otra vez", 2, "https://x/a", "Cooperativa"), mk("c", 3, "https://x/c")]}
     out = api.merge_news(data, ["nacional", "mundo"], 2)
     assert [n.title for n in out["nacional"]] == ["b", "c"] and "mundo" not in out
+
+
+# ----------------------------------------------------------------- Documentación
+
+def test_docs_yaml_images_and_links_are_valid():
+    import re
+    import yaml
+    root = Path(__file__).parents[1]
+    raw_prefix = "https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/"
+    for name in ("README.md", "docs/tarjetas.md"):
+        text = (root / name).read_text(encoding="utf-8")
+        for block in re.findall(r"```yaml\n(.*?)```", text, re.S):
+            yaml.safe_load(block)                      # cada ejemplo es YAML válido
+        for url in re.findall(r"\]\((https://raw\.githubusercontent\.com/Ctuna89/navaja-chilena-HA/main/[^)]+)\)", text):
+            assert (root / url[len(raw_prefix):]).is_file(), f"{name}: falta la imagen {url}"
+        for target in re.findall(r"\]\(((?:\.\./|docs/|data/)[^)#]+)", text):
+            base = root / "docs" if name.startswith("docs/") else root
+            assert (base / target).resolve().exists(), f"{name}: enlace roto {target}"
+    assert "docs/tarjetas.md" in (root / "README.md").read_text(encoding="utf-8")

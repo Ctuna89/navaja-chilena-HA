@@ -5,6 +5,8 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+- **Documentación**: las tarjetas de ejemplo pasaron a su propia página (`docs/tarjetas.md`) y el README quedó más corto; la tabla de la portada incluye la Red Regional y el resumen de la mañana.
+
 ## 3.0.0
 
 Una versión que reúne todo lo nuevo desde la 2.11: noticias, el resumen de la mañana y el tren de Valparaíso.
