@@ -13,6 +13,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from . import api
 from .const import (
+    FOOTBALL_INTERVAL,
+    FOOTBALL_LIVE_INTERVAL,
+    FOOTBALL_SOON_INTERVAL,
+    NATIONAL_COMPETITIONS,
+    NATIONAL_INTERVAL,
+    NATIONAL_TEAM_ID,
     FUEL_INTERVAL,
     CINEMA_INTERVAL,
     BOLSA_INTERVAL,
@@ -39,12 +45,14 @@ class NavajaCoordinator(DataUpdateCoordinator[Any]):
         name: str,
         interval: timedelta,
         fetch: Callable[[Any], Awaitable[Any]],
+        interval_fn: Callable[[Any], timedelta | None] | None = None,
     ) -> None:
         super().__init__(
             hass, _LOGGER, name=f"{DOMAIN}_{name}", update_interval=interval
         )
         self._fetch = fetch
         self._base_interval = interval
+        self._interval_fn = interval_fn   # frecuencia según los datos (p. ej. partido en juego)
 
     async def _async_update_data(self) -> Any:
         # Con la fuente caída se consulta cada vez menos (hasta 30 min); el
@@ -55,7 +63,8 @@ class NavajaCoordinator(DataUpdateCoordinator[Any]):
             cap = max(self._base_interval, MAX_BACKOFF)
             self.update_interval = min((self.update_interval or cap) * 2, cap)
             raise UpdateFailed(str(err)) from err
-        self.update_interval = self._base_interval
+        hint = self._interval_fn(data) if self._interval_fn else None
+        self.update_interval = hint or self._base_interval
         return data
 
 
@@ -210,3 +219,29 @@ def fuel_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
         return await api.fetch_fuel(session, brands)
 
     return NavajaCoordinator(hass, "combustibles", FUEL_INTERVAL, fetch)
+
+
+def _football_interval(data: Any) -> timedelta | None:
+    """Más seguido cuando hay un partido en juego o por empezar; si no, la frecuencia normal."""
+    matches = api.all_matches(data)
+    if any(m.live for m in matches):
+        return FOOTBALL_LIVE_INTERVAL
+    now = dt_util.utcnow()
+    if any(m.state == "pre" and timedelta(0) <= m.start - now <= timedelta(hours=3) for m in matches):
+        return FOOTBALL_SOON_INTERVAL
+    return None
+
+
+def football_coordinator(hass: HomeAssistant, team_id: str | None, league: bool) -> NavajaCoordinator:
+    async def fetch(session: Any) -> dict[str, Any]:
+        today = dt_util.now().astimezone(ZoneInfo(api.METRO_TZ)).date()
+        return await api.fetch_football(session, team_id, league, today)
+
+    return NavajaCoordinator(hass, "futbol", FOOTBALL_INTERVAL, fetch, _football_interval)
+
+
+def national_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
+    async def fetch(session: Any) -> dict[str, Any]:
+        return await api.fetch_national(session, NATIONAL_TEAM_ID, NATIONAL_COMPETITIONS)
+
+    return NavajaCoordinator(hass, "seleccion", NATIONAL_INTERVAL, fetch, _football_interval)

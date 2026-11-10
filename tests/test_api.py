@@ -382,3 +382,98 @@ def test_fuel_invalid_responses():
 def test_haversine():
     assert api.haversine_km(*SANTIAGO, *SANTIAGO) == 0
     assert 0.92 < api.haversine_km(-33.4489, -70.6693, -33.4489, -70.6593) < 0.94    # 0,01° de longitud = 111,3 km·cos(33,4°)·0,01
+
+
+# ----------------------------------------------------------------------- Fútbol
+
+from datetime import date  # noqa: E402
+
+AUDAX, COLO, CHILE = "4138", "2688", "207"
+
+
+def test_football_team_results_real():
+    ms = sorted(api.parse_matches(load("futbol_equipo_resultados.json")), key=lambda m: m.start, reverse=True)
+    assert len(ms) == 27 and all(m.finished for m in ms)
+    last = ms[0]                                          # 8-nov: Audax 0 - 1 Coquimbo Unido
+    assert (last.home.name, last.away.name, last.score_text) == ("Audax Italiano", "Coquimbo Unido", "0-1")
+    assert last.result_for(AUDAX) == "perdió" and last.result_for("8186") == "ganó"
+    assert last.opponent(AUDAX).name == "Coquimbo Unido" and last.is_home(AUDAX)
+    assert last.status == "Tiempo Completo" and last.start.utcoffset().total_seconds() == 0
+    assert last.competition and last.venue
+    assert last.involves(AUDAX) and not last.involves(COLO)
+
+
+def test_football_team_fixtures_real():
+    ms = api.parse_matches(load("futbol_equipo_proximos.json"))
+    assert [m.start.strftime("%m-%d") for m in ms] == ["11-20", "11-29", "12-06"]
+    nxt = ms[0]
+    assert (nxt.home.name, nxt.away.name) == ("Cobresal", "Audax Italiano") and not nxt.is_home(AUDAX)
+    assert nxt.state == "pre" and nxt.status == "Agendado" and nxt.score_text is None   # sin marcador antes de jugar
+    assert nxt.result_for(AUDAX) is None and nxt.venue == "Estadio El Cobre" and nxt.away.logo
+
+
+def test_football_league_calendar_and_matchdays():
+    cal = api.parse_calendar(load("futbol_scoreboard_ultima.json"))
+    assert len(cal) > 100 and cal == sorted(cal)
+    today = date(2026, 11, 10)
+    assert api.matchday_dates(cal, today, upcoming=True) == [date(2026, 11, 20), date(2026, 11, 21), date(2026, 11, 22)]
+    last = api.matchday_dates(cal, today, upcoming=False)
+    assert last and last[-1] == date(2026, 11, 8) and all(d < today for d in last)
+    assert api.matchday_dates(cal, date(2027, 6, 1), upcoming=True) == []           # sin más fechas
+    assert api.matchday_dates([], today, upcoming=False) == []
+    # el día de partido cuenta como «próxima» jornada
+    assert api.matchday_dates(cal, date(2026, 11, 20), upcoming=True)[0] == date(2026, 11, 20)
+
+
+def test_football_round_matches_real():
+    day = {d: api.parse_matches(load(f"futbol_scoreboard_{d}.json")) for d in ("20261120", "20261121", "20261122")}
+    nxt = sorted(sum(day.values(), []), key=lambda m: m.start)
+    assert len(nxt) == 8 and len({t for m in nxt for t in (m.home.id, m.away.id)}) == 16     # juegan los 16 equipos
+    last = api.parse_matches(load("futbol_scoreboard_ultima.json"))
+    assert len(last) == 6 and all(m.finished and m.score_text for m in last)
+    assert {m.competition for m in last}
+
+
+def test_football_standings_real():
+    t = api.parse_standings(load("futbol_tabla.json"))
+    assert len(t) == 16 and [r.rank for r in t] == list(range(1, 17))
+    first = t[0]
+    assert first.team.name == "Colo Colo" and first.points == 61 and first.played == 27
+    assert first.wins * 3 + first.draws == first.points or first.points >= first.wins * 3        # coherencia básica
+    assert first.goal_diff == first.goals_for - first.goals_against == 29                         # +29 según ESPN
+    assert all(r.played == r.wins + r.draws + r.losses for r in t)
+
+
+def test_football_team_list_matches_espn():
+    from_espn = {t["team"]["id"] for t in load("futbol_equipos.json")["sports"][0]["leagues"][0]["teams"]}
+    const = sys.modules["nc.const"]
+    assert set(const.FOOTBALL_TEAMS) == from_espn                  # si cambia la liga, esta prueba avisa
+
+
+def test_football_national_real_spanish():
+    ms = api.parse_matches(load("futbol_roja_amistosos.json"))
+    assert len(ms) == 7 and all(CHILE in (m.home.id, m.away.id) for m in ms)
+    mex = max(ms, key=lambda m: m.start)
+    assert mex.opponent(CHILE).name == "México" and mex.result_for(CHILE) == "ganó"          # nombres en español
+    assert mex.competition == "Amistosos internacionales"
+
+
+def test_football_live_and_odd_events():
+    ev = {"id": "1", "date": "2026-11-20T21:00Z", "league": {"name": "Liga"}, "status": {"displayClock": "67'", "type": {
+        "state": "in", "description": "Segundo tiempo"}}, "competitions": [{"competitors": [
+        {"homeAway": "home", "score": "2", "team": {"id": "1", "displayName": "A"}},
+        {"homeAway": "away", "score": {"displayValue": "1"}, "team": {"id": "2", "displayName": "B", "logos": [{"href": "x.png"}]}}]}]}
+    m = api.parse_match(ev)
+    assert m.live and not m.finished and m.clock == "67'" and m.score_text == "2-1" and m.away.logo == "x.png"
+    assert m.result_for("1") is None                                       # no hay resultado hasta que termina
+    for bad in (None, {}, {"date": "x"}, {"date": "2026-01-01T00:00Z", "competitions": [{}]}, "x"):
+        assert api.parse_match(bad) is None
+    for bad in (None, [], {}, {"events": "x"}):
+        with pytest.raises(api.NavajaApiError):
+            api.parse_matches(bad)
+    assert api.parse_matches({"events": []}) == []                          # sin partidos es válido
+    for bad in (None, {}, {"children": []}, {"children": [{"standings": {"entries": []}}]}):
+        with pytest.raises(api.NavajaApiError):
+            api.parse_standings(bad)
+    with pytest.raises(api.NavajaApiError):
+        api.parse_calendar({})

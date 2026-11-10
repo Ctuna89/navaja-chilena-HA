@@ -12,7 +12,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa
 
 from custom_components.navaja_chilena import api  # noqa: E402
 from custom_components.navaja_chilena.const import (  # noqa: E402
-    AIR_URL, CINEMARK_URL, CRYPTO_URL, EPHEMERIDES_URL, FUEL_BRANDS_URL, FUEL_URL, HOLIDAYS_URLS, IPSA_URL, DOMAIN, INDICATORS_URL, METRO_URL, PHARMACY_URL, QUAKES_CSN_URL,
+    AIR_URL, CINEMARK_URL, CRYPTO_URL, ESPN_LOCALE, ESPN_SOCCER, ESPN_STANDINGS_URL, EPHEMERIDES_URL, FUEL_BRANDS_URL,
+    FUEL_URL, HOLIDAYS_URLS, IPSA_URL, DOMAIN, INDICATORS_URL, METRO_URL, PHARMACY_URL, QUAKES_CSN_URL,
     QUAKES_URL, STOP_URL,
 )
 
@@ -550,3 +551,160 @@ async def test_fuel_max_age_option_changes_result(hass, aioclient_mock, freezer)
     assert strict.attributes.get("estaciones_en_radio", 0) <= n30
     if strict.state != "unknown":
         assert strict.attributes["antiguedad_dias"] <= 7 and float(strict.state) >= float(wide.state)
+
+
+# ------------------------------------------------------------------ Fútbol
+
+
+def _fx(name):
+    import json as _json
+    return _json.loads((FIX_DIR / name).read_text())
+
+
+def _mock_football(mock, fail=()):
+    """Respuestas reales de ESPN guardadas en tests/fixtures. `fail` = fragmentos de URL que responden 503.
+
+    Las URL más específicas (con más parámetros) se registran primero: el simulador de red empareja
+    también las que solo tienen parámetros de más.
+    """
+    def reg(url, fixture):
+        status = 503 if any(f in url for f in fail) else 200
+        mock.get(url, json=_fx(fixture) if status == 200 else {}, status=status)
+
+    base = f"{ESPN_SOCCER}/chi.1"
+    reg(f"{base}/teams/4138/schedule?{ESPN_LOCALE}&fixture=true", "futbol_equipo_proximos.json")
+    reg(f"{base}/teams/4138/schedule?{ESPN_LOCALE}", "futbol_equipo_resultados.json")
+    reg(f"{ESPN_STANDINGS_URL}?{ESPN_LOCALE}", "futbol_tabla.json")
+    for d in ("20261120", "20261121", "20261122"):
+        reg(f"{base}/scoreboard?{ESPN_LOCALE}&dates={d}", f"futbol_scoreboard_{d}.json")
+    # jornada anterior (calendario real): los días cercanos al 8 de noviembre
+    cal = _fx("futbol_scoreboard_ultima.json")["leagues"][0]["calendar"]
+    for d in sorted({c[:10].replace("-", "") for c in cal if "2026-11-04" <= c[:10] <= "2026-11-09"}):
+        reg(f"{base}/scoreboard?{ESPN_LOCALE}&dates={d}", "futbol_scoreboard_ultima.json")
+    reg(f"{base}/scoreboard?{ESPN_LOCALE}", "futbol_scoreboard_ultima.json")
+    for slug in ("fifa.friendly", "fifa.worldq.conmebol", "conmebol.america", "fifa.world"):
+        mock.get(f"{ESPN_SOCCER}/{slug}/teams/207/schedule?{ESPN_LOCALE}&fixture=true", json={"events": []})
+    reg(f"{ESPN_SOCCER}/fifa.friendly/teams/207/schedule?{ESPN_LOCALE}", "futbol_roja_amistosos.json")
+    for slug in ("fifa.worldq.conmebol", "conmebol.america", "fifa.world"):
+        mock.get(f"{ESPN_SOCCER}/{slug}/teams/207/schedule?{ESPN_LOCALE}", status=404, json={})
+
+
+async def _setup_football(hass, aioclient_mock, fail=(), **extra):
+    mock_all(aioclient_mock)
+    _mock_football(aioclient_mock, fail)
+    data = {"indicators": ["uf"], "metro": False, "football_team": "4138", "football_league": True,
+            "football_national": True, **extra}
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+def _fb(hass, device, name):
+    for x in hass.states.async_all("sensor"):
+        if x.entity_id.startswith("sensor.futbol_") and device in x.name and x.name.endswith(name):
+            return x
+    raise KeyError((device, name))
+
+
+async def test_football_team_sensors(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    await _setup_football(hass, aioclient_mock)
+    nxt = _fb(hass, "Audax Italiano", "Próximo partido")
+    assert nxt.state.startswith("2026-11-20T21:00") and nxt.attributes["device_class"] == "timestamp"
+    a = nxt.attributes
+    assert (a["rival"], a["condicion"], a["estadio"]) == ("Cobresal", "visita", "Estadio El Cobre")
+    assert a["dias_restantes"] == 10 and a["en_vivo"] is False and len(a["siguientes"]) == 2
+    assert a["siguientes"][0]["rival"] == "Palestino" and a["siguientes"][0]["condicion"] == "local"
+    assert a["entity_picture"].startswith("https://a.espncdn.com/")
+
+    last = _fb(hass, "Audax Italiano", "Último resultado")
+    assert last.state == "Perdió 0-1 vs Coquimbo Unido"
+    la = last.attributes
+    assert la["resultado"] == "perdió" and la["marcador_local_visita"] == "0-1" and len(la["forma"]) == 5
+    assert set(la["forma"]) <= set("GEP") and len(la["ultimos"]) == 5 and la["ultimos"][0]["rival"] == "Coquimbo Unido"
+
+    pos = _fb(hass, "Audax Italiano", "Posición en la tabla")
+    assert pos.state.isdigit() and 1 <= int(pos.state) <= 16
+    pa = pos.attributes
+    assert pa["lider"] == "Colo Colo" and pa["puntos_del_lider"] == 61 and pa["puntos_bajo_el_lider"] == 61 - pa["puntos"]
+    assert pa["jugados"] == pa["ganados"] + pa["empatados"] + pa["perdidos"] and pa["equipos"] == 16
+
+
+async def test_football_league_sensors(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    await _setup_football(hass, aioclient_mock)
+    table = _fb(hass, "Primera División", "Tabla de posiciones")
+    assert table.state == "Colo Colo" and len(table.attributes["tabla"]) == 16
+    row = table.attributes["tabla"][0]
+    assert (row["posicion"], row["pts"], row["dg"]) == (1, 61, 29)
+    nxt = _fb(hass, "Primera División", "Próxima fecha")
+    assert nxt.state.startswith("2026-11-20T21:00") and nxt.attributes["cantidad"] == 8
+    games = nxt.attributes["partidos"]
+    assert games[0]["local"] == "Cobresal" and games[0]["visita"] == "Audax Italiano" and games[0]["marcador"] is None
+    assert len({t for g in games for t in (g["local"], g["visita"])}) == 16
+    last = _fb(hass, "Primera División", "Última fecha")
+    assert int(last.state) >= 6 and all(r["marcador"] for r in last.attributes["resultados"])
+
+
+async def test_football_national_team(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    await _setup_football(hass, aioclient_mock)
+    last = _fb(hass, "La Roja", "Último resultado")
+    assert last.state == "Ganó 2-0 vs México" and last.attributes["competencia"] == "Amistosos internacionales"
+    assert last.attributes["resultado"] == "ganó" and last.attributes["forma"].startswith("G")
+    nxt = _fb(hass, "La Roja", "Próximo partido")
+    assert nxt.state == "unknown" and nxt.attributes["motivo"] == "No hay partidos programados"
+
+
+async def test_football_part_failure_is_unavailable_not_empty(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    entry = await _setup_football(hass, aioclient_mock, fail=("standings",))
+    assert entry.state is config_entries.ConfigEntryState.LOADED
+    assert _fb(hass, "Audax Italiano", "Posición en la tabla").state == "unavailable"
+    assert _fb(hass, "Primera División", "Tabla de posiciones").state == "unavailable"
+    assert _fb(hass, "Audax Italiano", "Próximo partido").state.startswith("2026-11-20")     # lo demás sigue
+
+
+async def test_football_source_down_does_not_break_the_rest(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    entry = await _setup_football(hass, aioclient_mock, fail=("schedule", "scoreboard", "standings"))
+    assert entry.state is config_entries.ConfigEntryState.LOADED
+    assert states(hass)["UF"] == "39000.5"
+    assert _fb(hass, "Audax Italiano", "Próximo partido").state == "unavailable"
+
+
+async def test_football_polls_faster_when_a_match_is_live(hass, aioclient_mock, freezer):
+    """Con un partido en juego se consulta cada 5 min; con uno por empezar, cada 15; si no, cada 3 h."""
+    from datetime import timedelta
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    entry = await _setup_football(hass, aioclient_mock)
+    assert entry.runtime_data.football.update_interval == timedelta(hours=3)
+    freezer.move_to("2026-11-20 17:30:00-03:00")                 # 21:00Z = 18:00 en Chile: falta menos de 1 h
+    await entry.runtime_data.football.async_refresh()
+    assert entry.runtime_data.football.update_interval == timedelta(minutes=15)
+    live = _fx("futbol_equipo_proximos.json")
+    status = live["events"][0]["competitions"][0]["status"]
+    status["type"].update(state="in", description="Primer tiempo")
+    status["displayClock"] = "23'"
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{ESPN_SOCCER}/chi.1/teams/4138/schedule?{ESPN_LOCALE}&fixture=true", json=live)   # primero
+    _mock_football(aioclient_mock)
+    mock_all(aioclient_mock)
+    await entry.runtime_data.football.async_refresh()
+    await hass.async_block_till_done()
+    assert entry.runtime_data.football.update_interval == timedelta(minutes=5)
+    nxt = _fb(hass, "Audax Italiano", "Próximo partido")
+    assert nxt.attributes["en_vivo"] is True and nxt.attributes["minuto"] == "23'"
+
+
+async def test_football_options_flow(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    entry = await _setup_football(hass, aioclient_mock)
+    r = await hass.config_entries.options.async_init(entry.entry_id)
+    r = await hass.config_entries.options.async_configure(
+        r["flow_id"], {"indicators": ["uf"], "metro": False, "football_team": "2688",
+                       "football_league": False, "football_national": True})
+    assert r["type"] is FlowResultType.CREATE_ENTRY
+    assert r["data"]["football_team"] == "2688" and r["data"]["football_national"] is True

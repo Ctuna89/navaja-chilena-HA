@@ -24,6 +24,7 @@ feriados, efemérides y mucho más, en una sola integración que se instala en u
 | 💊 **Farmacias de turno** | Las farmacias de turno de tu comuna, con dirección, horario y teléfono |
 | 🎬 **Cartelera de cine** | La cartelera de hoy de tu cine Cinemark favorito, o **el más cercano a tu casa** |
 | 🇨🇱 **Efemérides** | Los días significativos y las efemérides chilenas de hoy, y el próximo día significativo |
+| ⚽ **Fútbol** | Próximos partidos, resultados y posición de tu equipo de la Primera División, la tabla y las fechas de la liga, y los partidos de La Roja |
 | ⛽ **Combustibles** | Dónde está la bencina (93, 95, 97) o el diésel más barato cerca de tu casa, con precio, marca, dirección y distancia |
 | 🚗 **Restricción vehicular y revisión técnica** | Con el último dígito de tu patente: si hoy tienes restricción, tu próximo día con restricción y el mes de tu revisión técnica |
 | ✝️ **Santoral** | El santo del día (y el de mañana), sin necesidad de internet |
@@ -54,6 +55,7 @@ El asistente te pregunta qué quieres activar:
 - el **Metro**, los **sismos**, los **feriados**, el **IPSA**, el **santoral**, las **efemérides**, la **calidad del aire** y las **criptomonedas** (un interruptor cada uno),
 - tus **paraderos** (códigos separados por coma, por ejemplo `PC615, PA433`; se comprueba que existan),
 - tu **comuna** para las farmacias de turno,
+- tu **equipo** de la Primera División (o toda la liga) y **La Roja**, para ver partidos, resultados y tabla,
 - los **combustibles** que usas (93, 95, 97 o diésel), el **radio** de búsqueda alrededor de tu casa y la **antigüedad máxima** de los precios,
 - el **último dígito de tu patente** y el tipo de vehículo, para la restricción vehicular y la revisión técnica,
 - tu **cine** Cinemark: uno de los 22 cines del país, o *«El más cercano a mi casa»* según la ubicación de tu Home Assistant.
@@ -122,6 +124,23 @@ Cines disponibles: los 22 de **Cinemark** en Chile.
   `resumen` y `fuentes`.
 - `sensor.efemerides_chilenas_proximo_dia_significativo`: título, `fecha`, `dias_restantes` y `descripcion`. La lista de días
   significativos corresponde al mes en curso, así que tras el último del mes el sensor se muestra «no disponible» hasta que cambia el mes.
+
+### ⚽ Fútbol
+Elige tu equipo de la Primera División, la liga completa, La Roja, o cualquier combinación. Los datos llegan en español, con los logos de
+cada equipo, y se consultan **cada 3 horas**; mientras hay un partido en juego se actualizan **cada 5 minutos** (cada 15 minutos
+cuando falta menos de 3 horas para que empiece).
+
+| Entidad | Qué muestra |
+|---|---|
+| `sensor.futbol_<equipo>_proximo_partido` | Fecha y hora del próximo partido; atributos `rival`, `condicion` (local o visita), `competencia`, `hora_local`, `dias_restantes`, `estadio`, `en_vivo`, `marcador`, `minuto` y `siguientes` (los 3 partidos que vienen después) |
+| `sensor.futbol_<equipo>_ultimo_resultado` | «Ganó 2-1 vs Ñublense»; atributos `marcador`, `local`, `visita`, `fecha`, `forma` (últimos 5: `GEPPG`) y `ultimos` |
+| `sensor.futbol_<equipo>_posicion_en_la_tabla` | Posición; atributos `puntos`, `jugados`, `ganados`, `empatados`, `perdidos`, `goles_a_favor`, `goles_en_contra`, `diferencia_de_goles`, `lider`, `puntos_bajo_el_lider` |
+| `sensor.futbol_primera_division_tabla_de_posiciones` | El líder; atributo `tabla` con los 16 equipos (posición, PJ, PG, PE, PP, GF, GC, DG, Pts) |
+| `sensor.futbol_primera_division_proxima_fecha` | Cuándo parte la próxima fecha; atributo `partidos` con local, visita, hora, estadio y estado |
+| `sensor.futbol_primera_division_ultima_fecha` | Cantidad de partidos; atributo `resultados` con los marcadores de la última fecha |
+| `sensor.futbol_la_roja_proximo_partido` y `..._ultimo_resultado` | Lo mismo que para un equipo, para la selección en todas sus competencias (amistosos, Eliminatorias y Copa América). Si no hay partido programado, el próximo partido aparece «sin valor» |
+
+La lista de equipos corresponde a la Primera División 2026 y se actualiza cuando cambian los equipos de la liga.
 
 ### ⛽ Combustibles
 `sensor.combustibles_gasolina_93_mas_barata`, `..._95_...`, `..._97_...` y `sensor.combustibles_diesel_mas_barato` · precio más bajo en CLP por
@@ -671,6 +690,130 @@ content: |
   Mañana: {{ state_attr('sensor.santoral_santo_del_dia', 'mañana') }}
 ```
 
+### ⚽ Fútbol
+
+Tu equipo: próximo partido, último resultado y posición en la tabla (cambia `colo_colo` por tu equipo):
+
+![Próximo partido, último resultado y posición de Colo Colo](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/futbol-resumen.png)
+
+```yaml
+type: grid
+title: Colo Colo
+columns: 1
+square: false
+cards:
+  - type: tile
+    entity: sensor.futbol_colo_colo_proximo_partido
+    name: Próximo partido
+    show_entity_picture: true
+    state_content:
+      - state
+      - rival
+  - type: tile
+    entity: sensor.futbol_colo_colo_ultimo_resultado
+    name: Último resultado
+    show_entity_picture: true
+  - type: tile
+    entity: sensor.futbol_colo_colo_posicion_en_la_tabla
+    name: Posición en la tabla
+    show_entity_picture: true
+```
+
+Más detalle del próximo partido y de la campaña:
+
+![Detalle del próximo partido, la forma reciente y los puntos](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/futbol-detalle.png)
+
+```yaml
+type: entities
+title: Colo Colo
+entities:
+  - entity: sensor.futbol_colo_colo_proximo_partido
+    name: Próximo partido
+  - type: attribute
+    entity: sensor.futbol_colo_colo_proximo_partido
+    attribute: hora_local
+    name: Cuándo
+  - type: attribute
+    entity: sensor.futbol_colo_colo_proximo_partido
+    attribute: estadio
+    name: Dónde
+  - type: attribute
+    entity: sensor.futbol_colo_colo_ultimo_resultado
+    attribute: forma
+    name: Últimos 5 (G ganó, E empató, P perdió)
+  - type: attribute
+    entity: sensor.futbol_colo_colo_posicion_en_la_tabla
+    attribute: puntos
+    name: Puntos
+    suffix: pts
+  - type: attribute
+    entity: sensor.futbol_colo_colo_posicion_en_la_tabla
+    attribute: puntos_bajo_el_lider
+    name: Puntos bajo el líder
+```
+
+Los partidos de la próxima fecha de la Primera División:
+
+![Partidos de la próxima fecha con horario y estadio](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/futbol-proxima-fecha.png)
+
+```yaml
+type: markdown
+title: Próxima fecha
+content: |
+  {% for p in state_attr('sensor.futbol_primera_division_proxima_fecha', 'partidos') %}
+  **{{ p.local }}** vs **{{ p.visita }}**  
+  {{ p.hora_local }} · {{ p.estadio }}
+
+  {% else %}
+  No hay partidos programados.
+  {% endfor %}
+```
+
+Resultados de la última fecha:
+
+![Resultados de la última fecha](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/futbol-ultima-fecha.png)
+
+```yaml
+type: markdown
+title: Última fecha
+content: |
+  {% for r in state_attr('sensor.futbol_primera_division_ultima_fecha', 'resultados') %}
+  {{ r.local }} **{{ r.marcador }}** {{ r.visita }}  
+  {% endfor %}
+```
+
+Tabla de posiciones (los 8 primeros):
+
+![Tabla de posiciones de la Primera División](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/futbol-tabla.png)
+
+```yaml
+type: markdown
+title: Primera División
+content: |
+  | # | Equipo | PJ | DG | Pts |
+  |:-:|:--|:-:|:-:|:-:|
+  {% for f in state_attr('sensor.futbol_primera_division_tabla_de_posiciones', 'tabla')[:8] -%}
+  | {{ f.posicion }} | {{ f.equipo }} | {{ f.pj }} | {{ f.dg }} | **{{ f.pts }}** |
+  {% endfor %}
+```
+
+La Roja:
+
+![Último resultado y próximo partido de La Roja](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/futbol-roja.png)
+
+```yaml
+type: markdown
+title: La Roja 🇨🇱
+content: |
+  {% set n = 'sensor.futbol_la_roja_proximo_partido' %}
+  **Último:** {{ states('sensor.futbol_la_roja_ultimo_resultado') }}  
+  {% if states(n) not in ['unknown', 'unavailable'] %}
+  **Próximo:** vs {{ state_attr(n, 'rival') }} — {{ state_attr(n, 'hora_local') }} ({{ state_attr(n, 'competencia') }})
+  {% else %}
+  **Próximo:** sin partido programado
+  {% endif %}
+```
+
 ### ⛽ Combustibles
 
 La bencina y el diésel más baratos cerca de tu casa, con la marca de la estación:
@@ -821,6 +964,7 @@ necesidad de registrarte.
 | Farmacias de turno | Ministerio de Salud, [Farmanet](https://www.minsal.cl/farmanet/) |
 | Cartelera de cine | [Cinemark Chile](https://www.cinemark.cl) |
 | Efemérides | [efemerides.cl](https://www.efemerides.cl) y [Wikipedia en español](https://es.wikipedia.org) |
+| Fútbol | [ESPN](https://www.espn.cl/futbol/) (calendario, resultados y tabla; servicio público no documentado) |
 | Combustibles | [Bencina en Línea](https://www.bencinaenlinea.cl) (Comisión Nacional de Energía) |
 | Restricción vehicular | [Ministerio de Transportes](https://mtt.gob.cl/restriccion-vehicular-2026/): Resolución Exenta N° 1698/2026 (Seremi RM) |
 | Revisión técnica | [ChileAtiende](https://www.chileatiende.gob.cl/fichas/23978) (Subsecretaría de Transportes) |
