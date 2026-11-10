@@ -15,7 +15,15 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from . import api
 from .api import parse_stop_codes
 from .vehicle import VEHICLE_TYPES
+from .api import FUEL_LABELS
 from .const import (
+    CONF_FUEL_MAX_AGE,
+    CONF_FUEL_RADIUS,
+    CONF_FUEL_TYPES,
+    FUEL_DEFAULT_MAX_AGE,
+    FUEL_DEFAULT_RADIUS,
+    FUEL_MAX_AGES,
+    FUEL_RADII,
     CONF_VEHICLE_DIGIT,
     CONF_VEHICLE_TYPE,
     VEHICLE_NONE,
@@ -122,6 +130,31 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
+            vol.Required(
+                CONF_FUEL_TYPES, default=defaults.get(CONF_FUEL_TYPES, [])
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[selector.SelectOptionDict(value=k, label=v) for k, v in FUEL_LABELS.items()],
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(
+                CONF_FUEL_RADIUS, default=str(defaults.get(CONF_FUEL_RADIUS, FUEL_DEFAULT_RADIUS))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[selector.SelectOptionDict(value=str(r), label=f"{r} km") for r in FUEL_RADII],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(
+                CONF_FUEL_MAX_AGE, default=str(defaults.get(CONF_FUEL_MAX_AGE, FUEL_DEFAULT_MAX_AGE))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[selector.SelectOptionDict(value=str(d), label=f"{d} días") for d in FUEL_MAX_AGES],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             vol.Optional(
                 CONF_PHARMACY_COMUNA, default=defaults.get(CONF_PHARMACY_COMUNA, "")
             ): selector.TextSelector(),
@@ -140,6 +173,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or stops
         or any(user_input.get(k) for k in (CONF_METRO, CONF_QUAKES, CONF_HOLIDAYS, CONF_AIR, CONF_CRYPTO, CONF_BOLSA, CONF_SAINT, CONF_EPHEMERIDES))
         or user_input.get(CONF_PHARMACY_COMUNA, "").strip()
+        or bool(user_input.get(CONF_FUEL_TYPES))
         or user_input.get(CONF_CINEMA, CINEMA_NONE) != CINEMA_NONE
         or str(user_input.get(CONF_VEHICLE_DIGIT, VEHICLE_NONE)) != VEHICLE_NONE
     )

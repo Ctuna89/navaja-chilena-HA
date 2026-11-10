@@ -18,7 +18,10 @@
           "cinema": "Cine Cinemark para ver su cartelera de hoy",
           "ephemerides": "Efemérides chilenas de hoy (Wikipedia)",
           "vehicle_digit": "Último dígito de la patente de tu vehículo (restricción y revisión técnica)",
-          "vehicle_type": "Tipo de vehículo (para la restricción vehicular)"
+          "vehicle_type": "Tipo de vehículo (para la restricción vehicular)",
+          "fuel_types": "Combustibles más baratos cerca de tu casa (elige los que usas)",
+          "fuel_radius": "Radio de búsqueda de estaciones de servicio",
+          "fuel_max_age": "Antigüedad máxima de los precios de combustible"
         }
       }
     },
@@ -50,7 +53,10 @@
           "cinema": "Cine Cinemark para ver su cartelera de hoy",
           "ephemerides": "Efemérides chilenas de hoy (Wikipedia)",
           "vehicle_digit": "Último dígito de la patente de tu vehículo (restricción y revisión técnica)",
-          "vehicle_type": "Tipo de vehículo (para la restricción vehicular)"
+          "vehicle_type": "Tipo de vehículo (para la restricción vehicular)",
+          "fuel_types": "Combustibles más baratos cerca de tu casa (elige los que usas)",
+          "fuel_radius": "Radio de búsqueda de estaciones de servicio",
+          "fuel_max_age": "Antigüedad máxima de los precios de combustible"
         }
       }
     },

@@ -302,3 +302,83 @@ def test_efemerides_cl_invalid_pages():
                 f"<title>Efemérides de Chile - Febrero 2026</title>{row}"):        # filas de otro mes
         with pytest.raises(api.NavajaApiError):
             api.parse_efemerides_cl(bad)
+
+
+# --------------------------------------------------------------- Combustibles
+
+from datetime import datetime  # noqa: E402
+from zoneinfo import ZoneInfo  # noqa: E402
+
+NOW = datetime(2026, 11, 10, 12, 0, tzinfo=ZoneInfo("America/Santiago"))
+SANTIAGO = (-33.4489, -70.6693)
+
+
+def fuel_stations():
+    brands = api.parse_brands(load("combustibles_marcas.json"))
+    return api.parse_stations(load("combustibles_estaciones.json"), brands), brands
+
+
+def test_fuel_brands_and_stations_real_sample():
+    stations, brands = fuel_stations()
+    assert {"Copec", "Shell", "Aramco"} <= {b[0] for b in brands.values()}        # nombres legibles
+    assert len(stations) >= 40 and all(s.brand and not s.brand.startswith("Marca ") for s in stations)
+    assert all(-56 <= s.lat <= -17 for s in stations)
+
+
+def test_fuel_invalid_data_is_discarded():
+    raw = load("combustibles_estaciones.json")["data"]
+    stations, _ = fuel_stations()
+    ids = {s.id for s in stations}
+    absurd = next(e for e in raw if e["id"] == 721)                    # precio de $3
+    assert all(p.price >= api.PRICE_MIN for s in stations for p in s.prices.values())
+    assert 721 not in ids or "93" not in next(s for s in stations if s.id == 721).prices
+    assert 2233 not in ids                                              # en mantenimiento
+    comma = next(e for e in raw if e["id"] == 400)                      # latitud con coma decimal
+    assert "," in str(comma["latitud"]) and 400 in ids                  # se interpreta bien
+    assert absurd["id"] == 721
+
+
+def test_fuel_prefers_self_service_then_assisted():
+    raw = {"data": [
+        {"id": 1, "marca": 5, "direccion": "A 1", "latitud": "-33.4", "longitud": "-70.6", "region": "RM", "comuna": "X",
+         "gasolinera_bandera": 1, "en_mantenimiento_bandera": 0, "combustibles": [
+            {"nombre_corto": "93", "suministra": 1, "precio": "1600.000", "precio_fecha": "2026-11-09 10:00:00"},
+            {"nombre_corto": "A93", "suministra": 1, "precio": "1590.000", "precio_fecha": "2026-11-09 10:00:00"},
+            {"nombre_corto": "A97", "suministra": 1, "precio": "1700.000", "precio_fecha": "2026-11-09 10:00:00"}]}]}
+    s = api.parse_stations(raw)[0]
+    assert (s.prices["93"].price, s.prices["93"].attention) == (1600.0, "autoservicio")   # no mezcla niveles
+    assert (s.prices["97"].price, s.prices["97"].attention) == (1700.0, "asistido")       # solo hay asistido
+    assert "95" not in s.prices and s.brand == "Marca 5"
+
+
+def test_fuel_cheapest_nearby_filters_radius_and_age():
+    stations, _ = fuel_stations()
+    near = api.cheapest_nearby(stations, "93", *SANTIAGO, radius_km=5, now=NOW)
+    assert near and near == sorted(near, key=lambda c: (c.price.price, c.distance_km))
+    assert all(c.distance_km <= 5 for c in near)
+    assert all((NOW - c.price.updated).days <= api.PRICE_MAX_AGE_DAYS for c in near)
+    wide = api.cheapest_nearby(stations, "93", *SANTIAGO, radius_km=20, now=NOW)
+    assert len(wide) >= len(near)
+    stale = api.cheapest_nearby(stations, "93", *SANTIAGO, radius_km=20, now=NOW, max_age_days=0)
+    assert len(stale) < len(wide)                                      # el filtro de antigüedad funciona
+    old = next(s for s in stations if s.id == 1146)                    # precio de hace meses
+    assert all(c.station.id != 1146 for c in wide)
+    assert old.prices["93"].updated < NOW.replace(month=8)
+    assert api.cheapest_nearby(stations, "93", -53.1, -70.9, 5, NOW) == []      # Punta Arenas: nada cerca
+
+
+def test_fuel_brand_names():
+    assert api._brand_name("COPEC") == "Copec" and api._brand_name("JLC") == "JLC" and api._brand_name("HN") == "HN"
+    assert api._brand_name("Gasco Autogas") == "Gasco Autogas" and api._brand_name(" SHELL ") == "Shell"
+
+
+def test_fuel_invalid_responses():
+    for bad in (None, [], {}, {"data": "x"}, {"data": []}, {"data": [{"gasolinera_bandera": 0}]}):
+        with pytest.raises(api.NavajaApiError):
+            api.parse_stations(bad)
+    assert api.parse_brands(None) == {} and api.parse_brands({"data": [{"id": "x"}]}) == {}
+
+
+def test_haversine():
+    assert api.haversine_km(*SANTIAGO, *SANTIAGO) == 0
+    assert 0.92 < api.haversine_km(-33.4489, -70.6693, -33.4489, -70.6593) < 0.94    # 0,01° de longitud = 111,3 km·cos(33,4°)·0,01

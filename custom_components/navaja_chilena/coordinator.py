@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from . import api
 from .const import (
+    FUEL_INTERVAL,
     CINEMA_INTERVAL,
     BOLSA_INTERVAL,
     CRYPTO_INTERVAL,
@@ -200,3 +201,12 @@ def ephemerides_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
         return {"day": today, "cl": cache["cl"], "wiki": cache["wiki"]}
 
     return NavajaCoordinator(hass, "efemerides", EPHEMERIDES_INTERVAL, fetch)
+
+
+def fuel_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
+    brands: dict[int, tuple[str, str | None]] = {}
+
+    async def fetch(session: Any) -> list[api.Station]:
+        return await api.fetch_fuel(session, brands)
+
+    return NavajaCoordinator(hass, "combustibles", FUEL_INTERVAL, fetch)

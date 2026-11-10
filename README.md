@@ -24,6 +24,7 @@ feriados, efemérides y mucho más, en una sola integración que se instala en u
 | 💊 **Farmacias de turno** | Las farmacias de turno de tu comuna, con dirección, horario y teléfono |
 | 🎬 **Cartelera de cine** | La cartelera de hoy de tu cine Cinemark favorito, o **el más cercano a tu casa** |
 | 🇨🇱 **Efemérides** | Los días significativos y las efemérides chilenas de hoy, y el próximo día significativo |
+| ⛽ **Combustibles** | Dónde está la bencina (93, 95, 97) o el diésel más barato cerca de tu casa, con precio, marca, dirección y distancia |
 | 🚗 **Restricción vehicular y revisión técnica** | Con el último dígito de tu patente: si hoy tienes restricción, tu próximo día con restricción y el mes de tu revisión técnica |
 | ✝️ **Santoral** | El santo del día (y el de mañana), sin necesidad de internet |
 
@@ -53,6 +54,7 @@ El asistente te pregunta qué quieres activar:
 - el **Metro**, los **sismos**, los **feriados**, el **IPSA**, el **santoral**, las **efemérides**, la **calidad del aire** y las **criptomonedas** (un interruptor cada uno),
 - tus **paraderos** (códigos separados por coma, por ejemplo `PC615, PA433`; se comprueba que existan),
 - tu **comuna** para las farmacias de turno,
+- los **combustibles** que usas (93, 95, 97 o diésel), el **radio** de búsqueda alrededor de tu casa y la **antigüedad máxima** de los precios,
 - el **último dígito de tu patente** y el tipo de vehículo, para la restricción vehicular y la revisión técnica,
 - tu **cine** Cinemark: uno de los 22 cines del país, o *«El más cercano a mi casa»* según la ubicación de tu Home Assistant.
 
@@ -120,6 +122,21 @@ Cines disponibles: los 22 de **Cinemark** en Chile.
   `resumen` y `fuentes`.
 - `sensor.efemerides_chilenas_proximo_dia_significativo`: título, `fecha`, `dias_restantes` y `descripcion`. La lista de días
   significativos corresponde al mes en curso, así que tras el último del mes el sensor se muestra «no disponible» hasta que cambia el mes.
+
+### ⛽ Combustibles
+`sensor.combustibles_gasolina_93_mas_barata`, `..._95_...`, `..._97_...` y `sensor.combustibles_diesel_mas_barato` · precio más bajo en CLP por
+litro entre las estaciones de servicio dentro del radio elegido (2, 5, 10 o 20 km) alrededor de la ubicación de tu Home Assistant ·
+actualización cada 3 horas.
+
+- Atributos: `marca`, `direccion`, `comuna`, `distancia_km`, `actualizado` y `antiguedad_dias` (cuándo informó el precio la estación), `atencion`
+  (autoservicio o asistido), `promedio_en_radio`, `estaciones_en_radio`, `mas_baratas` (las 5 más baratas) y `latitude`/`longitude`
+  de la estación. La imagen de la entidad es el logo de la marca.
+- Los precios los informan las propias estaciones a la Comisión Nacional de Energía cuando los cambian, y muchas tardan en hacerlo: un
+  precio viejo suele ser **más bajo que el actual** y daría un «más barato» engañoso. Por eso solo se consideran los precios informados
+  en los últimos **14 días** (puedes elegir 7, 14 o 30). Con un tope más estricto hay menos estaciones; si ninguna cumple, el sensor
+  queda sin valor. También se ignoran los valores imposibles. Si una estación tiene precio de autoservicio se usa ese; si solo tiene
+  atención asistida, se usa el asistido.
+- Si ninguna estación del radio tiene un precio vigente, el sensor queda sin valor y el atributo `motivo` lo explica.
 
 ### 🚗 Mi vehículo: restricción vehicular y revisión técnica
 Eliges el **último dígito** de tu patente y el **tipo de vehículo**. No usa internet: las reglas están incluidas en la integración y se
@@ -654,6 +671,75 @@ content: |
   Mañana: {{ state_attr('sensor.santoral_santo_del_dia', 'mañana') }}
 ```
 
+### ⛽ Combustibles
+
+La bencina y el diésel más baratos cerca de tu casa, con la marca de la estación:
+
+![Precio de la bencina 93 y el diésel más baratos cerca, con la marca](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/combustibles-resumen.png)
+
+```yaml
+type: grid
+title: Combustible más barato cerca
+columns: 2
+square: false
+cards:
+  - type: tile
+    entity: sensor.combustibles_gasolina_93_mas_barata
+    name: Bencina 93
+    show_entity_picture: true
+    state_content:
+      - state
+      - marca
+  - type: tile
+    entity: sensor.combustibles_diesel_mas_barato
+    name: Diésel
+    show_entity_picture: true
+    state_content:
+      - state
+      - marca
+```
+
+Las 5 estaciones más baratas de bencina 93:
+
+![Las cinco estaciones más baratas de bencina 93 con dirección y distancia](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/combustibles-ranking.png)
+
+```yaml
+type: markdown
+title: Bencina 93 más barata
+content: |
+  {% for e in state_attr('sensor.combustibles_gasolina_93_mas_barata', 'mas_baratas') %}
+  **${{ '{:,.0f}'.format(e.precio) | replace(',', '.') }}** · {{ e.marca }} — {{ e.direccion }}, {{ e.comuna }} ({{ e.distancia_km }} km)  
+  {% else %}
+  No hay estaciones con precio vigente cerca.
+  {% endfor %}
+```
+
+Precio, promedio de la zona y cuántas estaciones hay:
+
+![Precio, promedio de la zona, estaciones y antigüedad del precio](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/combustibles-detalle.png)
+
+```yaml
+type: entities
+title: Bencina 93 cerca de ti
+entities:
+  - entity: sensor.combustibles_gasolina_93_mas_barata
+    name: Más barata
+  - type: attribute
+    entity: sensor.combustibles_gasolina_93_mas_barata
+    attribute: promedio_en_radio
+    name: Promedio de la zona
+    suffix: CLP/L
+  - type: attribute
+    entity: sensor.combustibles_gasolina_93_mas_barata
+    attribute: estaciones_en_radio
+    name: Estaciones en el radio
+  - type: attribute
+    entity: sensor.combustibles_gasolina_93_mas_barata
+    attribute: antiguedad_dias
+    name: Precio informado hace
+    suffix: días
+```
+
 ### 🚗 Mi vehículo
 
 Restricción de hoy, dígitos restringidos, próxima fecha y mes de revisión técnica:
@@ -735,6 +821,7 @@ necesidad de registrarte.
 | Farmacias de turno | Ministerio de Salud, [Farmanet](https://www.minsal.cl/farmanet/) |
 | Cartelera de cine | [Cinemark Chile](https://www.cinemark.cl) |
 | Efemérides | [efemerides.cl](https://www.efemerides.cl) y [Wikipedia en español](https://es.wikipedia.org) |
+| Combustibles | [Bencina en Línea](https://www.bencinaenlinea.cl) (Comisión Nacional de Energía) |
 | Restricción vehicular | [Ministerio de Transportes](https://mtt.gob.cl/restriccion-vehicular-2026/): Resolución Exenta N° 1698/2026 (Seremi RM) |
 | Revisión técnica | [ChileAtiende](https://www.chileatiende.gob.cl/fichas/23978) (Subsecretaría de Transportes) |
 | Criptomonedas | [Buda.com](https://www.buda.com) |

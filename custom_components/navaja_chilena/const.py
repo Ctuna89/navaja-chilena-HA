@@ -131,3 +131,17 @@ EPHEMERIDES_CL_URL = "https://www.efemerides.cl/"  # días significativos del me
 CONF_VEHICLE_DIGIT = "vehicle_digit"
 CONF_VEHICLE_TYPE = "vehicle_type"
 VEHICLE_NONE = "none"
+
+# Combustibles (Bencina en Línea, Comisión Nacional de Energía)
+CONF_FUEL_TYPES = "fuel_types"
+CONF_FUEL_RADIUS = "fuel_radius"
+FUEL_URL = "https://api.bencinaenlinea.cl/api/busqueda_estacion_filtro"
+FUEL_BRANDS_URL = "https://api.bencinaenlinea.cl/api/marca"
+FUEL_INTERVAL = timedelta(hours=3)
+FUEL_BRANDS_REFETCH = timedelta(hours=24)
+FUEL_DEFAULT_TYPES = ["93", "DI"]
+FUEL_RADII = (2, 5, 10, 20)
+FUEL_DEFAULT_RADIUS = 5
+CONF_FUEL_MAX_AGE = "fuel_max_age"
+FUEL_MAX_AGES = (7, 14, 30)
+FUEL_DEFAULT_MAX_AGE = 14   # días: los precios más viejos suelen estar desactualizados

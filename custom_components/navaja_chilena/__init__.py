@@ -9,8 +9,13 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .api import nearest_theater, parse_stop_codes
+from .api import FUEL_LABELS, nearest_theater, parse_stop_codes
 from .const import (
+    CONF_FUEL_MAX_AGE,
+    CONF_FUEL_RADIUS,
+    CONF_FUEL_TYPES,
+    FUEL_DEFAULT_MAX_AGE,
+    FUEL_DEFAULT_RADIUS,
     CONF_EPHEMERIDES,
     CINEMA_NEAREST,
     CINEMA_NONE,
@@ -33,6 +38,7 @@ from .const import (
 )
 from .vehicle import VEHICLE_TYPES
 from .coordinator import (
+    fuel_coordinator,
     NavajaCoordinator,
     air_coordinator,
     bolsa_coordinator,
@@ -66,6 +72,10 @@ class RuntimeData:
     cinema_slug: str = ""
     ephemerides: NavajaCoordinator | None = None
     pharmacy_comuna: str = ""
+    fuel: NavajaCoordinator | None = None
+    fuel_types: list[str] = field(default_factory=list)
+    fuel_radius: float = FUEL_DEFAULT_RADIUS
+    fuel_max_age: int = FUEL_DEFAULT_MAX_AGE
     holidays_visible: bool = False   # crear los sensores de feriados (el dato se usa también por Metro y vehículo)
     vehicle_digit: int | None = None
     vehicle_type: str = "sello_verde"
@@ -124,6 +134,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         vtype = opts.get(CONF_VEHICLE_TYPE)
         data.vehicle_type = vtype if vtype in VEHICLE_TYPES else "sello_verde"
     data.holidays_visible = bool(opts.get(CONF_HOLIDAYS))
+    fuel_types = [f for f in (opts.get(CONF_FUEL_TYPES) or []) if f in FUEL_LABELS]
+    if fuel_types:
+        data.fuel_types = fuel_types
+        try:
+            data.fuel_radius = float(opts.get(CONF_FUEL_RADIUS, FUEL_DEFAULT_RADIUS))
+        except (TypeError, ValueError):
+            data.fuel_radius = FUEL_DEFAULT_RADIUS
+        try:
+            data.fuel_max_age = int(opts.get(CONF_FUEL_MAX_AGE, FUEL_DEFAULT_MAX_AGE))
+        except (TypeError, ValueError):
+            data.fuel_max_age = FUEL_DEFAULT_MAX_AGE
+        data.fuel = fuel_coordinator(hass)
     # Los festivos también los necesitan el horario del Metro y la restricción vehicular.
     if data.holidays_visible or opts.get(CONF_METRO) or data.vehicle_digit is not None:
         data.holidays = holidays_coordinator(hass)
@@ -150,7 +172,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     coordinators = [
         c
         for c in (data.indicators, data.metro, data.stops, data.quakes,
-                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides)
+                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel)
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]
