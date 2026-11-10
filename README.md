@@ -1,68 +1,132 @@
 # Navaja Chilena 🇨🇱
 
-Integración para Home Assistant (instalable vía HACS) con datos útiles de Chile.
+**La navaja suiza de Home Assistant para Chile.** Indicadores económicos, Metro, paraderos, sismos, cartelera de cine,
+feriados, efemérides y mucho más, en una sola integración que se instala en un minuto y no necesita claves de API.
 
-## Qué incluye
+[![Añadir a HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Ctuna89&repository=navaja-chilena-HA&category=integration)
 
-| Módulo | Datos | Fuente | Actualización |
-|---|---|---|---|
-| Indicadores económicos | UF, dólar, euro, UTM, IPC, IVP, Imacec, TPM, cobre, desempleo, bitcoin, yen, dólar acuerdo | [mindicador.cl](https://mindicador.cl), con respaldo en [findic.cl](https://findic.cl) | 1 h |
-| Metro de Santiago | Estado por línea (`operativa`, `con_problemas` o `cerrada` fuera de horario) y por estación | api.xor.cl | 2 min |
-| Paraderos | Minutos al próximo bus y detalle por recorrido | api.xor.cl (Red Movilidad) | 1 min |
-| Sismos | Último sismo del CSN (en español) y último sismo con coordenadas (USGS, para el mapa) | api.gael.cloud (CSN) y [USGS](https://earthquake.usgs.gov/fdsnws/event/1/) | 5 min |
-| Feriados | Próximo feriado, días que faltan, si es irrenunciable | [boostr.cl](https://api.boostr.cl) | 1 h |
-| Calidad del aire y UV | PM2.5, PM10, US AQI e índice UV en la ubicación de Home Assistant | [Open-Meteo](https://open-meteo.com) | 30 min |
-| Farmacias de turno | Cantidad y detalle de farmacias de turno en tu comuna | MINSAL (Farmanet) | 6 h |
-| Bolsa de Santiago | Último cierre del IPSA, variación en puntos y en %, y cierre anterior | [findic.cl](https://findic.cl) | 30 min |
-| Santoral | Santo del día (y el de mañana), sin internet | incluido en la integración | a medianoche |
-| Cine | Cartelera de hoy de tu cine Cinemark favorito o **el más cercano a tu casa**: películas, horarios, formato, sala y duración | cinemark.cl (lectura de su página) | 3 h |
-| Efemérides | Días significativos y efemérides de Chile de hoy, y el próximo día significativo | [efemerides.cl](https://www.efemerides.cl) + [Wikipedia en español](https://es.wikipedia.org) (complemento) | 1 consulta al día por fuente |
-| Criptomonedas | Bitcoin y Ethereum en pesos, con variación 24 h y 7 d | [Buda.com](https://www.buda.com) | 5 min |
+[![HACS](https://img.shields.io/badge/HACS-personalizado-41BDF5.svg)](https://hacs.xyz)
+[![Última versión](https://img.shields.io/github/v/release/Ctuna89/navaja-chilena-HA?label=versi%C3%B3n)](https://github.com/Ctuna89/navaja-chilena-HA/releases)
+[![Licencia](https://img.shields.io/github/license/Ctuna89/navaja-chilena-HA)](LICENSE)
 
-No requiere claves de API.
+## Todo lo que necesitas de Chile en tu Home Assistant
+
+| | |
+|---|---|
+| 💰 **Indicadores económicos** | UF, dólar, euro, UTM, IPC, IVP, Imacec, TPM, cobre, desempleo, yen y más |
+| 📈 **Bolsa de Santiago** | Último cierre del IPSA con su variación diaria en puntos y en % |
+| 🪙 **Criptomonedas** | Bitcoin y Ethereum en pesos chilenos, con variación de 24 horas y 7 días |
+| 🚇 **Metro de Santiago** | Estado de cada línea y de sus estaciones, y aviso de **red cerrada** fuera de horario |
+| 🚌 **Paraderos** | Minutos para el próximo bus en cada paradero de Red Movilidad, por recorrido |
+| 🌋 **Sismos** | Último sismo del Centro Sismológico Nacional y otro con coordenadas para verlo en un mapa |
+| 📅 **Feriados** | Próximo feriado, cuántos días faltan y si es irrenunciable |
+| 🌫️ **Calidad del aire y UV** | PM2.5, PM10, índice de calidad del aire e índice UV donde vives |
+| 💊 **Farmacias de turno** | Las farmacias de turno de tu comuna, con dirección, horario y teléfono |
+| 🎬 **Cartelera de cine** | La cartelera de hoy de tu cine Cinemark favorito, o **el más cercano a tu casa** |
+| 🇨🇱 **Efemérides** | Los días significativos y las efemérides chilenas de hoy, y el próximo día significativo |
+| ✝️ **Santoral** | El santo del día (y el de mañana), sin necesidad de internet |
+
+## Por qué Navaja Chilena
+
+- **Sin claves de API ni cuentas.** Instalas y funciona.
+- **Tú eliges qué usar.** Cada módulo se activa o desactiva desde la interfaz, y puedes cambiarlo cuando quieras.
+- **Resistente.** Cada módulo es independiente: si una fuente no responde, solo sus sensores quedan «no disponibles» y el
+  resto sigue funcionando. Nunca se muestra un dato inventado: si el Metro no responde, no verás «operativa» por defecto.
+- **Pensada para Chile.** Horario real del Metro, hora de Santiago, formatos y textos en español (también disponible en inglés).
+- **Tarjetas listas para copiar.** Más abajo hay [22 ejemplos](#tarjetas-de-ejemplo) para pegar en tu panel.
 
 ## Instalación
 
-1. HACS → ⋮ → *Repositorios personalizados* → pega `https://github.com/Ctuna89/navaja-chilena-HA` y elige categoría **Integración**.
-2. Instala *Navaja Chilena* y reinicia Home Assistant.
-3. *Ajustes → Dispositivos y servicios → Añadir integración → Navaja Chilena*.
+### Con HACS (recomendado)
 
-## Configuración
+1. Pulsa el botón **Añadir a HACS** de arriba, o en HACS → ⋮ → *Repositorios personalizados* pega
+   `https://github.com/Ctuna89/navaja-chilena-HA` y elige la categoría **Integración**.
+2. Instala **Navaja Chilena** y reinicia Home Assistant.
+3. Ve a *Ajustes → Dispositivos y servicios → Añadir integración* y busca **Navaja Chilena**.
 
-En el asistente eliges los indicadores, si quieres el Metro y los códigos de paradero
-separados por coma (ej. `PC615, PA433`). Todo se puede cambiar después en *Configurar*.
+### Configuración
 
-## Entidades
+El asistente te pregunta qué quieres activar:
 
-Los ids llevan el nombre del dispositivo como prefijo (por ejemplo `sensor.indicadores_economicos_uf`).
+- los **indicadores** que te interesan (UF, dólar, euro…),
+- el **Metro**, los **sismos**, los **feriados**, el **IPSA**, el **santoral**, las **efemérides**, la **calidad del aire** y las **criptomonedas** (un interruptor cada uno),
+- tus **paraderos** (códigos separados por coma, por ejemplo `PC615, PA433`; se comprueba que existan),
+- tu **comuna** para las farmacias de turno,
+- tu **cine** Cinemark: uno de los 22 cines del país, o *«El más cercano a mi casa»* según la ubicación de tu Home Assistant.
 
-- **Indicadores**: `sensor.indicadores_economicos_<indicador>`: valor numérico; atributo `fecha`.
-- **Metro**: `sensor.metro_de_santiago_linea_1`, `..._linea_2`, etc.: `operativa` / `con_problemas` / `cerrada`;
-  atributos `mensaje`, `estaciones` (estado de cada una), `estaciones_con_problemas`, `horario_apertura`, `horario_cierre`.
-  El horario se calcula en la integración (hora de Santiago): lun-vie 06:00–23:00, sáb 06:30–23:00,
-  domingo y festivos 07:30–23:00 (para los festivos activa también el módulo de feriados).
-  La API del Metro solo lista las líneas con incidentes (sin incidentes responde `lines: []`), así que una línea no listada es operativa únicamente si la respuesta es válida. **Si la fuente falla o no se entiende, el sensor queda «no disponible»; nunca se asume «operativa».**
-- **Paraderos**: `sensor.paraderos_red_movilidad_paradero_<código>`: minutos al próximo bus; atributos `estado` y `recorridos`.
-  Al configurar, se comprueba que el código exista. Solo se listan los recorridos con buses en camino (`recorridos_sin_buses` trae el resto).
-- **Sismos**: `sensor.sismos_chile_ultimo_sismo_csn` (magnitud, `referencia`, `profundidad_km`, `fecha` tal como la publica el CSN; sin coordenadas) y `sensor.sismos_chile_ultimo_sismo_con_coordenadas_usgs` (además `latitude`/`longitude`, para la tarjeta de mapa).
-- **IPSA**: `sensor.bolsa_de_santiago_ipsa`: último cierre en puntos; atributos `variacion_puntos`, `variacion_pct`, `fecha_cierre`, `cierre_anterior`, `fecha_cierre_anterior`. Es un dato de cierre diario (la bolsa no opera fines de semana ni feriados).
-- **Santoral**: `sensor.santoral_santo_del_dia`; atributos `fecha` y `mañana`. Usa el santoral católico tradicional (archivo `santoral.py`); otros calendarios pueden asignar un santo distinto a algunos días y se puede editar.
-- **Cine**: `sensor.<nombre del cine>_cartelera_de_hoy`: cantidad de películas hoy; atributos `peliculas` (título, duración, género, póster y `funciones` con hora, formato y sala), `resumen` (texto listo para una tarjeta Markdown), `proxima_funcion` y `fecha`. Las funciones de trasnoche (antes de las 05:00) cuentan para el día anterior.
-- **Efemérides**: `sensor.efemerides_chilenas_efemerides_de_hoy`: la efeméride principal de hoy. Primero van los días significativos de efemerides.cl (hechos históricos y días conmemorativos, con descripción) y después, como complemento, lo chileno de Wikipedia (sucesos, fallecimientos y nacimientos). Atributos `efemerides` (hasta 10, cada una con `fuente` y `enlace`), `total`, `resumen` y `fuentes` (cuáles respondieron). Si hoy no hay nada, el estado es «Sin efemérides chilenas registradas para hoy». Si una fuente cae, la otra sigue funcionando.
-- **Próximo día significativo**: `sensor.efemerides_chilenas_proximo_dia_significativo`: título, `fecha`, `dias_restantes`, `descripcion` y otros que caen ese mismo día. efemerides.cl solo publica el mes en curso, así que el último día del mes (o tras el último día significativo) el sensor queda «no disponible» hasta el cambio de mes.
-- **Criptomonedas**: `sensor.criptomonedas_buda_bitcoin` y `..._ethereum`: precio en CLP; atributos `variacion_24h_pct`, `variacion_7d_pct`, `volumen_24h`.
-- **Feriados**: `sensor.feriados_chile_proximo_feriado` (fecha) y `sensor.feriados_chile_dias_para_el_proximo_feriado`.
-- **Aire y UV**: `sensor.calidad_del_aire_y_uv_pm2_5`, `..._pm10`, `..._indice_de_calidad_del_aire_us_aqi`, `..._indice_uv`.
-- **Farmacias**: `sensor.farmacias_de_turno_<comuna>`: cantidad; atributo `farmacias` (hasta 20, con dirección, teléfono y coordenadas).
+Todo se puede cambiar después en *Configurar*, sin reinstalar.
 
-Cada módulo funciona por separado: si una fuente cae, solo sus sensores quedan «no disponibles» y se reintenta con
-espera creciente (hasta 30 min), con un único aviso en el registro.
+## Detalle de cada módulo
+
+Los ids de las entidades llevan como prefijo el nombre del dispositivo (por ejemplo `sensor.indicadores_economicos_uf`).
+
+### 💰 Indicadores económicos
+`sensor.indicadores_economicos_<indicador>` · actualización cada hora · atributo `fecha` con el día del valor.
+Disponibles: UF, dólar observado, euro, UTM, IPC, IVP, Imacec, TPM, libra de cobre, tasa de desempleo, bitcoin (USD), yen y dólar acuerdo.
+
+### 📈 Bolsa de Santiago
+`sensor.bolsa_de_santiago_ipsa` · último cierre del IPSA en puntos · atributos `variacion_puntos`, `variacion_pct`,
+`fecha_cierre`, `cierre_anterior` y `fecha_cierre_anterior`. Es un dato de cierre diario: no cambia los fines de semana ni los feriados.
+
+### 🪙 Criptomonedas
+`sensor.criptomonedas_buda_bitcoin` y `sensor.criptomonedas_buda_ethereum` · precio en CLP · atributos `variacion_24h_pct`,
+`variacion_7d_pct` y `volumen_24h` · actualización cada 5 minutos.
+
+### 🚇 Metro de Santiago
+`sensor.metro_de_santiago_linea_1` … `_linea_6` y `_linea_4a` · estado `operativa`, `con_problemas` o `cerrada` ·
+actualización cada 2 minutos.
+
+- Atributos: `mensaje`, `estaciones` (estado de cada una), `estaciones_con_problemas`, `horario_apertura` y `horario_cierre`.
+- **Horario de servicio** (hora de Santiago): lunes a viernes 06:00–23:00, sábado 06:30–23:00, domingo y festivos 07:30–23:00.
+  Fuera de ese horario todas las líneas y estaciones figuran como `cerrada`. Para que los festivos cuenten como domingo, activa también el módulo de feriados.
+- Si la fuente no responde, el sensor queda «no disponible».
+
+### 🚌 Paraderos
+`sensor.paraderos_red_movilidad_paradero_<código>` · minutos para el próximo bus · actualización cada minuto.
+Atributos: `nombre`, `estado`, `recorridos` (cada recorrido con sus minutos y buses en camino) y `recorridos_sin_buses`.
+
+### 🌋 Sismos
+- `sensor.sismos_chile_ultimo_sismo_csn`: magnitud del último sismo del Centro Sismológico Nacional, con `referencia`
+  (ubicación en español), `profundidad_km` y `fecha`.
+- `sensor.sismos_chile_ultimo_sismo_con_coordenadas_usgs`: el último sismo en Chile con `latitude` y `longitude`, ideal para la tarjeta de mapa.
+
+Actualización cada 5 minutos.
+
+### 📅 Feriados
+`sensor.feriados_chile_proximo_feriado` (fecha, con `nombre`, `tipo` e `irrenunciable`) y
+`sensor.feriados_chile_dias_para_el_proximo_feriado`.
+
+### 🌫️ Calidad del aire y UV
+`sensor.calidad_del_aire_y_uv_pm2_5`, `..._pm10`, `..._indice_de_calidad_del_aire_us_aqi` y `..._indice_uv`, calculados para la
+ubicación configurada en tu Home Assistant · actualización cada 30 minutos.
+
+### 💊 Farmacias de turno
+`sensor.farmacias_de_turno_<comuna>` · cantidad de farmacias de turno hoy · atributo `farmacias` (hasta 20, con nombre,
+dirección, horario, teléfono y coordenadas) · datos del servicio Farmanet del Ministerio de Salud.
+
+### 🎬 Cartelera de cine
+`sensor.<nombre del cine>_cartelera_de_hoy` · cantidad de películas en cartelera hoy · actualización cada 3 horas.
+Atributos: `peliculas` (título, duración, género, póster y las funciones con hora, formato y sala), `resumen` (texto listo para
+una tarjeta), `proxima_funcion` y `fecha`. Las funciones de trasnoche (antes de las 05:00) cuentan para el día anterior.
+Cines disponibles: los 22 de **Cinemark** en Chile.
+
+### 🇨🇱 Efemérides
+- `sensor.efemerides_chilenas_efemerides_de_hoy`: la efeméride principal de hoy. Primero aparecen los días significativos de
+  Chile (hechos históricos y días conmemorativos, con su descripción) y después, como complemento, los sucesos, fallecimientos y
+  nacimientos chilenos de «Un día como hoy». Atributos: `efemerides` (hasta 10, cada una con su `fuente` y `enlace`), `total`,
+  `resumen` y `fuentes`.
+- `sensor.efemerides_chilenas_proximo_dia_significativo`: título, `fecha`, `dias_restantes` y `descripcion`. La lista de días
+  significativos corresponde al mes en curso, así que tras el último del mes el sensor se muestra «no disponible» hasta que cambia el mes.
+
+### ✝️ Santoral
+`sensor.santoral_santo_del_dia` · atributos `fecha` y `mañana`. Usa el santoral católico tradicional; está incluido en la
+integración (`santoral.py`), funciona sin internet y puedes editarlo si tu calendario difiere en algún día.
 
 ## Tarjetas de ejemplo
 
-Todas usan tarjetas nativas de Home Assistant (no requieren HACS frontend). Para usarlas: *Panel → ⋮ → Editar →
-Añadir tarjeta → Manual*, y pega el YAML. Los ids son los que crea la integración; **ajusta el de tu cine, tu comuna y tus
-paraderos** (los ves en *Ajustes → Dispositivos y servicios → Navaja Chilena*).
+Listas para copiar y pegar: usan solo tarjetas que ya trae Home Assistant, sin instalar nada extra. En tu panel pulsa
+*⋮ → Editar panel → Añadir tarjeta → Manual* y pega el YAML. Reemplaza el cine, la comuna y los paraderos de los ejemplos
+por los tuyos (los ids los ves en *Ajustes → Dispositivos y servicios → Navaja Chilena*).
 
 ### 💰 Indicadores económicos
 
@@ -457,42 +521,42 @@ content: |
   🇨🇱 {{ states('sensor.efemerides_chilenas_efemerides_de_hoy') }}
 ```
 
-## Actualizar desde la versión 1.x
+## Fuentes de datos y créditos
 
-La versión anterior usaba otros nombres de entidad y otra configuración. Tras actualizar en HACS (*⋮ → Volver a descargar*)
-y reiniciar, lo más limpio es **eliminar la integración en Dispositivos y servicios y volver a añadirla**.
-Las tarjetas que usaban `sensor.navaja_*` o `sensor.metro_l1` deberán apuntar a los ids nuevos.
+Navaja Chilena reúne información publicada por servicios públicos y abiertos. Todos se consultan con moderación y sin
+necesidad de registrarte.
 
-## Desarrollo
+| Módulo | Fuente |
+|---|---|
+| Indicadores económicos e IPSA | [mindicador.cl](https://mindicador.cl) y [findic.cl](https://findic.cl) |
+| Metro y paraderos | [api.xor.cl](https://api.xor.cl) (datos del Metro de Santiago y de Red Movilidad) |
+| Sismos | Centro Sismológico Nacional (vía api.gael.cloud) y [USGS](https://earthquake.usgs.gov) |
+| Feriados | [boostr.cl](https://api.boostr.cl) |
+| Calidad del aire y UV | [Open-Meteo](https://open-meteo.com) |
+| Farmacias de turno | Ministerio de Salud, [Farmanet](https://www.minsal.cl/farmanet/) |
+| Cartelera de cine | [Cinemark Chile](https://www.cinemark.cl) |
+| Efemérides | [efemerides.cl](https://www.efemerides.cl) y [Wikipedia en español](https://es.wikipedia.org) |
+| Criptomonedas | [Buda.com](https://www.buda.com) |
+
+Los textos de Wikipedia están bajo licencia [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es); cada
+efeméride indica su fuente y enlaza a su artículo. Los nombres y marcas pertenecen a sus respectivos titulares; Navaja Chilena
+es un proyecto independiente y no está afiliado a ninguno de ellos.
+
+## Si vienes de la versión 1.x
+
+La versión 2 usa otros nombres de entidad y una configuración renovada. Tras actualizar desde HACS (*⋮ → Volver a descargar*)
+y reiniciar, elimina la integración en *Dispositivos y servicios* y vuelve a añadirla. Las tarjetas que usaban
+`sensor.navaja_*` o `sensor.metro_l1` deben apuntar a los ids nuevos.
+
+## Contribuir
+
+¿Encontraste un error o tienes una idea? Abre un [issue](https://github.com/Ctuna89/navaja-chilena-HA/issues). Para probar el código:
 
 ```bash
 pip install pytest-homeassistant-custom-component
 pytest
 ```
 
-### Estado de las fuentes
+## Licencia
 
-Probadas contra los servicios reales el 2026-11-08 (el código de la integración se ejecutó contra cada API):
-
-| Fuente | Resultado |
-|---|---|
-| mindicador.cl, findic.cl (indicadores e IPSA), api.xor.cl (Metro y paraderos), api.gael.cloud, USGS, boostr, Open-Meteo, Buda | ✅ funcionan |
-| MINSAL (farmacias de turno) | ⚠️ bloquea servidores de datacenter (Cloudflare 403); no pudo confirmarse, puede funcionar desde una red residencial |
-| SINCA (calidad del aire oficial) | ⚠️ 403 desde datacenter; Open-Meteo cubre PM2.5/PM10 |
-| apis.digital.gob.cl (feriados), feriados-cl.netlify.app, api-sismologia-chile.herokuapp.com, api.gael.cl | ❌ caídas o inexistentes (no se usan) |
-| api.cne.cl (combustibles) | ❌ exige cuenta |
-| efemerides.cl | ✅ HTML simple, mes en curso (17 entradas en noviembre); su `robots.txt` permite la lectura |
-| es.wikipedia.org (efemérides) | ✅ funciona, pero es una lista mundial: se filtra lo chileno, así que algunos días no habrá resultados |
-| cinemark.cl | ✅ 22 cines (sin API oficial: se lee el bloque estructurado de cada página; puede cambiar sin aviso) |
-| Cineplanet, Cine Hoyts/Cinépolis | ❌ no incluidos: Cineplanet solo carga con JavaScript y exige un token; Hoyts/Cinépolis están detrás de Cloudflare |
-
-Las respuestas reales están guardadas en `tests/fixtures` y las pruebas las usan. Son servicios comunitarios o sin contrato de estabilidad: su formato puede cambiar.
-
-Fuente de ideas: [listado de APIs públicas de Chile](https://github.com/juanbrujo/listado-apis-publicas-en-chile).
-
-Los días significativos provienen de [efemerides.cl](https://www.efemerides.cl) (cada entrada enlaza al sitio; se lee una vez al día, identificando la integración en el `User-Agent`). Los textos de Wikipedia en español están bajo licencia
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es); el sensor incluye el atributo `fuente`
-y el enlace a cada artículo. La integración consulta Wikipedia una vez al día e identifica su origen en el
-`User-Agent`, como piden sus normas de uso.
-
-Licencia: ver [LICENSE](LICENSE).
+Distribuido bajo la licencia incluida en [LICENSE](LICENSE).
