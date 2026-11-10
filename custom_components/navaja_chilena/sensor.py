@@ -20,7 +20,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import NavajaConfigEntry, api
 from .santoral import saint_of
-from .const import CINEMARK_THEATERS, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
+from .const import CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
 
 
 def _device(key: str, name: str) -> DeviceInfo:
@@ -93,7 +93,10 @@ async def async_setup_entry(
     if rt.saint:
         fixed.append(SaintSensor(entry))
     if rt.ephemerides:
-        fixed.append(EphemerisSensor(rt.ephemerides, entry, "hoy"))
+        fixed += [
+            EphemerisSensor(rt.ephemerides, entry, "hoy"),
+            NextSignificantDaySensor(rt.ephemerides, entry, "proximo"),
+        ]
     if rt.cinema:
         fixed.append(CinemaSensor(rt.cinema, entry, rt.cinema_slug))
     async_add_entities(fixed)
@@ -543,7 +546,7 @@ class CinemaSensor(_Base):
 
 
 class EphemerisSensor(_Base):
-    """Efemérides chilenas de hoy (Wikipedia en español, CC BY-SA)."""
+    """Efemérides chilenas de hoy: efemerides.cl primero, Wikipedia como complemento."""
 
     _kind = "efemeride"
     _attr_icon = "mdi:calendar-text"
@@ -557,28 +560,101 @@ class EphemerisSensor(_Base):
     def _has_data(self) -> bool:
         return self.coordinator.data is not None
 
+    def _items(self) -> list[dict[str, Any]]:
+        d = self.coordinator.data
+        items: list[dict[str, Any]] = []
+        for e in d["cl"] or []:
+            if e.date == d["day"]:
+                items.append(
+                    {
+                        "anio": e.year,
+                        "tipo": e.kind,
+                        "texto": f"{e.title}. {e.description}" if e.description else e.title,
+                        "titulo": e.title,
+                        "fuente": "efemerides.cl",
+                        "enlace": EPHEMERIDES_CL_URL,
+                    }
+                )
+        for e in d["wiki"] or []:
+            items.append(
+                {
+                    "anio": e.year,
+                    "tipo": e.kind,
+                    "texto": e.text,
+                    "titulo": e.title,
+                    "fuente": "Wikipedia (CC BY-SA 4.0)",
+                    "enlace": e.url,
+                }
+            )
+        return items
+
     @property
     def native_value(self) -> str:
-        items = self.coordinator.data["items"]
+        items = self._items()
         if not items:
             return "Sin efemérides chilenas registradas para hoy"
         first = items[0]
-        text = f"{first.year}: {first.text}" if first.year else first.text
+        title = first["titulo"] if first["fuente"] == "efemerides.cl" else first["texto"]
+        text = f"{first['anio']}: {title}" if first["anio"] else title
         return text if len(text) <= 255 else text[:252] + "…"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         d = self.coordinator.data
-        items = d["items"]
+        items = self._items()
+        shown = items[: self.MAX_LISTED]
         return {
             "fecha": d["day"].isoformat(),
             "total": len(items),
-            "efemerides": [
-                {"anio": e.year, "tipo": e.kind, "texto": e.text, "articulo": e.title, "enlace": e.url}
-                for e in items[: self.MAX_LISTED]
-            ],
+            "efemerides": shown,
             "resumen": "\n".join(
-                f"{e.year or '?'} ({e.kind}): {e.text}" for e in items[: self.MAX_LISTED]
+                f"{i['anio'] or '—'} · {i['titulo'] or i['texto']} ({i['fuente'].split(' ')[0]})"
+                for i in shown
             ),
-            "fuente": "Wikipedia en español (CC BY-SA 4.0)",
+            "fuentes": {
+                "efemerides.cl": d["cl"] is not None,
+                "wikipedia": d["wiki"] is not None,
+            },
+        }
+
+
+class NextSignificantDaySensor(_Base):
+    """Próximo día significativo de Chile (efemerides.cl; solo conoce el mes en curso)."""
+
+    _kind = "proximo_dia"
+    _attr_icon = "mdi:calendar-arrow-right"
+    _attr_name = "Próximo día significativo"
+
+    def __init__(self, coordinator, entry, key: str) -> None:
+        super().__init__(coordinator, entry, key)
+        self._attr_device_info = _device("efemerides", "Efemérides chilenas")
+
+    def _next(self):
+        d = self.coordinator.data
+        return next((e for e in d["cl"] or [] if e.date > d["day"]), None)
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None and self.coordinator.data["cl"] is not None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._next() is not None
+
+    @property
+    def native_value(self) -> str:
+        return self._next().title
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        d = self.coordinator.data
+        nxt = self._next()
+        same_day = [e.title for e in d["cl"] if e.date == nxt.date]
+        return {
+            "fecha": nxt.date.isoformat(),
+            "dias_restantes": (nxt.date - d["day"]).days,
+            "anio_del_hecho": nxt.year,
+            "tipo": nxt.kind,
+            "descripcion": nxt.description,
+            "ese_dia": same_day,
+            "fuente": "efemerides.cl",
         }

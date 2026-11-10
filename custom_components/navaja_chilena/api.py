@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html as html_lib
 import json
 import math
 import re
@@ -16,6 +17,7 @@ from .const import (
     CINEMARK_THEATERS,
     CINEMARK_URL,
     CRYPTO_URL,
+    EPHEMERIDES_CL_URL,
     EPHEMERIDES_URL,
     INDICATORS_FALLBACK_URL,
     INDICATORS_URL,
@@ -886,3 +888,72 @@ def parse_ephemerides(data: Any) -> list[Ephemeris]:
 async def fetch_ephemerides(session: aiohttp.ClientSession, day: date) -> list[Ephemeris]:
     url = EPHEMERIDES_URL.format(month=day.month, day=day.day)
     return parse_ephemerides(await _get_json(session, url))
+
+
+# ------------------------------------------------- Días significativos (efemerides.cl)
+
+_MONTHS = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6, "julio": 7,
+    "agosto": 8, "septiembre": 9, "setiembre": 9, "octubre": 10, "noviembre": 11,
+    "diciembre": 12,
+}
+_ROW_RE = re.compile(
+    r'<td class="t2">\s*(\d{1,2})\s+([A-Za-zÁÉÍÓÚáéíóúñ]+)\s*</td>\s*<td class="t3">\s*<details>\s*'
+    r"<summary>(.*?)</summary>\s*<p>(.*?)</p>",
+    re.S,
+)
+_PAGE_MONTH_RE = re.compile(r"<title>[^<]*?-\s*([A-Za-zÁÉÍÓÚáéíóúñ]+)\s+(\d{4})\s*</title>")
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+@dataclass(frozen=True)
+class SignificantDay:
+    """Un día significativo de Chile según efemerides.cl."""
+
+    date: date
+    title: str
+    year: int | None  # año del hecho histórico, si el título lo trae "(1879)"
+    description: str
+
+    @property
+    def kind(self) -> str:
+        return "hecho histórico" if self.year else "día conmemorativo"
+
+
+def _clean(text: str) -> str:
+    return re.sub(r"\s+", " ", html_lib.unescape(_TAG_RE.sub("", text))).strip()
+
+
+def parse_efemerides_cl(page: str) -> list[SignificantDay]:
+    """Interpreta la página de efemerides.cl (solo trae el mes en curso, ya ordenado)."""
+    header = _PAGE_MONTH_RE.search(page)
+    if not header or header.group(1).lower() not in _MONTHS:
+        raise NavajaApiError("efemerides.cl: no se reconoció el mes de la página")
+    page_month, page_year = _MONTHS[header.group(1).lower()], int(header.group(2))
+    days: list[SignificantDay] = []
+    for dd, month_name, title, desc in _ROW_RE.findall(page):
+        if _MONTHS.get(month_name.lower()) != page_month:
+            continue
+        try:
+            when = date(page_year, page_month, int(dd))
+        except ValueError:
+            continue
+        title = _clean(title)
+        year_match = re.search(r"\((\d{4})\)\s*$", title)
+        if not title:
+            continue
+        days.append(
+            SignificantDay(
+                date=when,
+                title=re.sub(r"\s*\(\d{4}\)\s*$", "", title) if year_match else title,
+                year=int(year_match.group(1)) if year_match else None,
+                description=_clean(desc),
+            )
+        )
+    if not days:
+        raise NavajaApiError("efemerides.cl: la página no trae días significativos")
+    return sorted(days, key=lambda d: d.date)
+
+
+async def fetch_efemerides_cl(session: aiohttp.ClientSession) -> list[SignificantDay]:
+    return parse_efemerides_cl(await _get_text(session, EPHEMERIDES_CL_URL))
