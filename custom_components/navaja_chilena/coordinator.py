@@ -11,8 +11,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from homeassistant.helpers.storage import Store
+
 from . import api
 from .const import (
+    BENEFITS_INTERVAL,
+    BENEFITS_REFRESH_DAYS,
+    BENEFITS_STORE_VERSION,
     FOOTBALL_INTERVAL,
     FOOTBALL_LIVE_INTERVAL,
     FOOTBALL_SOON_INTERVAL,
@@ -245,3 +250,53 @@ def national_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
         return await api.fetch_national(session, NATIONAL_TEAM_ID, NATIONAL_COMPETITIONS)
 
     return NavajaCoordinator(hass, "seleccion", NATIONAL_INTERVAL, fetch, _football_interval)
+
+
+def benefits_coordinator(hass: HomeAssistant, cards: list[str], categories: list[str]) -> NavajaCoordinator:
+    """Beneficios de tarjetas: descarga cada 7 días y el día 1 de cada mes.
+
+    El coordinador solo revisa si toca; lo descargado se guarda en disco para no
+    volver a consultar el sitio al reiniciar Home Assistant.
+    """
+    store: Store = Store(hass, BENEFITS_STORE_VERSION, f"{DOMAIN}_beneficios")
+    signature = {"cards": sorted(cards), "categories": sorted(categories)}
+    state: dict[str, Any] = {"items": None, "fetched": None, "loaded": False}
+
+    async def load() -> None:
+        state["loaded"] = True
+        stored = await store.async_load()
+        if not isinstance(stored, dict) or stored.get("signature") != signature:
+            return
+        try:
+            state["items"] = [api.benefit_from_dict(d) for d in stored["items"]]
+            state["fetched"] = dt_util.parse_datetime(stored["fetched"])
+        except (KeyError, TypeError, ValueError):
+            state["items"], state["fetched"] = None, None
+
+    async def fetch(session: Any) -> list[api.Benefit]:
+        if not state["loaded"]:
+            await load()
+        now = dt_util.now()
+        today = now.astimezone(ZoneInfo(api.METRO_TZ)).date()
+        if state["items"] is not None and not api.benefits_due(state["fetched"], today, BENEFITS_REFRESH_DAYS):
+            return state["items"]
+        try:
+            items, complete = await api.fetch_benefits(session, cards, categories)
+        except api.NavajaApiError:
+            if state["items"] is not None:   # fuente caída: se sigue con lo último descargado
+                _LOGGER.debug("N Beneficios no respondió; se mantienen los datos anteriores")
+                return state["items"]
+            raise
+        state["items"] = items
+        if complete:
+            state["fetched"] = now
+            await store.async_save(
+                {
+                    "signature": signature,
+                    "fetched": now.isoformat(),
+                    "items": [api.benefit_to_dict(b) for b in items],
+                }
+            )
+        return items
+
+    return NavajaCoordinator(hass, "beneficios", BENEFITS_INTERVAL, fetch)

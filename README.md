@@ -26,6 +26,7 @@ feriados, efemérides y mucho más, en una sola integración que se instala en u
 | 🇨🇱 **Efemérides** | Los días significativos y las efemérides chilenas de hoy, y el próximo día significativo |
 | ⚽ **Fútbol** | Próximos partidos, resultados y posición de tu equipo de la Primera División, la tabla y las fechas de la liga, y los partidos de La Roja |
 | ⛽ **Combustibles** | Dónde está la bencina (93, 95, 97) o el diésel más barato cerca de tu casa, con precio, marca, dirección y distancia |
+| 💳 **Descuentos de tus tarjetas** | Eliges tus tarjetas (Banco de Chile, BCI, Santander, CMR…) y las categorías que te interesan (combustibles, comida, salud…) y ves los descuentos que aplican **hoy** |
 | 🚗 **Restricción vehicular y revisión técnica** | Con el último dígito de tu patente: si hoy tienes restricción, tu próximo día con restricción y el mes de tu revisión técnica |
 | ✝️ **Santoral** | El santo del día (y el de mañana), sin necesidad de internet |
 
@@ -57,6 +58,7 @@ El asistente te pregunta qué quieres activar:
 - tu **comuna** para las farmacias de turno,
 - tu **equipo** de la Primera División (o toda la liga) y **La Roja**, para ver partidos, resultados y tabla,
 - los **combustibles** que usas (93, 95, 97 o diésel), el **radio** de búsqueda alrededor de tu casa y la **antigüedad máxima** de los precios,
+- tus **tarjetas** y las **categorías** de descuentos que te interesan (combustibles, comida, salud y belleza, etc.),
 - el **último dígito de tu patente** y el tipo de vehículo, para la restricción vehicular y la revisión técnica,
 - tu **cine** Cinemark: uno de los 22 cines del país, o *«El más cercano a mi casa»* según la ubicación de tu Home Assistant.
 
@@ -156,6 +158,25 @@ actualización cada 3 horas.
   queda sin valor. También se ignoran los valores imposibles. Si una estación tiene precio de autoservicio se usa ese; si solo tiene
   atención asistida, se usa el asistido.
 - Si ninguna estación del radio tiene un precio vigente, el sensor queda sin valor y el atributo `motivo` lo explica.
+
+### 💳 Descuentos de tus tarjetas
+Un sensor por cada categoría que elijas: `sensor.descuentos_de_tarjetas_descuentos_de_hoy_combustibles`, `..._comida`, `..._salud_y_belleza`, etc. ·
+el valor es la cantidad de descuentos de **hoy** para tus tarjetas.
+
+- Eliges **tus tarjetas** (16: Banco de Chile, BancoEstado, BCI, BICE, Cencosud, CMR Falabella, Copec, Itaú, Lider, MACH, Mercado Pago,
+  Ripley, Santander, Scotiabank, Security y Tenpo) y **las categorías** que te interesan (combustibles, comida, tiendas y supermercados,
+  salud y belleza, entretención, viajes, etc.). Lo que no eliges no se consulta ni se muestra.
+- Atributos: `hoy` (comercio, tarjeta, descuento, detalle, enlace e imagen; hasta 15), `sin_dia_indicado` (beneficios que no precisan un
+  día, para que los revises), `total_en_categoria`, `aviso` y `fuente`.
+- **Actualización semanal y el día 1 de cada mes**, caiga el día que caiga. Lo descargado se guarda y se reutiliza al reiniciar Home
+  Assistant, así que el sitio se consulta poco. Cada día a medianoche el sensor recalcula qué aplica según el día de la semana.
+- Los días se leen del texto de cada beneficio («todos los miércoles», «lunes a viernes», «excepto los martes», «fines de semana») y
+  se respetan los beneficios limitados a ciertos meses. Si el texto no indica días, el beneficio aparece en `sin_dia_indicado`; nunca
+  se da por vigente algo que no se pudo confirmar.
+- Para que te avisen: crea una automatización con el disparador *«Estado numérico»* del sensor (por encima de 0) y una notificación
+  con el contenido de `hoy` (ejemplo más abajo).
+- Si el sitio no responde, se siguen mostrando los últimos datos descargados; si nunca se pudo descargar, el sensor queda sin valor.
+- Las condiciones, fechas y topes de cada descuento las define el emisor: revisa siempre el detalle antes de comprar.
 
 ### 🚗 Mi vehículo: restricción vehicular y revisión técnica
 Eliges el **último dígito** de tu patente y el **tipo de vehículo**. No usa internet: las reglas están incluidas en la integración y se
@@ -883,6 +904,44 @@ entities:
     suffix: días
 ```
 
+### 💳 Descuentos de tus tarjetas
+Lista de los descuentos de hoy en una categoría (cambia `combustibles` por `comida`, `salud_y_belleza`, etc.).
+
+```yaml
+type: markdown
+title: 💳 Descuentos de hoy en combustibles
+content: >
+  {% set items = state_attr('sensor.descuentos_de_tarjetas_descuentos_de_hoy_combustibles', 'hoy') or [] %}
+  {% if items | length == 0 %}
+  Hoy no hay descuentos de tus tarjetas en esta categoría.
+  {% else %}
+  {% for b in items %}
+  - **{{ b.comercio }}** · {{ b.descuento }} — {{ b.tarjeta }} ([ver]({{ b.url }}))
+  {% endfor %}
+  {% endif %}
+```
+
+Aviso en el celular cuando hay descuentos (automatización):
+
+```yaml
+alias: Descuentos de hoy en combustibles
+triggers:
+  - trigger: state
+    entity_id: sensor.descuentos_de_tarjetas_descuentos_de_hoy_combustibles
+conditions:
+  - condition: numeric_state
+    entity_id: sensor.descuentos_de_tarjetas_descuentos_de_hoy_combustibles
+    above: 0
+actions:
+  - action: notify.notify          # cambia por tu servicio, p. ej. notify.mobile_app_mi_celular
+    data:
+      title: 💳 Descuentos de hoy
+      message: >
+        {% for b in state_attr(trigger.entity_id, 'hoy')[:5] %}
+        {{ b.comercio }}: {{ b.descuento }} ({{ b.tarjeta }})
+        {% endfor %}
+```
+
 ### 🚗 Mi vehículo
 
 Restricción de hoy, dígitos restringidos, próxima fecha y mes de revisión técnica:
@@ -966,6 +1025,7 @@ necesidad de registrarte.
 | Efemérides | [efemerides.cl](https://www.efemerides.cl) y [Wikipedia en español](https://es.wikipedia.org) |
 | Fútbol | [ESPN](https://www.espn.cl/futbol/) (calendario, resultados y tabla; servicio público no documentado) |
 | Combustibles | [Bencina en Línea](https://www.bencinaenlinea.cl) (Comisión Nacional de Energía) |
+| Descuentos de tarjetas | [N Beneficios](https://www.nbeneficios.cl), un servicio de Infoacción (los beneficios, logos e imágenes pertenecen a sus emisores) |
 | Restricción vehicular | [Ministerio de Transportes](https://mtt.gob.cl/restriccion-vehicular-2026/): Resolución Exenta N° 1698/2026 (Seremi RM) |
 | Revisión técnica | [ChileAtiende](https://www.chileatiende.gob.cl/fichas/23978) (Subsecretaría de Transportes) |
 | Criptomonedas | [Buda.com](https://www.buda.com) |

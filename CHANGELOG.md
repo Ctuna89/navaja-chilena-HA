@@ -7,6 +7,8 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 - **Fútbol**: próximos partidos, resultados y posición de tu equipo de la Primera División; tabla y fechas de la liga; y La Roja (ESPN). Se consulta cada 3 horas y cada 5 minutos con un partido en juego.
 
+- **Descuentos de tus tarjetas**: eliges tus tarjetas y las categorías que te interesan (combustibles, comida, salud, etc.) y ves los descuentos que aplican hoy (N Beneficios). Se descarga cada 7 días y el día 1 de cada mes, y se guarda para no consultar de más.
+
 ## 2.9.0
 
 - **Combustibles**: precio más bajo de bencina (93, 95, 97) y diésel cerca de tu casa, con marca, dirección y distancia (Bencina en Línea, CNE). Solo precios recientes (por defecto 14 días).

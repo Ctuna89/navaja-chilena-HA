@@ -477,3 +477,53 @@ def test_football_live_and_odd_events():
             api.parse_standings(bad)
     with pytest.raises(api.NavajaApiError):
         api.parse_calendar({})
+
+
+# -------------------------------------------------- Beneficios de tarjetas
+
+def test_parse_days():
+    d = api.parse_days
+    assert d("Todos los miércoles") == {2}
+    assert d("Lunes a viernes") == {0, 1, 2, 3, 4}
+    assert d("Presencial - Miércoles - Antofagasta") == {2}
+    assert d("Venta online, todos los día excepto los martes.") == {0, 2, 3, 4, 5, 6}
+    assert d("Fines de semana") == {5, 6}
+    assert d("Sábados y domingos") == {5, 6}
+    assert d("Todos los días") == set(range(7))
+    assert d("De jueves a domingo") == {3, 4, 5, 6}
+    assert d("En productos de la tienda.") is None
+    assert d("") is None
+
+
+def test_parse_benefits_real_page():
+    page = (Path(__file__).parent / "fixtures/beneficios_comida_bci.html").read_text()
+    items = api.parse_benefits(page)
+    assert len(items) == 12
+    assert api.benefits_page_count(page) == 7
+    assert len({b.id for b in items}) == 12
+    first = items[0]
+    assert first.card == "BCI" and first.title and first.merchant
+    assert first.url.startswith("https://www.nbeneficios.cl/beneficios/ver/")
+    assert any(b.days is not None for b in items) and any(b.days is None for b in items)
+    restored = [api.benefit_from_dict(api.benefit_to_dict(b)) for b in items]
+    assert restored == items
+
+
+def test_benefits_due():
+    from datetime import date, datetime
+    due = api.benefits_due
+    assert due(None, date(2026, 11, 10))
+    assert not due(datetime(2026, 11, 10, 9), date(2026, 11, 16))        # 6 días
+    assert due(datetime(2026, 11, 10, 9), date(2026, 11, 17))            # 7 días
+    assert due(datetime(2026, 10, 30, 9), date(2026, 11, 1))             # día 1, aún no descargado hoy
+    assert not due(datetime(2026, 11, 1, 8), date(2026, 11, 1))          # día 1 ya descargado
+    assert due(datetime(2026, 11, 1, 8), date(2026, 11, 8))
+
+
+def test_months_limit_benefit():
+    assert api.parse_months("Presencial - Sábado - Lo Barnechea los sábados de enero.") == {1}
+    assert api.parse_months("Online - Todos los miércoles de noviembre.") == {11}
+    assert api.parse_months("Todos los días") is None
+    page = (Path(__file__).parent / "fixtures/beneficios_comida_bci.html").read_text()
+    baza = next(b for b in api.parse_benefits(page) if b.merchant == "Baza")
+    assert baza.applies_on(5, 1) is True and baza.applies_on(5, 11) is False
