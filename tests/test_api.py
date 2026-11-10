@@ -277,3 +277,28 @@ def test_ephemerides_edge_cases():
     for bad in (None, [], {}, {"x": 1}):
         with pytest.raises(api.NavajaApiError):
             api.parse_ephemerides(bad)
+
+
+def test_efemerides_cl_real_page():
+    days = api.parse_efemerides_cl((FIX / "efemerides_cl_2026-11.html").read_text(encoding="utf-8"))
+    assert len(days) == 17 and days == sorted(days, key=lambda d: d.date)
+    pisagua = days[0]
+    assert (pisagua.date.isoformat(), pisagua.year, pisagua.title) == ("2026-11-02", 1879, "Desembarco y Toma de Pisagua")
+    assert pisagua.kind == "hecho histórico" and "Pisagua" in pisagua.description
+    assert [d.title for d in days if d.date.day == 5] == [
+        "Captura de la Esmeralda en El Callao", "Día Mundial sobre la Sensibilización de los Tsunamis"]
+    antartica = next(d for d in days if "Antártica" in d.title)
+    assert antartica.year is None and antartica.kind == "día conmemorativo"
+    assert next(d for d in days if d.title == "Día del Paramédico").description == ""    # sin descripción
+
+
+def test_efemerides_cl_invalid_pages():
+    row = '<td class="t2">05 Noviembre</td><td class="t3"><details><summary>Algo</summary><p>x</p></details></td>'
+    ok = f"<title>Efemérides de Chile - Noviembre 2026</title>{row}"
+    assert api.parse_efemerides_cl(ok)[0].title == "Algo"
+    for bad in ("", "<html></html>", f"<title>Otra cosa</title>{row}",
+                "<title>Efemérides de Chile - Noviembre 2026</title>",              # sin filas
+                f"<title>Efemérides de Chile - Marte 2026</title>{row}",           # mes desconocido
+                f"<title>Efemérides de Chile - Febrero 2026</title>{row}"):        # filas de otro mes
+        with pytest.raises(api.NavajaApiError):
+            api.parse_efemerides_cl(bad)

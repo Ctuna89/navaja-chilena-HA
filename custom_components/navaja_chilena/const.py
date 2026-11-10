@@ -124,3 +124,5 @@ CINEMA_INTERVAL = timedelta(hours=3)
 CONF_EPHEMERIDES = "ephemerides"
 EPHEMERIDES_URL = "https://es.wikipedia.org/api/rest_v1/feed/onthisday/all/{month:02d}/{day:02d}"
 EPHEMERIDES_INTERVAL = timedelta(hours=1)  # solo recalcula; la descarga es una vez al día
+
+EPHEMERIDES_CL_URL = "https://www.efemerides.cl/"  # días significativos del mes en curso

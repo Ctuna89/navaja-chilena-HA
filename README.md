@@ -16,7 +16,7 @@ Integración para Home Assistant (instalable vía HACS) con datos útiles de Chi
 | Bolsa de Santiago | Último cierre del IPSA, variación en puntos y en %, y cierre anterior | [findic.cl](https://findic.cl) | 30 min |
 | Santoral | Santo del día (y el de mañana), sin internet | incluido en la integración | a medianoche |
 | Cine | Cartelera de hoy de tu cine Cinemark favorito o **el más cercano a tu casa**: películas, horarios, formato, sala y duración | cinemark.cl (lectura de su página) | 3 h |
-| Efemérides | Efemérides chilenas de hoy (sucesos, fallecimientos y nacimientos de chilenos) | [Wikipedia en español](https://es.wikipedia.org), «Un día como hoy» | 1 consulta al día |
+| Efemérides | Días significativos y efemérides de Chile de hoy, y el próximo día significativo | [efemerides.cl](https://www.efemerides.cl) + [Wikipedia en español](https://es.wikipedia.org) (complemento) | 1 consulta al día por fuente |
 | Criptomonedas | Bitcoin y Ethereum en pesos, con variación 24 h y 7 d | [Buda.com](https://www.buda.com) | 5 min |
 
 No requiere claves de API.
@@ -48,7 +48,8 @@ Los ids llevan el nombre del dispositivo como prefijo (por ejemplo `sensor.indic
 - **IPSA**: `sensor.bolsa_de_santiago_ipsa`: último cierre en puntos; atributos `variacion_puntos`, `variacion_pct`, `fecha_cierre`, `cierre_anterior`, `fecha_cierre_anterior`. Es un dato de cierre diario (la bolsa no opera fines de semana ni feriados).
 - **Santoral**: `sensor.santoral_santo_del_dia`; atributos `fecha` y `mañana`. Usa el santoral católico tradicional (archivo `santoral.py`); otros calendarios pueden asignar un santo distinto a algunos días y se puede editar.
 - **Cine**: `sensor.<nombre del cine>_cartelera_de_hoy`: cantidad de películas hoy; atributos `peliculas` (título, duración, género, póster y `funciones` con hora, formato y sala), `resumen` (texto listo para una tarjeta Markdown), `proxima_funcion` y `fecha`. Las funciones de trasnoche (antes de las 05:00) cuentan para el día anterior.
-- **Efemérides**: `sensor.efemerides_chilenas_efemerides_de_hoy`: la efeméride principal del día (sucesos primero, luego fallecimientos y nacimientos; los más antiguos antes). Atributos `efemerides` (hasta 10, con año, tipo, texto, artículo y enlace), `total`, `resumen` y `fuente`. Si ese día Wikipedia no trae nada chileno, el estado es «Sin efemérides chilenas registradas para hoy».
+- **Efemérides**: `sensor.efemerides_chilenas_efemerides_de_hoy`: la efeméride principal de hoy. Primero van los días significativos de efemerides.cl (hechos históricos y días conmemorativos, con descripción) y después, como complemento, lo chileno de Wikipedia (sucesos, fallecimientos y nacimientos). Atributos `efemerides` (hasta 10, cada una con `fuente` y `enlace`), `total`, `resumen` y `fuentes` (cuáles respondieron). Si hoy no hay nada, el estado es «Sin efemérides chilenas registradas para hoy». Si una fuente cae, la otra sigue funcionando.
+- **Próximo día significativo**: `sensor.efemerides_chilenas_proximo_dia_significativo`: título, `fecha`, `dias_restantes`, `descripcion` y otros que caen ese mismo día. efemerides.cl solo publica el mes en curso, así que el último día del mes (o tras el último día significativo) el sensor queda «no disponible» hasta el cambio de mes.
 - **Criptomonedas**: `sensor.criptomonedas_buda_bitcoin` y `..._ethereum`: precio en CLP; atributos `variacion_24h_pct`, `variacion_7d_pct`, `volumen_24h`.
 - **Feriados**: `sensor.feriados_chile_proximo_feriado` (fecha) y `sensor.feriados_chile_dias_para_el_proximo_feriado`.
 - **Aire y UV**: `sensor.calidad_del_aire_y_uv_pm2_5`, `..._pm10`, `..._indice_de_calidad_del_aire_us_aqi`, `..._indice_uv`.
@@ -101,6 +102,7 @@ Probadas contra los servicios reales el 2026-11-08 (el código de la integració
 | SINCA (calidad del aire oficial) | ⚠️ 403 desde datacenter; Open-Meteo cubre PM2.5/PM10 |
 | apis.digital.gob.cl (feriados), feriados-cl.netlify.app, api-sismologia-chile.herokuapp.com, api.gael.cl | ❌ caídas o inexistentes (no se usan) |
 | api.cne.cl (combustibles) | ❌ exige cuenta |
+| efemerides.cl | ✅ HTML simple, mes en curso (17 entradas en noviembre); su `robots.txt` permite la lectura |
 | es.wikipedia.org (efemérides) | ✅ funciona, pero es una lista mundial: se filtra lo chileno, así que algunos días no habrá resultados |
 | cinemark.cl | ✅ 22 cines (sin API oficial: se lee el bloque estructurado de cada página; puede cambiar sin aviso) |
 | Cineplanet, Cine Hoyts/Cinépolis | ❌ no incluidos: Cineplanet solo carga con JavaScript y exige un token; Hoyts/Cinépolis están detrás de Cloudflare |
@@ -109,7 +111,7 @@ Las respuestas reales están guardadas en `tests/fixtures` y las pruebas las usa
 
 Fuente de ideas: [listado de APIs públicas de Chile](https://github.com/juanbrujo/listado-apis-publicas-en-chile).
 
-Los textos de las efemérides provienen de Wikipedia en español y están bajo licencia
+Los días significativos provienen de [efemerides.cl](https://www.efemerides.cl) (cada entrada enlaza al sitio; se lee una vez al día, identificando la integración en el `User-Agent`). Los textos de Wikipedia en español están bajo licencia
 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es); el sensor incluye el atributo `fuente`
 y el enlace a cada artículo. La integración consulta Wikipedia una vez al día e identifica su origen en el
 `User-Agent`, como piden sus normas de uso.

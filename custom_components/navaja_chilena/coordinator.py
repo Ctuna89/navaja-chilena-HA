@@ -166,14 +166,32 @@ def cinema_coordinator(hass: HomeAssistant, slug: str) -> NavajaCoordinator:
 
 
 def ephemerides_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
-    """Descarga una vez al día (es una API pública: se pide con moderación)."""
-    cache: dict[str, Any] = {"day": None, "data": []}
+    """efemerides.cl (días significativos de Chile) + Wikipedia (complemento).
+
+    Cada fuente se consulta una sola vez al día; si una falla, la otra sigue
+    sirviendo y la fallida se reintenta en el próximo ciclo (cada hora).
+    """
+    cache: dict[str, Any] = {"day": None, "cl": None, "wiki": None}
 
     async def fetch(session: Any) -> dict[str, Any]:
         today = dt_util.now().astimezone(ZoneInfo(api.METRO_TZ)).date()
-        if cache["day"] != today:
-            cache["data"] = await api.fetch_ephemerides(session, today)
-            cache["day"] = today
-        return {"day": today, "items": cache["data"]}
+        if cache["day"] != today:  # día nuevo: lo cacheado ya no sirve
+            cache.update(day=today, cl=None, wiki=None)
+        errors: list[str] = []
+        for key in ("cl", "wiki"):
+            if cache[key] is not None:
+                continue
+            try:
+                if key == "cl":
+                    cache[key] = await api.fetch_efemerides_cl(session)
+                else:
+                    cache[key] = await api.fetch_ephemerides(session, today)
+            except api.NavajaApiError as err:
+                errors.append(f"{key}: {err}")
+        if cache["cl"] is None and cache["wiki"] is None:
+            raise api.NavajaApiError("; ".join(errors))
+        if errors:
+            _LOGGER.debug("Efemérides: fuente con error (%s)", "; ".join(errors))
+        return {"day": today, "cl": cache["cl"], "wiki": cache["wiki"]}
 
     return NavajaCoordinator(hass, "efemerides", EPHEMERIDES_INTERVAL, fetch)

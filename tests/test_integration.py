@@ -215,36 +215,88 @@ async def test_cinema_down_does_not_break_the_rest(hass, aioclient_mock, monkeyp
     assert states(hass)["UF"] == "39000.5"
 
 
-async def test_ephemerides_sensor_and_single_request_per_day(hass, aioclient_mock, freezer):
+CL_HTML = (Path(__file__).parent / "fixtures" / "efemerides_cl_2026-11.html").read_text(encoding="utf-8")
+
+def _wiki_payload():
     import json as _json
-    freezer.move_to("2026-01-10 10:00:00-03:00")
+    return _json.loads((Path(__file__).parent / "fixtures" / "efemerides_01-10.json").read_text())
+
+
+async def _setup_ephemerides(hass, aioclient_mock, day, cl=True, wiki=True, wiki_status=200):
+    from custom_components.navaja_chilena.const import EPHEMERIDES_CL_URL
     mock_all(aioclient_mock)
-    payload = _json.loads((Path(__file__).parent / "fixtures" / "efemerides_01-10.json").read_text())
-    url = EPHEMERIDES_URL.format(month=1, day=10)
-    aioclient_mock.get(url, json=payload)
+    if cl:
+        aioclient_mock.get(EPHEMERIDES_CL_URL, text=CL_HTML)
+    else:
+        aioclient_mock.get(EPHEMERIDES_CL_URL, status=503)
+    aioclient_mock.get(EPHEMERIDES_URL.format(month=day[0], day=day[1]),
+                       json=_wiki_payload() if wiki else {}, status=wiki_status if wiki else 500)
     entry = MockConfigEntry(domain=DOMAIN, data={"indicators": [], "metro": False, "ephemerides": True})
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    s = next(x for x in hass.states.async_all("sensor") if x.name.endswith("Efemérides de hoy"))
-    assert s.state.startswith("1957: Gabriela Mistral") and len(s.state) <= 255
-    assert s.attributes["total"] == 8 and s.attributes["fecha"] == "2026-01-10"
-    assert s.attributes["efemerides"][0]["articulo"] == "Gabriela Mistral"
-    assert "CC BY-SA" in s.attributes["fuente"]
-    coordinator = entry.runtime_data.ephemerides
+    return entry
+
+
+def _by_name(hass, suffix):
+    return next(x for x in hass.states.async_all("sensor") if x.name.endswith(suffix))
+
+
+async def test_ephemerides_combines_both_sources(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-05 10:00:00-03:00")          # dos entradas en efemerides.cl
+    await _setup_ephemerides(hass, aioclient_mock, (11, 5))
+    s = _by_name(hass, "Efemérides de hoy")
+    assert s.state == "1820: Captura de la Esmeralda en El Callao"        # efemerides.cl manda
+    items = s.attributes["efemerides"]
+    assert [i["fuente"] for i in items[:2]] == ["efemerides.cl", "efemerides.cl"]
+    assert any(i["fuente"].startswith("Wikipedia") for i in items)         # y Wikipedia complementa
+    assert s.attributes["fuentes"] == {"efemerides.cl": True, "wikipedia": True}
+    nxt = _by_name(hass, "Próximo día significativo")
+    assert nxt.state == "Día de la Antártica Chilena" and nxt.attributes["dias_restantes"] == 1
+    assert nxt.attributes["fecha"] == "2026-11-06" and nxt.attributes["fuente"] == "efemerides.cl"
+
+
+async def test_ephemerides_day_without_cl_entry_falls_back_to_wikipedia(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 10:00:00-03:00")          # el 10 no figura en efemerides.cl
+    await _setup_ephemerides(hass, aioclient_mock, (11, 10))
+    s = _by_name(hass, "Efemérides de hoy")
+    assert s.state.startswith("1957: Gabriela Mistral")
+    assert all(i["fuente"].startswith("Wikipedia") for i in s.attributes["efemerides"])
+    assert _by_name(hass, "Próximo día significativo").state == "Día del Asistente Social"
+
+
+async def test_ephemerides_one_source_down_other_keeps_working(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-05 10:00:00-03:00")
+    await _setup_ephemerides(hass, aioclient_mock, (11, 5), cl=False)       # efemerides.cl caído
+    s = _by_name(hass, "Efemérides de hoy")
+    assert s.attributes["fuentes"] == {"efemerides.cl": False, "wikipedia": True}
+    assert s.state != "unavailable" and s.attributes["total"] > 0
+    assert _by_name(hass, "Próximo día significativo").state == "unavailable"   # no se inventa
+
+    aioclient_mock.clear_requests()
+    from custom_components.navaja_chilena.const import EPHEMERIDES_CL_URL
+    aioclient_mock.get(EPHEMERIDES_CL_URL, text=CL_HTML)                    # vuelve a funcionar
+    aioclient_mock.get(EPHEMERIDES_URL.format(month=11, day=5), json=_wiki_payload())
+    from datetime import timedelta
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+    freezer.tick(timedelta(hours=2))
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert _by_name(hass, "Efemérides de hoy").attributes["fuentes"]["efemerides.cl"] is True
+    assert _by_name(hass, "Próximo día significativo").state == "Día de la Antártica Chilena"
+
+
+async def test_ephemerides_each_source_queried_once_per_day(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-05 10:00:00-03:00")
+    entry = await _setup_ephemerides(hass, aioclient_mock, (11, 5))
     before = aioclient_mock.call_count
-    await coordinator.async_refresh()                     # mismo día: no vuelve a consultar Wikipedia
-    await coordinator.async_refresh()
+    await entry.runtime_data.ephemerides.async_refresh()
+    await entry.runtime_data.ephemerides.async_refresh()
     assert aioclient_mock.call_count == before
 
 
-async def test_ephemerides_none_today_is_not_unavailable(hass, aioclient_mock, freezer):
-    freezer.move_to("2026-03-03 10:00:00-03:00")
-    mock_all(aioclient_mock)
-    aioclient_mock.get(EPHEMERIDES_URL.format(month=3, day=3), json={"events": [], "births": [], "deaths": []})
-    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": [], "metro": False, "ephemerides": True})
-    entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
-    s = next(x for x in hass.states.async_all("sensor") if x.name.endswith("Efemérides de hoy"))
-    assert s.state == "Sin efemérides chilenas registradas para hoy" and s.attributes["total"] == 0
+async def test_ephemerides_both_down_is_unavailable_not_empty(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-05 10:00:00-03:00")
+    entry = await _setup_ephemerides(hass, aioclient_mock, (11, 5), cl=False, wiki=False)
+    assert entry.state is config_entries.ConfigEntryState.SETUP_RETRY
