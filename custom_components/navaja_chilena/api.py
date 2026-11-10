@@ -28,6 +28,7 @@ from .const import (
     ESPN_STANDINGS_URL,
     FOOTBALL_LEAGUE_SLUG,
     FUEL_BRANDS_URL,
+    FUEL_DISCOUNTS_URL,
     FUEL_URL,
     INDICATORS_FALLBACK_URL,
     INDICATORS_URL,
@@ -1660,3 +1661,82 @@ def benefit_from_dict(d: dict[str, Any]) -> Benefit:
         months=None if months is None else frozenset(int(x) for x in months),
         until=date.fromisoformat(d["until"]) if d.get("until") else None,
     )
+
+
+# ------------------------------------------- Descuentos en bencina (calendario mensual)
+
+@dataclass(frozen=True)
+class FuelDiscount:
+    days: frozenset[int]          # 1 = lunes … 7 = domingo
+    stations: tuple[str, ...]
+    card: str                     # clave de BENEFIT_CARDS
+    card_name: str
+    amount: str
+    saving_clp_l: float | None
+    percent: float | None
+    detail: str
+    confirmed: bool
+    source: str
+
+
+@dataclass(frozen=True)
+class FuelDiscountCalendar:
+    month: str                    # AAAA-MM
+    updated: str
+    items: tuple[FuelDiscount, ...]
+
+
+def parse_fuel_discounts(raw: Any) -> FuelDiscountCalendar:
+    """Valida el calendario; las filas mal formadas se descartan, nunca se completan."""
+    if not isinstance(raw, dict) or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", str(raw.get("vigencia", ""))):
+        raise NavajaApiError("Calendario de descuentos en bencina inválido")
+    items: list[FuelDiscount] = []
+    for row in raw.get("descuentos") or []:
+        try:
+            days = frozenset(int(d) for d in row["dias"])
+            if not days or not days <= set(range(1, 8)):
+                continue
+            card, amount = str(row["tarjeta"]), str(row["monto"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        saving = row.get("ahorro_clp_litro")
+        percent = row.get("porcentaje")
+        items.append(
+            FuelDiscount(
+                days=days,
+                stations=tuple(str(x) for x in (row.get("estaciones") or [])),
+                card=card,
+                card_name=str(row.get("tarjeta_nombre") or card),
+                amount=amount,
+                saving_clp_l=float(saving) if isinstance(saving, (int, float)) else None,
+                percent=float(percent) if isinstance(percent, (int, float)) else None,
+                detail=str(row.get("detalle") or ""),
+                confirmed=bool(row.get("confirmado", False)),
+                source=str(row.get("fuente") or ""),
+            )
+        )
+    return FuelDiscountCalendar(str(raw["vigencia"]), str(raw.get("actualizado") or ""), tuple(items))
+
+
+async def fetch_fuel_discounts(session: aiohttp.ClientSession) -> FuelDiscountCalendar:
+    return parse_fuel_discounts(await _get_json(session, FUEL_DISCOUNTS_URL))
+
+
+def fuel_discounts_for(
+    cal: FuelDiscountCalendar, cards: list[str], today: date
+) -> tuple[list[FuelDiscount], int | None, list[FuelDiscount]]:
+    """Descuentos de hoy con tus tarjetas, y el siguiente día (1-7) que tenga alguno con sus descuentos."""
+    mine = [d for d in cal.items if d.card in cards]
+    wd = today.isoweekday()
+    now = [d for d in mine if wd in d.days]
+    for step in range(1, 8):
+        nxt = (wd - 1 + step) % 7 + 1
+        found = [d for d in mine if nxt in d.days]
+        if found:
+            return now, nxt, found
+    return now, None, []
+
+
+def fuel_discounts_current(cal: FuelDiscountCalendar, today: date) -> bool:
+    """El calendario corresponde al mes en curso."""
+    return cal.month == f"{today:%Y-%m}"

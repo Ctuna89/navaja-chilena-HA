@@ -5,6 +5,8 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+- **Descuentos en bencina**: con tus tarjetas marcadas, el sensor «Descuentos en bencina hoy» muestra qué estaciones tienen descuento hoy y el próximo día con descuento, a partir de un calendario mensual del repositorio (`data/bencina.json`) con la fuente de cada fila. Si el calendario no es del mes en curso, no se muestra como vigente.
+
 ## 2.10.0
 
 - **Fútbol**: próximos partidos, resultados y posición de tu equipo de la Primera División; tabla y fechas de la liga; y La Roja (ESPN). Se consulta cada 3 horas y cada 5 minutos con un partido en juego.

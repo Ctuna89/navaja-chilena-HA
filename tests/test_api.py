@@ -538,3 +538,38 @@ def test_validity_end_discards_expired():
     assert b.applies_on(1, 11, date(2026, 11, 24)) is True
     assert b.applies_on(1, 12, date(2026, 12, 1)) is False
     assert api.benefit_from_dict(api.benefit_to_dict(b)) == b
+
+
+# ------------------------------------------- Descuentos en bencina (calendario)
+
+def _calendar():
+    return api.parse_fuel_discounts(json.loads((Path(__file__).parents[1] / "data/bencina.json").read_text()))
+
+
+def test_fuel_discount_calendar_file_is_valid():
+    cal = _calendar()
+    assert cal.month == "2026-11" and len(cal.items) == 5
+    assert all(d.source.startswith("https://") for d in cal.items)
+    assert {d.card for d in cal.items} <= {"itau", "bancoestado", "bancochile", "bci", "tenpo"}
+
+
+def test_fuel_discounts_for_today_and_next():
+    from datetime import date
+    cal = _calendar()
+    tue = date(2026, 11, 10)                                   # martes
+    today, nxt, upcoming = api.fuel_discounts_for(cal, ["bancoestado", "bci"], tue)
+    assert [d.card for d in today] == ["bancoestado"] and nxt == 4 and [d.card for d in upcoming] == ["bci"]
+    sat = date(2026, 11, 14)                                   # sábado: sin descuentos, el próximo es el martes
+    today, nxt, upcoming = api.fuel_discounts_for(cal, ["itau", "bancoestado"], sat)
+    assert today == [] and nxt == 2 and len(upcoming) == 2
+    assert api.fuel_discounts_for(cal, ["santander"], tue) == ([], None, [])
+
+
+def test_fuel_discounts_current_month_and_bad_rows():
+    from datetime import date
+    cal = _calendar()
+    assert api.fuel_discounts_current(cal, date(2026, 11, 30)) and not api.fuel_discounts_current(cal, date(2026, 12, 1))
+    bad = api.parse_fuel_discounts({"vigencia": "2026-11", "descuentos": [{"dias": [9], "tarjeta": "x", "monto": "y"}, {"tarjeta": "x"}, {"dias": [1], "tarjeta": "bci", "monto": "7%"}]})
+    assert len(bad.items) == 1 and bad.items[0].card == "bci"
+    with pytest.raises(api.NavajaApiError):
+        api.parse_fuel_discounts({"descuentos": []})

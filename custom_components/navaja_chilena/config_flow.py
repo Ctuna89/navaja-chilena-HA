@@ -221,7 +221,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or any(user_input.get(k) for k in (CONF_METRO, CONF_QUAKES, CONF_HOLIDAYS, CONF_AIR, CONF_CRYPTO, CONF_BOLSA, CONF_SAINT, CONF_EPHEMERIDES))
         or user_input.get(CONF_PHARMACY_COMUNA, "").strip()
         or bool(user_input.get(CONF_FUEL_TYPES))
-        or (bool(user_input.get(CONF_BENEFIT_CARDS)) and bool(user_input.get(CONF_BENEFIT_CATEGORIES)))
+        or bool(user_input.get(CONF_BENEFIT_CARDS))
         or str(user_input.get(CONF_FOOTBALL_TEAM, FOOTBALL_NONE)) != FOOTBALL_NONE
         or bool(user_input.get(CONF_FOOTBALL_LEAGUE))
         or bool(user_input.get(CONF_FOOTBALL_NATIONAL))
