@@ -20,6 +20,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import NavajaConfigEntry, api
 from .santoral import saint_of
+from .efe_train_entity import train_sensors
 from . import vehicle
 from .vehicle_entity import REASON_TEXT, VehicleMixin
 from .api import FUEL_LABELS
@@ -80,6 +81,7 @@ async def async_setup_entry(
     add_when_ready(
         rt.stops, lambda data: [StopSensor(rt.stops, entry, code) for code in data]
     )
+    add_when_ready(rt.train, lambda data: train_sensors(rt.train, entry, rt.train_trips))
 
     # Estos no necesitan datos para existir: aparecen "no disponibles" hasta tenerlos.
     fixed: list[SensorEntity] = []

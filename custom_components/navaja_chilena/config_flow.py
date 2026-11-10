@@ -14,6 +14,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from . import api
 from .api import parse_stop_codes
+from .efe_train import CONF_TRAIN_RETURN, CONF_TRAIN_TRIPS, format_trips, parse_trips
 from .vehicle import VEHICLE_TYPES
 from .api import FUEL_LABELS
 from .const import (
@@ -83,6 +84,12 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.Optional(
                 CONF_STOPS, default=defaults.get(CONF_STOPS, "")
             ): selector.TextSelector(),
+            vol.Optional(
+                CONF_TRAIN_TRIPS, default=defaults.get(CONF_TRAIN_TRIPS, "")
+            ): selector.TextSelector(),
+            vol.Required(
+                CONF_TRAIN_RETURN, default=defaults.get(CONF_TRAIN_RETURN, False)
+            ): selector.BooleanSelector(),
             vol.Required(
                 CONF_QUAKES, default=defaults.get(CONF_QUAKES, True)
             ): selector.BooleanSelector(),
@@ -236,6 +243,10 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         stops = parse_stop_codes(user_input.get(CONF_STOPS, ""))
     except ValueError:
         return user_input, {CONF_STOPS: "invalid_stop"}
+    try:
+        trips = parse_trips(user_input.get(CONF_TRAIN_TRIPS, ""))
+    except ValueError:
+        return user_input, {CONF_TRAIN_TRIPS: "invalid_trip"}
     zone = str(user_input.get(CONF_REGIONAL_ZONE, REGIONAL_NONE))
     try:
         regional = api.parse_regional_codes(user_input.get(CONF_REGIONAL_STOPS, ""))
@@ -248,6 +259,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
     has_any = (
         user_input[CONF_INDICATORS]
         or stops
+        or trips
         or any(user_input.get(k) for k in (CONF_METRO, CONF_QUAKES, CONF_HOLIDAYS, CONF_AIR, CONF_CRYPTO, CONF_BOLSA, CONF_SAINT, CONF_EPHEMERIDES))
         or user_input.get(CONF_PHARMACY_COMUNA, "").strip()
         or bool(user_input.get(CONF_FUEL_TYPES))
@@ -264,6 +276,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
     return {
         **user_input,
         CONF_STOPS: ", ".join(stops),
+        CONF_TRAIN_TRIPS: format_trips(trips),
         CONF_PHARMACY_COMUNA: user_input.get(CONF_PHARMACY_COMUNA, "").strip(),
         CONF_REGIONAL_STOPS: ", ".join(regional),
     }, errors
