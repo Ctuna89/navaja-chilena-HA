@@ -27,7 +27,11 @@ from .const import (
     CONF_QUAKES,
     CONF_SAINT,
     CONF_STOPS,
+    CONF_VEHICLE_DIGIT,
+    CONF_VEHICLE_TYPE,
+    VEHICLE_NONE,
 )
+from .vehicle import VEHICLE_TYPES
 from .coordinator import (
     NavajaCoordinator,
     air_coordinator,
@@ -43,7 +47,7 @@ from .coordinator import (
     stops_coordinator,
 )
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 
 @dataclass
@@ -62,6 +66,9 @@ class RuntimeData:
     cinema_slug: str = ""
     ephemerides: NavajaCoordinator | None = None
     pharmacy_comuna: str = ""
+    holidays_visible: bool = False   # crear los sensores de feriados (el dato se usa también por Metro y vehículo)
+    vehicle_digit: int | None = None
+    vehicle_type: str = "sello_verde"
     indicator_codes: list[str] = field(default_factory=list)
 
 
@@ -111,7 +118,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
 
     if opts.get(CONF_QUAKES):
         data.quakes = quakes_coordinator(hass)
-    if opts.get(CONF_HOLIDAYS):
+    digit = str(opts.get(CONF_VEHICLE_DIGIT, VEHICLE_NONE))
+    if digit in tuple("0123456789"):
+        data.vehicle_digit = int(digit)
+        vtype = opts.get(CONF_VEHICLE_TYPE)
+        data.vehicle_type = vtype if vtype in VEHICLE_TYPES else "sello_verde"
+    data.holidays_visible = bool(opts.get(CONF_HOLIDAYS))
+    # Los festivos también los necesitan el horario del Metro y la restricción vehicular.
+    if data.holidays_visible or opts.get(CONF_METRO) or data.vehicle_digit is not None:
         data.holidays = holidays_coordinator(hass)
     if opts.get(CONF_AIR):
         data.air = air_coordinator(hass)
@@ -140,7 +154,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]
-    if coordinators and not any(results):
+    offline_modules = data.saint or data.vehicle_digit is not None   # no dependen de internet
+    if coordinators and not any(results) and not offline_modules:
         # Ninguna fuente responde: reintentar la carga más tarde.
         raise ConfigEntryNotReady("Ninguna fuente de datos respondió")
 

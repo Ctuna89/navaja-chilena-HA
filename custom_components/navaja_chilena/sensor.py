@@ -20,6 +20,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import NavajaConfigEntry, api
 from .santoral import saint_of
+from . import vehicle
+from .vehicle_entity import REASON_TEXT, VehicleMixin
 from .const import CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
 
 
@@ -81,7 +83,7 @@ async def async_setup_entry(
     fixed: list[SensorEntity] = []
     if rt.quakes:
         fixed += [QuakeSensor(rt.quakes, entry, "csn"), QuakeSensor(rt.quakes, entry, "usgs")]
-    if rt.holidays:
+    if rt.holidays and rt.holidays_visible:
         fixed += [
             NextHolidaySensor(rt.holidays, entry, "proximo"),
             DaysToHolidaySensor(rt.holidays, entry, "dias"),
@@ -92,6 +94,12 @@ async def async_setup_entry(
         fixed.append(PharmacySensor(rt.pharmacy, entry, rt.pharmacy_comuna))
     if rt.saint:
         fixed.append(SaintSensor(entry))
+    if rt.vehicle_digit is not None:
+        fixed += [
+            VehicleDigitsSensor(entry, rt, "digitos"),
+            NextRestrictionSensor(entry, rt, "proxima"),
+            RevisionMonthSensor(entry, rt, "revision"),
+        ]
     if rt.ephemerides:
         fixed += [
             EphemerisSensor(rt.ephemerides, entry, "hoy"),
@@ -470,10 +478,12 @@ class SaintSensor(SensorEntity):
 
     async def async_added_to_hass(self) -> None:
         # Se actualiza justo después de medianoche (hora de Home Assistant).
+        @callback
+        def _refresh(_now: datetime) -> None:
+            self.async_write_ha_state()
+
         self.async_on_remove(
-            async_track_time_change(
-                self.hass, lambda _now: self.async_write_ha_state(), hour=0, minute=0, second=5
-            )
+            async_track_time_change(self.hass, _refresh, hour=0, minute=0, second=5)
         )
 
 
@@ -676,4 +686,102 @@ class NextSignificantDaySensor(_Base):
             "descripcion": nxt.description,
             "ese_dia": same_day,
             "fuente": "efemerides.cl",
+        }
+
+
+def _digits_text(digits: frozenset[int] | None) -> str:
+    if not digits:
+        return "Ninguno"
+    if digits == vehicle.ALL_DIGITS:
+        return "Todos"
+    return "-".join(str(d) for d in sorted(digits))
+
+
+class VehicleDigitsSensor(VehicleMixin, SensorEntity):
+    """Dígitos de patente con restricción hoy (según el tipo de vehículo configurado)."""
+
+    _attr_icon = "mdi:car-clock"
+    _attr_name = "Dígitos con restricción hoy"
+
+    def __init__(self, entry, runtime, key: str) -> None:
+        self._setup_vehicle(entry, runtime, key)
+
+    @property
+    def available(self) -> bool:
+        return self.status().restricted is not None
+
+    @property
+    def native_value(self) -> str:
+        return _digits_text(self.status().digits)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        st = self.status()
+        return {
+            "motivo": REASON_TEXT[st.reason],
+            "tu_digito": self.digit,
+            "horario": f"{vehicle.WINDOW_START:%H:%M}–{vehicle.WINDOW_END:%H:%M}",
+            "tipo_de_vehiculo": vehicle.VEHICLE_TYPES[self.vehicle_type],
+        }
+
+
+class NextRestrictionSensor(VehicleMixin, SensorEntity):
+    """Próxima fecha con restricción para tu dígito (dentro de la temporada vigente)."""
+
+    _attr_icon = "mdi:calendar-alert"
+    _attr_name = "Próxima restricción"
+    _attr_device_class = SensorDeviceClass.DATE
+
+    def __init__(self, entry, runtime, key: str) -> None:
+        self._setup_vehicle(entry, runtime, key)
+
+    def _next(self):
+        return vehicle.next_restriction(self.vehicle_type, self.digit, self.today(), self.holidays())
+
+    @property
+    def native_value(self):
+        return self._next()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        nxt = self._next()
+        season = vehicle.season(self.today().year)
+        attrs: dict[str, Any] = {
+            "temporada": f"{season[0]:%d-%m-%Y} al {season[1]:%d-%m-%Y}" if season else None,
+            "festivos_considerados": self.holidays_known(),
+        }
+        if nxt is not None:
+            attrs["dias_restantes"] = (nxt - self.today()).days
+            attrs["es_hoy"] = nxt == self.today()
+        else:
+            attrs["motivo"] = (
+                "Tu tipo de vehículo no tiene restricción"
+                if self.vehicle_type == "sello_verde_posterior"
+                else "No quedan días de restricción en la temporada vigente"
+            )
+        return attrs
+
+
+class RevisionMonthSensor(VehicleMixin, SensorEntity):
+    """Mes de preferencia para la revisión técnica según el último dígito de la patente."""
+
+    _attr_icon = "mdi:car-wrench"
+    _attr_name = "Mes de revisión técnica"
+
+    def __init__(self, entry, runtime, key: str) -> None:
+        self._setup_vehicle(entry, runtime, key)
+
+    @property
+    def native_value(self) -> str:
+        return vehicle.MONTH_NAMES[vehicle.revision_month(self.digit) - 1].capitalize()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        months = vehicle.months_until_revision(self.digit, self.today())
+        return {
+            "tu_digito": self.digit,
+            "meses_restantes": months,
+            "este_mes": months == 0,
+            "nota": "Mes de preferencia en las plantas, no una fecha límite: tu plazo depende del certificado anterior.",
+            "fuente": "ChileAtiende (Subsecretaría de Transportes)",
         }

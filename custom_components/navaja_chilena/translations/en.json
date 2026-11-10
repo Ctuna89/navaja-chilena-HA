@@ -16,7 +16,9 @@
           "bolsa": "Santiago Stock Exchange: IPSA and daily change",
           "saint": "Saint of the day (Catholic calendar)",
           "cinema": "Cinemark cinema for today's listings",
-          "ephemerides": "Chilean 'on this day' events (Wikipedia)"
+          "ephemerides": "Chilean 'on this day' events (Wikipedia)",
+          "vehicle_digit": "Last digit of your license plate (traffic restriction and vehicle inspection)",
+          "vehicle_type": "Vehicle type (for the traffic restriction)"
         }
       }
     },
@@ -46,7 +48,9 @@
           "bolsa": "Santiago Stock Exchange: IPSA and daily change",
           "saint": "Saint of the day (Catholic calendar)",
           "cinema": "Cinemark cinema for today's listings",
-          "ephemerides": "Chilean 'on this day' events (Wikipedia)"
+          "ephemerides": "Chilean 'on this day' events (Wikipedia)",
+          "vehicle_digit": "Last digit of your license plate (traffic restriction and vehicle inspection)",
+          "vehicle_type": "Vehicle type (for the traffic restriction)"
         }
       }
     },
@@ -63,6 +67,20 @@
           "operativa": "Operational",
           "con_problemas": "With issues",
           "cerrada": "Closed"
+        }
+      }
+    },
+    "binary_sensor": {
+      "restriction_today": {
+        "state": {
+          "on": "Restricted",
+          "off": "Not restricted"
+        }
+      },
+      "revision_this_month": {
+        "state": {
+          "on": "This month",
+          "off": "Other month"
         }
       }
     }
