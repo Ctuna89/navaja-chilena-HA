@@ -170,8 +170,9 @@ el valor es la cantidad de descuentos de **hoy** para tus tarjetas.
   día, para que los revises), `total_en_categoria`, `aviso` y `fuente`.
 - **Actualización semanal y el día 1 de cada mes**, caiga el día que caiga. Lo descargado se guarda y se reutiliza al reiniciar Home
   Assistant, así que el sitio se consulta poco. Cada día a medianoche el sensor recalcula qué aplica según el día de la semana.
-- Los días se leen del texto de cada beneficio («todos los miércoles», «lunes a viernes», «excepto los martes», «fines de semana») y
-  se respetan los beneficios limitados a ciertos meses. Si el texto no indica días, el beneficio aparece en `sin_dia_indicado`; nunca
+- Los días se leen del texto de cada beneficio («todos los miércoles», «lunes a viernes», «excepto los martes», «fines de semana»),
+  se respetan los beneficios limitados a ciertos meses y se descartan los que ya vencieron según su vigencia («válida hasta el 31 de
+  diciembre de 2026»). Si el texto no indica días, el beneficio aparece en `sin_dia_indicado`; nunca
   se da por vigente algo que no se pudo confirmar.
 - Para que te avisen: crea una automatización con el disparador *«Estado numérico»* del sensor (por encima de 0) y una notificación
   con el contenido de `hoy` (ejemplo más abajo).
