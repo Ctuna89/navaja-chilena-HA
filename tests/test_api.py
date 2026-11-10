@@ -573,3 +573,16 @@ def test_fuel_discounts_current_month_and_bad_rows():
     assert len(bad.items) == 1 and bad.items[0].card == "bci"
     with pytest.raises(api.NavajaApiError):
         api.parse_fuel_discounts({"descuentos": []})
+
+
+def test_bencina_validator_rejects_implausible_data():
+    spec = importlib.util.spec_from_file_location("validar", Path(__file__).parents[1] / "data/validar.py")
+    v = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(v)
+    good = json.loads((Path(__file__).parents[1] / "data/bencina.json").read_text())
+    assert v.validar(good) == []
+    bad = json.loads(json.dumps(good))
+    bad["descuentos"][0].update({"ahorro_clp_litro": 5000, "tarjeta": "inventada", "fuente": "http://x"})
+    bad["descuentos"][1]["dias"] = [8]
+    assert len(v.validar(bad)) >= 4
+    assert v.validar({"vigencia": "2026-11", "actualizado": "2026-11-01", "descuentos": []})

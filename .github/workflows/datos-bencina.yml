@@ -1,0 +1,31 @@
+name: Datos de bencina
+
+# Fusiona solo los pull requests del calendario mensual (rama datos/bencina-*) y únicamente si
+# cambian data/bencina.json y el archivo pasa la validación.
+on:
+  pull_request:
+    branches: [main]
+    paths: ["data/bencina.json"]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  validar-y-fusionar:
+    if: startsWith(github.head_ref, 'datos/bencina-') && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Solo se permite cambiar data/bencina.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          otros=$(gh pr diff "${{ github.event.pull_request.number }}" --name-only | grep -v '^data/bencina.json$' || true)
+          if [ -n "$otros" ]; then echo "El PR toca otros archivos: $otros"; exit 1; fi
+      - name: Validar
+        run: python data/validar.py --mes-actual
+      - name: Fusionar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr merge "${{ github.event.pull_request.number }}" --squash --delete-branch

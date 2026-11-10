@@ -34,4 +34,9 @@ Cada descuento:
 4. **Verificar que cada dato sea del mes actual**: muchos resultados son de meses o años anteriores. Si un convenio solo aparece en meses anteriores,
    se deja fuera o se incluye con `"confirmado": false` y se explica en `detalle`.
 5. **Incluir solo lo que se pudo respaldar**, con su `fuente`. Un descuento sin respaldo no se agrega.
-6. Actualizar `vigencia` y `actualizado`, dejar el JSON válido y abrir un pull request. **No cambiar la versión** de la integración: el archivo se lee desde `main`.
+6. Actualizar `vigencia` y `actualizado`.
+7. **Validar**: `python data/validar.py --mes-actual` debe terminar con `OK` (formato, tarjetas conocidas, fuentes https, montos plausibles, mes en curso).
+8. **Publicar** sin cambiar la versión de la integración (el archivo se lee desde `main`): commit directo a `main` solo de `data/bencina.json`.
+   Si no se puede escribir en `main`, abrir un pull request desde una rama `datos/bencina-AAAA-MM`: el workflow *Datos de bencina* lo valida y lo fusiona solo.
+
+Colaboradores: un pull request desde una rama `datos/bencina-*` que solo cambie este archivo se valida y fusiona automáticamente; cualquier otro cambio sigue el flujo normal.

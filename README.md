@@ -185,11 +185,11 @@ el valor es la cantidad de descuentos de **hoy** para tus tarjetas.
 - Atributos: `hoy` (estaciones, tarjeta, descuento, detalle, `confirmado` y `fuente`), `mejor_ahorro_clp_litro`, `proximo_dia` y `proximo` (el próximo
   día con descuento y cuáles son), `calendario` (mes del calendario) y `actualizado`.
 - Se alimenta de un **calendario mensual** del repositorio ([`data/bencina.json`](data/bencina.json)), porque los descuentos de bencina se
-  publican en las páginas de cada estación y banco, no en un servicio con datos estructurados. Se renueva **una vez al mes** con un pull request y cada fila indica su
+  publican en las páginas de cada estación y banco, no en un servicio con datos estructurados. Se renueva **solo, una vez al mes** (se investiga, se valida y se publica de forma automática) y cada fila indica su
   fuente (Copec, Shell, Aramco, bancos y prensa). Las condiciones que cambian la decisión (tope de litros, activaciones, crédito o débito) van en `detalle`;
   lo que no se pudo confirmar con una fuente oficial del mes aparece con `confirmado: false`.
 - Si el calendario no es del mes en curso, el sensor queda sin valor y el atributo `motivo` lo explica: nunca se muestran descuentos de un mes anterior como vigentes.
-- ¿Faltan descuentos o hay un error? Abre un pull request con el cambio en `data/bencina.json` (el método está en [`data/README.md`](data/README.md)).
+- ¿Faltan descuentos o hay un error? Puedes proponer el cambio en `data/bencina.json` con un pull request (el método y la validación están en [`data/README.md`](data/README.md)).
 
 ### 🚗 Mi vehículo: restricción vehicular y revisión técnica
 Eliges el **último dígito** de tu patente y el **tipo de vehículo**. No usa internet: las reglas están incluidas en la integración y se
