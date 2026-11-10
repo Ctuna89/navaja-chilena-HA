@@ -16,6 +16,7 @@ from .const import (
     CINEMARK_THEATERS,
     CINEMARK_URL,
     CRYPTO_URL,
+    EPHEMERIDES_URL,
     INDICATORS_FALLBACK_URL,
     INDICATORS_URL,
     IPSA_URL,
@@ -24,7 +25,9 @@ from .const import (
     STOP_URL,
 )
 
-HEADERS = {"User-Agent": "NavajaChilena/2.1 (Home Assistant)"}
+HEADERS = {
+    "User-Agent": "NavajaChilena/2.4 (https://github.com/Ctuna89/navaja-chilena-HA; integración de Home Assistant)"
+}
 
 STOP_CODE_RE = re.compile(r"^[A-Z]{1,3}\d{1,5}$")
 
@@ -812,3 +815,74 @@ def nearest_theater(lat: float, lon: float) -> str:
         return 6371 * 2 * math.asin(math.sqrt(a))
 
     return min(CINEMARK_THEATERS, key=dist)
+
+
+# ------------------------------------------------------------------ Efemérides
+
+# Se filtra por texto y descripción corta de la página (no por el extracto, que
+# arrastra falsos positivos como futbolistas uruguayos con "Chile" en la biografía).
+_CHILE_RE = re.compile(
+    r"\bchilen[oa]s?\b|\bChile\b|Santiago de Chile|Valpara[ií]so|La Moneda|Pinochet|"
+    r"Salvador Allende|Arturo Prat|Bernardo O'Higgins|Punta Arenas|Rapa Nui|Isla de Pascua|"
+    r"Guerra del Pac[ií]fico|Combate Naval de Iquique|Batalla de (?:Chacabuco|Maip[úu]|Rancagua)",
+    re.I,
+)
+_KIND_ORDER = {"events": 0, "deaths": 1, "births": 2}
+_KIND_LABEL = {"events": "suceso", "deaths": "fallecimiento", "births": "nacimiento"}
+
+
+@dataclass(frozen=True)
+class Ephemeris:
+    year: int | None
+    kind: str  # suceso | fallecimiento | nacimiento
+    text: str
+    title: str | None
+    url: str | None
+
+
+def _is_chilean(item: dict) -> bool:
+    pages = [p for p in item.get("pages") or [] if isinstance(p, dict)]
+    haystack = [str(item.get("text") or "")]
+    for p in pages:
+        haystack.append(str(p.get("description") or ""))
+        title = str(p.get("title") or "")
+        if title.endswith("_(Chile)") or title.endswith(" (Chile)"):
+            return True
+    return bool(_CHILE_RE.search(" ".join(haystack)))
+
+
+def parse_ephemerides(data: Any) -> list[Ephemeris]:
+    """Efemérides chilenas del feed «Un día como hoy» de Wikipedia.
+
+    Orden: sucesos, fallecimientos y nacimientos; dentro de cada grupo, los más antiguos
+    primero (suelen ser los más relevantes históricamente).
+    """
+    if not isinstance(data, dict) or not any(k in data for k in _KIND_ORDER):
+        raise NavajaApiError("Respuesta de efemérides inesperada")
+    found: list[tuple[int, int, Ephemeris]] = []
+    for key, order in _KIND_ORDER.items():
+        for item in data.get(key) or []:
+            if not isinstance(item, dict) or not item.get("text") or not _is_chilean(item):
+                continue
+            page = next((p for p in item.get("pages") or [] if isinstance(p, dict)), {})
+            year = item.get("year")
+            found.append(
+                (
+                    order,
+                    year if isinstance(year, int) else 9999,
+                    Ephemeris(
+                        year=year if isinstance(year, int) else None,
+                        kind=_KIND_LABEL[key],
+                        text=str(item["text"]).strip(),
+                        title=(str(page.get("title") or "").replace("_", " ") or None),
+                        url=((page.get("content_urls") or {}).get("desktop") or {}).get("page"),
+                    ),
+                )
+            )
+    found.sort(key=lambda t: (t[0], t[1]))
+    return [e for _, _, e in found]
+
+
+async def fetch_ephemerides(session: aiohttp.ClientSession, day: date) -> list[Ephemeris]:
+    url = EPHEMERIDES_URL.format(month=day.month, day=day.day)
+    return parse_ephemerides(await _get_json(session, url))

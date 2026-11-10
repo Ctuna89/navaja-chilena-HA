@@ -92,6 +92,8 @@ async def async_setup_entry(
         fixed.append(PharmacySensor(rt.pharmacy, entry, rt.pharmacy_comuna))
     if rt.saint:
         fixed.append(SaintSensor(entry))
+    if rt.ephemerides:
+        fixed.append(EphemerisSensor(rt.ephemerides, entry, "hoy"))
     if rt.cinema:
         fixed.append(CinemaSensor(rt.cinema, entry, rt.cinema_slug))
     async_add_entities(fixed)
@@ -537,4 +539,46 @@ class CinemaSensor(_Base):
                 if upcoming
                 else None
             ),
+        }
+
+
+class EphemerisSensor(_Base):
+    """Efemérides chilenas de hoy (Wikipedia en español, CC BY-SA)."""
+
+    _kind = "efemeride"
+    _attr_icon = "mdi:calendar-text"
+    _attr_name = "Efemérides de hoy"
+    MAX_LISTED = 10
+
+    def __init__(self, coordinator, entry, key: str) -> None:
+        super().__init__(coordinator, entry, key)
+        self._attr_device_info = _device("efemerides", "Efemérides chilenas")
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None
+
+    @property
+    def native_value(self) -> str:
+        items = self.coordinator.data["items"]
+        if not items:
+            return "Sin efemérides chilenas registradas para hoy"
+        first = items[0]
+        text = f"{first.year}: {first.text}" if first.year else first.text
+        return text if len(text) <= 255 else text[:252] + "…"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        d = self.coordinator.data
+        items = d["items"]
+        return {
+            "fecha": d["day"].isoformat(),
+            "total": len(items),
+            "efemerides": [
+                {"anio": e.year, "tipo": e.kind, "texto": e.text, "articulo": e.title, "enlace": e.url}
+                for e in items[: self.MAX_LISTED]
+            ],
+            "resumen": "\n".join(
+                f"{e.year or '?'} ({e.kind}): {e.text}" for e in items[: self.MAX_LISTED]
+            ),
+            "fuente": "Wikipedia en español (CC BY-SA 4.0)",
         }

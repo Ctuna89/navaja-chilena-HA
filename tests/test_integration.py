@@ -12,7 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa
 
 from custom_components.navaja_chilena import api  # noqa: E402
 from custom_components.navaja_chilena.const import (  # noqa: E402
-    AIR_URL, CINEMARK_URL, CRYPTO_URL, IPSA_URL, DOMAIN, INDICATORS_URL, METRO_URL, PHARMACY_URL, QUAKES_CSN_URL,
+    AIR_URL, CINEMARK_URL, CRYPTO_URL, EPHEMERIDES_URL, IPSA_URL, DOMAIN, INDICATORS_URL, METRO_URL, PHARMACY_URL, QUAKES_CSN_URL,
     QUAKES_URL, STOP_URL,
 )
 
@@ -213,3 +213,38 @@ async def test_cinema_down_does_not_break_the_rest(hass, aioclient_mock, monkeyp
     await hass.async_block_till_done()
     assert entry.state is config_entries.ConfigEntryState.LOADED
     assert states(hass)["UF"] == "39000.5"
+
+
+async def test_ephemerides_sensor_and_single_request_per_day(hass, aioclient_mock, freezer):
+    import json as _json
+    freezer.move_to("2026-01-10 10:00:00-03:00")
+    mock_all(aioclient_mock)
+    payload = _json.loads((Path(__file__).parent / "fixtures" / "efemerides_01-10.json").read_text())
+    url = EPHEMERIDES_URL.format(month=1, day=10)
+    aioclient_mock.get(url, json=payload)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": [], "metro": False, "ephemerides": True})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    s = next(x for x in hass.states.async_all("sensor") if x.name.endswith("Efemérides de hoy"))
+    assert s.state.startswith("1957: Gabriela Mistral") and len(s.state) <= 255
+    assert s.attributes["total"] == 8 and s.attributes["fecha"] == "2026-01-10"
+    assert s.attributes["efemerides"][0]["articulo"] == "Gabriela Mistral"
+    assert "CC BY-SA" in s.attributes["fuente"]
+    coordinator = entry.runtime_data.ephemerides
+    before = aioclient_mock.call_count
+    await coordinator.async_refresh()                     # mismo día: no vuelve a consultar Wikipedia
+    await coordinator.async_refresh()
+    assert aioclient_mock.call_count == before
+
+
+async def test_ephemerides_none_today_is_not_unavailable(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-03-03 10:00:00-03:00")
+    mock_all(aioclient_mock)
+    aioclient_mock.get(EPHEMERIDES_URL.format(month=3, day=3), json={"events": [], "births": [], "deaths": []})
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": [], "metro": False, "ephemerides": True})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    s = next(x for x in hass.states.async_all("sensor") if x.name.endswith("Efemérides de hoy"))
+    assert s.state == "Sin efemérides chilenas registradas para hoy" and s.attributes["total"] == 0

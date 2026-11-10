@@ -251,3 +251,29 @@ def test_nearest_theater():
     assert api.nearest_theater(-33.4489, -70.6693) == "cinemark-portal-nunoa"   # Santiago centro
     assert api.nearest_theater(-36.82, -73.05) == "cinemark-mallplaza-mirador-bio-bio"
     assert api.nearest_theater(-18.48, -70.31) == "cinemark-mallplaza-arica"
+
+
+def test_ephemerides_real_day_filters_to_chile():
+    eph = api.parse_ephemerides(load("efemerides_01-10.json"))
+    names = [e.title for e in eph]
+    assert "Gabriela Mistral" in names and "Vicente Huidobro" in names and "Raúl Zurita" in names
+    assert not any("Estevarena" in n or "Sosa" in n or "Méndez" in n for n in names)   # falsos positivos
+    assert eph[0].kind == "fallecimiento" and eph[0].year == 1957            # sucesos > fallecimientos > nacimientos
+    births = [e.year for e in eph if e.kind == "nacimiento"]
+    assert births == sorted(births)                                          # antiguos primero
+    assert eph[0].url.startswith("https://es.wikipedia.org/wiki/")
+
+
+def test_ephemerides_edge_cases():
+    data = {"events": [{"text": "Batalla de Rancagua entre realistas y patriotas.", "year": 1814, "pages": []},
+                       {"text": "Se funda una ciudad.", "year": 1541,
+                        "pages": [{"title": "Concepción_(Chile)", "description": "ciudad"}]},
+                       {"text": "Evento sin relación", "year": 2000, "pages": []},
+                       {"text": "", "year": 1, "pages": []}],
+            "births": [], "deaths": []}
+    eph = api.parse_ephemerides(data)
+    assert [e.year for e in eph] == [1541, 1814]
+    assert api.parse_ephemerides({"events": [], "births": [], "deaths": []}) == []   # válido: sin efemérides
+    for bad in (None, [], {}, {"x": 1}):
+        with pytest.raises(api.NavajaApiError):
+            api.parse_ephemerides(bad)

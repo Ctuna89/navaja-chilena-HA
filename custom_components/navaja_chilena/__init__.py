@@ -11,6 +11,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 
 from .api import nearest_theater, parse_stop_codes
 from .const import (
+    CONF_EPHEMERIDES,
     CINEMA_NEAREST,
     CINEMA_NONE,
     CINEMARK_THEATERS,
@@ -32,6 +33,7 @@ from .coordinator import (
     air_coordinator,
     bolsa_coordinator,
     cinema_coordinator,
+    ephemerides_coordinator,
     crypto_coordinator,
     holidays_coordinator,
     pharmacy_coordinator,
@@ -58,6 +60,7 @@ class RuntimeData:
     saint: bool = False
     cinema: NavajaCoordinator | None = None
     cinema_slug: str = ""
+    ephemerides: NavajaCoordinator | None = None
     pharmacy_comuna: str = ""
     indicator_codes: list[str] = field(default_factory=list)
 
@@ -117,6 +120,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     if opts.get(CONF_BOLSA):
         data.bolsa = bolsa_coordinator(hass)
     data.saint = bool(opts.get(CONF_SAINT))
+    if opts.get(CONF_EPHEMERIDES):
+        data.ephemerides = ephemerides_coordinator(hass)
     cinema = opts.get(CONF_CINEMA, CINEMA_NONE)
     if cinema == CINEMA_NEAREST:
         cinema = nearest_theater(hass.config.latitude, hass.config.longitude)
@@ -131,7 +136,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     coordinators = [
         c
         for c in (data.indicators, data.metro, data.stops, data.quakes,
-                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema)
+                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides)
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]
