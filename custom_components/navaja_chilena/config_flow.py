@@ -267,6 +267,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         return user_input, {CONF_STOPS: "invalid_stop"}
     try:
         trips = parse_trips(user_input.get(CONF_TRAIN_TRIPS, ""))
+        parse_trips(user_input.get(CONF_TRAIN_TRIPS, ""), bool(user_input.get(CONF_TRAIN_RETURN)))  # el tope cuenta el sentido inverso
     except ValueError:
         return user_input, {CONF_TRAIN_TRIPS: "invalid_trip"}
     zone = str(user_input.get(CONF_REGIONAL_ZONE, REGIONAL_NONE))

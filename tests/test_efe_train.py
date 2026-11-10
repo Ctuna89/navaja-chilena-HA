@@ -171,3 +171,12 @@ def test_parse_adds_derived_fields_without_touching_originals():
 )
 def test_resolve_station(value, expected):
     assert efe_train.resolve_station(value) == expected
+
+
+def test_parse_trips_caps_the_number_of_queries():
+    many = ", ".join(f"{o} > Limache" for o in range(1, 9))   # 8 distintos: permitido
+    assert len(efe_train.parse_trips(many)) == 8
+    with pytest.raises(ValueError):
+        efe_train.parse_trips(many, with_return=True)          # con el sentido inverso serían 16
+    with pytest.raises(ValueError):
+        efe_train.parse_trips(many + ", Puerto > Quilpué")

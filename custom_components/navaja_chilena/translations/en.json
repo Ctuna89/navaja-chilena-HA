@@ -44,7 +44,7 @@
       "regional_needs_stops": "Enter at least one Red Regional stop.",
       "regional_needs_zone": "Choose the city of those stops.",
       "regional_stop_not_found": "That stop does not exist in the chosen city. Check the code on the sign or in the Red Regional app.",
-      "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto."
+      "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto. At most 8 trips (counting the reverse direction)."
     },
     "abort": {
       "already_configured": "Navaja Chilena is already configured."
@@ -95,7 +95,7 @@
       "regional_needs_stops": "Enter at least one Red Regional stop.",
       "regional_needs_zone": "Choose the city of those stops.",
       "regional_stop_not_found": "That stop does not exist in the chosen city. Check the code on the sign or in the Red Regional app.",
-      "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto."
+      "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto. At most 8 trips (counting the reverse direction)."
     }
   },
   "entity": {

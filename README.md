@@ -116,7 +116,8 @@ Concepción, Temuco, Valdivia, Osorno, Puerto Montt, Punta Arenas y más) · act
 
 - Escribes tus **trayectos** como `Origen > Destino`, separados por coma (por ejemplo `Villa Alemana > Puerto, Viña del Mar > Limache`), con
   cualquiera de las 21 estaciones de la línea, de Puerto a Limache; no importan las tildes ni las mayúsculas. Con la casilla del sentido
-  inverso se agrega también la vuelta de cada uno.
+  inverso se agrega también la vuelta de cada uno. Cada trayecto es una consulta por minuto a EFE, así que el máximo es de **8 trayectos**
+  (contando el sentido inverso).
 - **Estado:** el texto que entrega EFE para el primer tren («8 minutos», «cercano») o «Sin servicios informados» si EFE respondió con la
   lista vacía (por ejemplo, de madrugada; no garantiza que no haya trenes). Si EFE no responde, el sensor queda «no disponible»: nunca se
   muestra una lista vacía ni datos antiguos en su lugar.
@@ -1221,6 +1222,9 @@ es un proyecto independiente y no está afiliado a ninguno de ellos.
 Los paraderos de la Red Regional se apoyan en el trabajo de reverse engineering de [edwinroket/red-regional-api](https://github.com/edwinroket/red-regional-api) (documentación de la API y SDK) y en
 [frabarz/hass-red-regional](https://github.com/frabarz/hass-red-regional), la integración de Home Assistant que lo llevó a la plataforma (licencia MIT). Si lo que necesitas son
 solo esos paraderos, con mapa de buses en vivo, esa integración es una excelente opción. Gracias a ambos por abrir el camino.
+
+El módulo del **tren Limache–Puerto** es un aporte de [claudiojara](https://github.com/claudiojara), autor de
+[ha-efe-valparaiso](https://github.com/claudiojara/ha-efe-valparaiso) (licencia MIT), que además ofrece una tarjeta propia con selección de cualquier par de estaciones. Gracias por sumarlo.
 
 ## Si vienes de la versión 1.x
 
