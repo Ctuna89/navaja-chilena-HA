@@ -55,5 +55,16 @@
       "nothing_selected": "Selecciona al menos un indicador, el Metro o un paradero.",
       "stop_not_found": "Ese paradero no existe en Red Movilidad. Revisa el código (ej. PC615)."
     }
+  },
+  "entity": {
+    "sensor": {
+      "metro_line": {
+        "state": {
+          "operativa": "Operativa",
+          "con_problemas": "Con problemas",
+          "cerrada": "Cerrada"
+        }
+      }
+    }
   }
 }

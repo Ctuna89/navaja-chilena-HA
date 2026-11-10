@@ -55,5 +55,16 @@
       "nothing_selected": "Select at least one indicator, the Metro or a bus stop.",
       "stop_not_found": "That bus stop does not exist in Red Movilidad. Check the code (e.g. PC615)."
     }
+  },
+  "entity": {
+    "sensor": {
+      "metro_line": {
+        "state": {
+          "operativa": "Operational",
+          "con_problemas": "With issues",
+          "cerrada": "Closed"
+        }
+      }
+    }
   }
 }

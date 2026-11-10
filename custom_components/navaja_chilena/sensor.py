@@ -151,6 +151,9 @@ class MetroLineSensor(_Base):
 
     _kind = "metro"
     _attr_icon = "mdi:subway-variant"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["operativa", "con_problemas", "cerrada"]
+    _attr_translation_key = "metro_line"
 
     def __init__(self, coordinator, entry, line_id: str, holidays=None) -> None:
         super().__init__(coordinator, entry, line_id)
