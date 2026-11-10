@@ -5,6 +5,7 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+- **Resumen de la mañana**: ejemplo de automatización que envía a tu celular el santo, UF y dólar, tu restricción vehicular, los descuentos en bencina de hoy, el próximo feriado y tres titulares; solo incluye lo que tienes activado. La tarjeta «Resumen del día» suma los tres titulares principales.
 - **Noticias por tema**: titulares de La Tercera y Cooperativa separados por tema (nacional, política, mundo, economía, deportes, tecnología, sociedad, cultura y servicios), con enlace a cada nota. Se actualiza cada 30 minutos.
 ## 2.11.0
 

@@ -932,3 +932,40 @@ async def test_news_one_outlet_down_keeps_the_other(hass, aioclient_mock, freeze
     await _setup_news(hass, aioclient_mock, monkeypatch, ["nacional"], lt_status=503)
     nac = hass.states.get("sensor.noticias_titulares_nacional")
     assert nac is not None and {t["medio"] for t in nac.attributes["titulares"]} == {"Cooperativa"}
+
+
+# ----------------------------------------------- Resumen matutino (ejemplo del README)
+
+def _readme_morning_automation():
+    import re
+    import yaml
+    text = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
+    section = text[text.index("### 🌅 Resumen de la mañana"):text.index("## Fuentes de datos")]
+    return yaml.safe_load(re.search(r"```yaml\n(.*?)```", section, re.S).group(1))
+
+
+async def test_readme_morning_summary_renders(hass):
+    from homeassistant.helpers.template import Template
+    data = _readme_morning_automation()["actions"][0]["data"]
+    s = hass.states.async_set
+    s("sensor.santoral_santo_del_dia", "San León Magno")
+    s("sensor.indicadores_economicos_uf", "41302.33")
+    s("sensor.indicadores_economicos_dolar_observado", "969.8")
+    s("binary_sensor.mi_vehiculo_restriccion_vehicular_hoy", "on", {"horario": "07:30–21:00"})
+    s("sensor.combustibles_descuentos_en_bencina_hoy", "1", {"hoy": [{"tarjeta": "Itaú Legend", "estaciones": ["Copec"], "descuento": "$100/L"}]})
+    s("sensor.feriados_chile_proximo_feriado", "2026-12-08", {"nombre": "Inmaculada Concepción", "es_hoy": False})
+    s("sensor.feriados_chile_dias_para_el_proximo_feriado", "28")
+    s("sensor.noticias_titulares_nacional", "T1", {"titulares": [{"titulo": f"Titular {i}", "enlace": "https://x/" + str(i)} for i in range(5)]})
+    title = Template(data["title"], hass).async_render()
+    msg = Template(data["message"], hass).async_render()
+    assert title == "🇨🇱 Buen día · San León Magno"
+    assert "UF $41.302 · Dólar $970" in msg and "restricción vehicular (07:30–21:00)" in msg
+    assert "Itaú Legend en Copec ($100/L)" in msg and "Inmaculada Concepción (en 28 días)" in msg
+    assert msg.count("📰") == 3 and "Titular 3" not in msg
+
+
+async def test_readme_morning_summary_is_empty_without_modules(hass):
+    from homeassistant.helpers.template import Template
+    data = _readme_morning_automation()["actions"][0]["data"]
+    assert Template(data["title"], hass).async_render() == "🇨🇱 Buen día"
+    assert Template(data["message"], hass).async_render().strip() == ""

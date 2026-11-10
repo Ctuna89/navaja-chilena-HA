@@ -1070,7 +1070,7 @@ content: |
 
 ### ☀️ Resumen del día (todo junto)
 
-![Resumen del día](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/resumen-del-dia.png)
+![Resumen del día con indicadores, efeméride y los tres titulares principales](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/resumen-del-dia.png)
 
 ```yaml
 type: markdown
@@ -1082,7 +1082,47 @@ content: |
   💲 Dólar ${{ '{:,.0f}'.format(states('sensor.indicadores_economicos_dolar_observado') | float(0)) | replace(',', '.') }}  
   📈 IPSA {{ '{:,.0f}'.format(states('sensor.bolsa_de_santiago_ipsa') | float(0)) | replace(',', '.') }} ({{ state_attr('sensor.bolsa_de_santiago_ipsa', 'variacion_pct') }} %)  
   🇨🇱 {{ states('sensor.efemerides_chilenas_efemerides_de_hoy') }}
+
+  {% for n in (state_attr('sensor.noticias_titulares_nacional', 'titulares') or [])[:3] %}
+  📰 [{{ n.titulo }}]({{ n.enlace }})  
+  {% endfor %}
 ```
+
+### 🌅 Resumen de la mañana en tu celular
+Una notificación diaria que junta lo que ya tienes en Navaja Chilena: el santo, UF y dólar, si hoy tienes restricción vehicular, los descuentos en bencina de tus
+tarjetas, el próximo feriado y tres titulares. Solo aparece lo que corresponde: si hoy no tienes restricción ni descuentos, esas líneas no salen.
+
+```yaml
+alias: Resumen de la mañana
+triggers:
+  - trigger: time
+    at: "07:30:00"
+actions:
+  - action: notify.notify          # cambia por tu servicio, p. ej. notify.mobile_app_mi_celular
+    data:
+      title: "🇨🇱 Buen día{{ ' · ' ~ states('sensor.santoral_santo_del_dia') if has_value('sensor.santoral_santo_del_dia') }}"
+      message: |
+        {% if has_value('sensor.indicadores_economicos_uf') and has_value('sensor.indicadores_economicos_dolar_observado') -%}
+        💵 UF ${{ '{:,.0f}'.format(states('sensor.indicadores_economicos_uf') | float(0)) | replace(',', '.') }} · Dólar ${{ '{:,.0f}'.format(states('sensor.indicadores_economicos_dolar_observado') | float(0)) | replace(',', '.') }}
+        {% endif -%}
+        {% if is_state('binary_sensor.mi_vehiculo_restriccion_vehicular_hoy', 'on') -%}
+        🚗 Hoy tienes restricción vehicular ({{ state_attr('binary_sensor.mi_vehiculo_restriccion_vehicular_hoy', 'horario') }})
+        {% endif -%}
+        {% if states('sensor.combustibles_descuentos_en_bencina_hoy') | int(0) > 0 -%}
+        ⛽ Bencina con descuento hoy: {% for d in state_attr('sensor.combustibles_descuentos_en_bencina_hoy', 'hoy') %}{{ d.tarjeta }} en {{ d.estaciones | join('/') }} ({{ d.descuento }}){{ ', ' if not loop.last }}{% endfor %}
+        {% endif -%}
+        {% if state_attr('sensor.feriados_chile_proximo_feriado', 'es_hoy') -%}
+        🎉 Hoy es feriado: {{ state_attr('sensor.feriados_chile_proximo_feriado', 'nombre') }}
+        {% elif has_value('sensor.feriados_chile_proximo_feriado') -%}
+        📅 Próximo feriado: {{ state_attr('sensor.feriados_chile_proximo_feriado', 'nombre') }} (en {{ states('sensor.feriados_chile_dias_para_el_proximo_feriado') }} días)
+        {% endif -%}
+        {% for n in (state_attr('sensor.noticias_titulares_nacional', 'titulares') or [])[:3] -%}
+        📰 {{ n.titulo }}
+        {% endfor -%}
+```
+
+Cada línea aparece solo si ese módulo está activado: el resumen se arma con lo que tú elegiste. Los nombres de las entidades son los de tu instalación; si
+cambiaste alguno, ajústalo en la plantilla.
 
 ## Fuentes de datos y créditos
 
