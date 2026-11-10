@@ -12,7 +12,7 @@ import pytest
 pkg = types.ModuleType("nc")
 pkg.__path__ = [str(Path(__file__).parents[1] / "custom_components/navaja_chilena")]
 sys.modules["nc"] = pkg
-for name in ("const", "api"):
+for name in ("const", "api", "santoral"):
     spec = importlib.util.spec_from_file_location(f"nc.{name}", f"{pkg.__path__[0]}/{name}.py")
     mod = importlib.util.module_from_spec(spec)
     sys.modules[f"nc.{name}"] = mod
@@ -180,3 +180,34 @@ def test_metro_schedule():
     assert api.metro_is_open(at(8, 7, 30))
     assert not api.metro_is_open(at(9, 7, 0), holiday=True)  # festivo = horario domingo
     assert api.metro_is_open(at(9, 7, 30), holiday=True)
+
+
+def test_ipsa_real_and_variation():
+    ix = api.parse_stock_index(load("ipsa.json"))
+    assert ix.code == "ipsa" and ix.value > 1000 and ix.date > ix.previous_date
+    assert ix.change == round(ix.value - ix.previous_value, 2)
+    assert ix.change_pct == round(ix.change / ix.previous_value * 100, 2)
+
+
+def test_ipsa_math_and_edge_cases():
+    data = {"codigo": "ipsa", "serie": [{"fecha": "2026-11-06", "valor": 10000},
+                                         {"fecha": "2026-11-09", "valor": 10100}]}   # desordenada
+    ix = api.parse_stock_index(data)
+    assert (ix.value, ix.previous_value, ix.change, ix.change_pct) == (10100, 10000, 100, 1.0)
+    one = api.parse_stock_index({"serie": [{"fecha": "2026-11-09", "valor": 5}]})
+    assert one.change is None and one.change_pct is None
+    for bad in ({}, {"serie": []}, {"serie": "x"}, None):
+        with pytest.raises(api.NavajaApiError):
+            api.parse_stock_index(bad)
+
+
+def test_santoral_complete():
+    from datetime import date, timedelta
+    santoral = sys.modules["nc.santoral"]
+    d = date(2024, 1, 1)                                  # año bisiesto: 366 días
+    while d.year == 2024:
+        assert santoral.saint_of(d).strip(), d
+        d += timedelta(days=1)
+    assert santoral.saint_of(date(2026, 7, 16)) == "Nuestra Señora del Carmen"
+    assert santoral.saint_of(date(2026, 11, 1)) == "Todos los Santos"
+    assert santoral.saint_of(date(2026, 12, 25)).startswith("Natividad")

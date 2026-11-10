@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from . import api
 from .const import (
+    BOLSA_INTERVAL,
     CRYPTO_INTERVAL,
     CRYPTO_MARKETS,
     DOMAIN,
@@ -148,3 +149,7 @@ def holidays_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
         return {"next": nxt, "today": today, "is_holiday_today": bool(nxt and nxt.date == today)}
 
     return NavajaCoordinator(hass, "feriados", HOLIDAYS_INTERVAL, fetch)
+
+
+def bolsa_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
+    return NavajaCoordinator(hass, "bolsa", BOLSA_INTERVAL, api.fetch_ipsa)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -12,11 +12,14 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.event import async_track_time_change
+from homeassistant.util import dt as dt_util
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import NavajaConfigEntry, api
+from .santoral import saint_of
 from .const import CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
 
 
@@ -65,6 +68,7 @@ async def async_setup_entry(
             MetroLineSensor(rt.metro, entry, line_id, rt.holidays) for line_id in data
         ],
     )
+    add_when_ready(rt.bolsa, lambda data: [StockSensor(rt.bolsa, entry, "ipsa")])
     add_when_ready(
         rt.crypto,
         lambda data: [CryptoSensor(rt.crypto, entry, m) for m in data],
@@ -86,6 +90,8 @@ async def async_setup_entry(
         fixed += [AirSensor(rt.air, entry, spec) for spec in AIR_SENSORS]
     if rt.pharmacy:
         fixed.append(PharmacySensor(rt.pharmacy, entry, rt.pharmacy_comuna))
+    if rt.saint:
+        fixed.append(SaintSensor(entry))
     async_add_entities(fixed)
 
 
@@ -389,3 +395,73 @@ class PharmacySensor(_Base):
                 for p in self.coordinator.data[: self.MAX_LISTED]
             ]
         }
+
+
+class StockSensor(_Base):
+    """Último cierre del IPSA con su variación diaria."""
+
+    _kind = "bolsa"
+    _attr_icon = "mdi:chart-line"
+    _attr_name = "IPSA"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "pts"
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator, entry, key: str) -> None:
+        super().__init__(coordinator, entry, key)
+        self._attr_device_info = _device("bolsa", "Bolsa de Santiago")
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None
+
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.data.value
+
+    @property
+    def icon(self) -> str:
+        change = self.coordinator.data.change if self.coordinator.data else None
+        if change is None or change == 0:
+            return "mdi:chart-line"
+        return "mdi:trending-up" if change > 0 else "mdi:trending-down"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        d = self.coordinator.data
+        return {
+            "variacion_puntos": d.change,
+            "variacion_pct": d.change_pct,
+            "fecha_cierre": d.date,
+            "cierre_anterior": d.previous_value,
+            "fecha_cierre_anterior": d.previous_date,
+        }
+
+
+class SaintSensor(SensorEntity):
+    """Santo del día (santoral católico tradicional). No usa internet."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Santo del día"
+    _attr_icon = "mdi:cross-celtic"
+    _attr_should_poll = False
+
+    def __init__(self, entry: NavajaConfigEntry) -> None:
+        self._attr_unique_id = f"{entry.entry_id}_santo"
+        self._attr_device_info = _device("santoral", "Santoral")
+
+    @property
+    def native_value(self) -> str:
+        return saint_of(dt_util.now().date())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        today = dt_util.now().date()
+        return {"fecha": today.isoformat(), "mañana": saint_of(today + timedelta(days=1))}
+
+    async def async_added_to_hass(self) -> None:
+        # Se actualiza justo después de medianoche (hora de Home Assistant).
+        self.async_on_remove(
+            async_track_time_change(
+                self.hass, lambda _now: self.async_write_ha_state(), hour=0, minute=0, second=5
+            )
+        )

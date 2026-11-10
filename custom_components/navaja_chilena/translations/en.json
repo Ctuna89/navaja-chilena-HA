@@ -12,7 +12,9 @@
           "holidays": "Next public holiday",
           "air": "Air quality and UV (based on Home Assistant location)",
           "pharmacy_comuna": "Commune for pharmacies on duty (optional, e.g. Providencia)",
-          "crypto": "Cryptocurrencies in CLP (Bitcoin and Ethereum, Buda.com)"
+          "crypto": "Cryptocurrencies in CLP (Bitcoin and Ethereum, Buda.com)",
+          "bolsa": "Santiago Stock Exchange: IPSA and daily change",
+          "saint": "Saint of the day (Catholic calendar)"
         }
       }
     },
@@ -38,7 +40,9 @@
           "holidays": "Next public holiday",
           "air": "Air quality and UV (based on Home Assistant location)",
           "pharmacy_comuna": "Commune for pharmacies on duty (optional, e.g. Providencia)",
-          "crypto": "Cryptocurrencies in CLP (Bitcoin and Ethereum, Buda.com)"
+          "crypto": "Cryptocurrencies in CLP (Bitcoin and Ethereum, Buda.com)",
+          "bolsa": "Santiago Stock Exchange: IPSA and daily change",
+          "saint": "Saint of the day (Catholic calendar)"
         }
       }
     },
