@@ -909,8 +909,6 @@ Lista de los descuentos de hoy en una categoría (cambia `comida` por `combustib
 
 ![Descuentos de hoy en comida para tus tarjetas, con comercio, tarjeta y enlace](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/descuentos-hoy.png)
 
-![Descuentos de hoy en comida para tus tarjetas, con comercio, tarjeta y enlace](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/descuentos-hoy.png)
-
 ```yaml
 type: markdown
 title: 💳 Descuentos de hoy en comida
