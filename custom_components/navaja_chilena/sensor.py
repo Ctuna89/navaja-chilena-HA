@@ -525,6 +525,18 @@ class CinemaSensor(_Base):
     def native_value(self) -> int:
         return len(self._movies())
 
+    def _upcoming(self):
+        now = dt_util.now().astimezone(ZoneInfo(api.METRO_TZ))
+        return next((s for s in self._today() if s.start >= now), None)
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Póster de la próxima función (o de la primera película del día)."""
+        if self.coordinator.data is None:
+            return None
+        screening = self._upcoming() or next(iter(self._today()), None)
+        return screening.poster if screening else None
+
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         movies = self._movies()
@@ -541,7 +553,11 @@ class CinemaSensor(_Base):
             "peliculas": movies,
             "resumen": summary,
             "proxima_funcion": (
-                {"titulo": upcoming.title, "hora": upcoming.start.strftime("%H:%M")}
+                {
+                    "titulo": upcoming.title,
+                    "hora": upcoming.start.strftime("%H:%M"),
+                    "poster": upcoming.poster,
+                }
                 if upcoming
                 else None
             ),
