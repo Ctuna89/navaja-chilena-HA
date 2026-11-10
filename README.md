@@ -905,17 +905,21 @@ entities:
 ```
 
 ### 💳 Descuentos de tus tarjetas
-Lista de los descuentos de hoy en una categoría (cambia `combustibles` por `comida`, `salud_y_belleza`, etc.).
+Lista de los descuentos de hoy en una categoría (cambia `comida` por `combustibles`, `salud_y_belleza`, etc.).
+
+![Descuentos de hoy en comida para tus tarjetas, con comercio, tarjeta y enlace](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/descuentos-hoy.png)
+
+![Descuentos de hoy en comida para tus tarjetas, con comercio, tarjeta y enlace](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/descuentos-hoy.png)
 
 ```yaml
 type: markdown
-title: 💳 Descuentos de hoy en combustibles
-content: >
-  {% set items = state_attr('sensor.descuentos_de_tarjetas_descuentos_de_hoy_combustibles', 'hoy') or [] %}
+title: 💳 Descuentos de hoy en comida
+content: |
+  {% set items = state_attr('sensor.descuentos_de_tarjetas_descuentos_de_hoy_comida', 'hoy') or [] %}
   {% if items | length == 0 %}
   Hoy no hay descuentos de tus tarjetas en esta categoría.
   {% else %}
-  {% for b in items %}
+  {% for b in items[:8] %}
   - **{{ b.comercio }}** · {{ b.descuento }} — {{ b.tarjeta }} ([ver]({{ b.url }}))
   {% endfor %}
   {% endif %}
@@ -936,7 +940,7 @@ actions:
   - action: notify.notify          # cambia por tu servicio, p. ej. notify.mobile_app_mi_celular
     data:
       title: 💳 Descuentos de hoy
-      message: >
+      message: |
         {% for b in state_attr(trigger.entity_id, 'hoy')[:5] %}
         {{ b.comercio }}: {{ b.descuento }} ({{ b.tarjeta }})
         {% endfor %}

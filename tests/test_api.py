@@ -527,3 +527,14 @@ def test_months_limit_benefit():
     page = (Path(__file__).parent / "fixtures/beneficios_comida_bci.html").read_text()
     baza = next(b for b in api.parse_benefits(page) if b.merchant == "Baza")
     assert baza.applies_on(5, 1) is True and baza.applies_on(5, 11) is False
+
+
+def test_validity_end_discards_expired():
+    from datetime import date
+    assert api.parse_until("Promoción válida hasta el 31 de diciembre de 2026.") == date(2026, 12, 31)
+    assert api.parse_until("Promoción válida del 01 al 30 de noviembre de 2026.") == date(2026, 11, 30)
+    assert api.parse_until("Venta online") is None
+    b = api.Benefit("1", "X", "comida", "M", "t", "d", "u", None, frozenset({1}), None, date(2026, 11, 30))
+    assert b.applies_on(1, 11, date(2026, 11, 24)) is True
+    assert b.applies_on(1, 12, date(2026, 12, 1)) is False
+    assert api.benefit_from_dict(api.benefit_to_dict(b)) == b

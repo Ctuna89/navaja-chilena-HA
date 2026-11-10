@@ -1470,9 +1470,12 @@ class Benefit:
     image: str | None
     days: frozenset[int] | None   # None: el texto no indica días
     months: frozenset[int] | None = None   # None: el texto no limita a meses
+    until: date | None = None              # fin de vigencia, si el texto lo indica
 
-    def applies_on(self, weekday: int, month: int | None = None) -> bool | None:
+    def applies_on(self, weekday: int, month: int | None = None, today: date | None = None) -> bool | None:
         """True/False si el texto indica los días; None si no los indica."""
+        if today is not None and self.until is not None and today > self.until:
+            return False
         if month is not None and self.months is not None and month not in self.months:
             return False
         return None if self.days is None else weekday in self.days
@@ -1532,6 +1535,19 @@ def parse_months(text: str) -> frozenset[int] | None:
     return frozenset(found) if found else None
 
 
+def parse_until(text: str) -> date | None:
+    """Fin de vigencia: «válida hasta el 31 de diciembre de 2026» o «del 01 al 30 de noviembre de 2026»."""
+    t = _fold(text)
+    months = "|".join(MONTH_NAMES)
+    m = re.search(rf"(?:hasta(?: el)?|al)\s+(\d{{1,2}})\s+de\s+({months})\s+de\s+(\d{{4}})", t)
+    if not m:
+        return None
+    try:
+        return date(int(m.group(3)), MONTH_NAMES.index(m.group(2)) + 1, int(m.group(1)))
+    except ValueError:
+        return None
+
+
 _CARD_SPLIT = re.compile(r'<div class="img-card-corner">')
 
 
@@ -1566,6 +1582,7 @@ def parse_benefits(page: str) -> list[Benefit]:
                 image=image.group(1) if image else None,
                 days=parse_days(f"{detail_t} {title_t}"),
                 months=parse_months(f"{detail_t} {title_t}"),
+                until=parse_until(detail_t),
             )
         )
     return found
@@ -1630,6 +1647,7 @@ def benefit_to_dict(b: Benefit) -> dict[str, Any]:
         "detail": b.detail, "url": b.url, "image": b.image,
         "days": None if b.days is None else sorted(b.days),
         "months": None if b.months is None else sorted(b.months),
+        "until": b.until.isoformat() if b.until else None,
     }
 
 
@@ -1640,4 +1658,5 @@ def benefit_from_dict(d: dict[str, Any]) -> Benefit:
         title=d.get("title", ""), detail=d.get("detail", ""), url=d.get("url", ""), image=d.get("image"),
         days=None if days is None else frozenset(int(x) for x in days),
         months=None if months is None else frozenset(int(x) for x in months),
+        until=date.fromisoformat(d["until"]) if d.get("until") else None,
     )

@@ -836,8 +836,8 @@ class BenefitsSensor(_Base):
     def _split(self) -> tuple[list[api.Benefit], list[api.Benefit], list[api.Benefit]]:
         mine = [b for b in self.coordinator.data if b.category == self._category]
         d = self._today_date()
-        today = [b for b in mine if b.applies_on(d.weekday(), d.month) is True]
-        unknown = [b for b in mine if b.applies_on(d.weekday(), d.month) is None]
+        today = [b for b in mine if b.applies_on(d.weekday(), d.month, d) is True]
+        unknown = [b for b in mine if b.applies_on(d.weekday(), d.month, d) is None]
         return mine, today, unknown
 
     @property
