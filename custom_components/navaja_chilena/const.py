@@ -270,3 +270,47 @@ REGIONAL_ZONES: dict[str, tuple[str, str]] = {
     "puerto natales": ("476385bd-aebc-4d6f-a49b-5131c3019a46", "Puerto Natales"),
     "punta arenas": ("2fa4a6bc-d598-47ac-a3dc-f7c3b9c8100c", "Punta Arenas"),
 }
+
+# Titulares de noticias por tema (feeds RSS públicos de La Tercera y Cooperativa.cl)
+CONF_NEWS_TOPICS = "news_topics"
+CONF_NEWS_COUNT = "news_count"
+NEWS_INTERVAL = timedelta(minutes=30)
+NEWS_COOP_MIN_AGE = timedelta(minutes=60)   # Cooperativa declara una vigencia de 60 minutos en sus feeds
+NEWS_COUNTS = (5, 10, 15)
+NEWS_DEFAULT_COUNT = 5
+NEWS_PAUSE = 0.5                             # segundos entre consultas al mismo medio
+NEWS_LATERCERA_URL = "https://www.latercera.com/arc/outboundfeeds/rss/category/{slug}/?outputType=xml"
+NEWS_COOPERATIVA_URL = "https://www.cooperativa.cl/noticias/site/tax/port/all/rss_{n}___1.xml"
+NEWS_COOPERATIVA_FEEDS = tuple(range(1, 9))
+NEWS_TOPICS: dict[str, str] = {
+    "nacional": "Nacional",
+    "politica": "Política",
+    "mundo": "Mundo",
+    "economia": "Economía",
+    "deportes": "Deportes",
+    "tecnologia": "Tecnología",
+    "sociedad": "Sociedad",
+    "cultura": "Cultura y tendencias",
+    "servicios": "Servicios",
+}
+# Tema -> sección del feed de La Tercera (La Tercera publica un feed por sección)
+NEWS_LATERCERA_SECTIONS: dict[str, str] = {
+    "nacional": "nacional",
+    "politica": "politica",
+    "mundo": "mundo",
+    "deportes": "el-deportivo",
+    "tecnologia": "tecnologia",
+    "cultura": "tendencias",
+    "servicios": "servicios",
+}
+# Categoría que Cooperativa pone a cada noticia (sin tildes, en minúsculas) -> tema
+NEWS_COOPERATIVA_CATEGORIES: dict[str, str] = {
+    "pais": "nacional",
+    "mundo": "mundo",
+    "economia": "economia",
+    "deportes": "deportes",
+    "tecnologia": "tecnologia",
+    "sociedad": "sociedad",
+    "cultura": "cultura",
+    "magazine": "cultura",
+}

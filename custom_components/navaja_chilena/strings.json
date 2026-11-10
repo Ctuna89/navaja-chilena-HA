@@ -24,6 +24,8 @@
           "fuel_types": "Combustibles más baratos cerca de tu casa (elige los que usas)",
           "fuel_radius": "Radio de búsqueda de estaciones de servicio",
           "fuel_max_age": "Antigüedad máxima de los precios de combustible",
+          "news_topics": "Temas de noticias (titulares de La Tercera y Cooperativa)",
+          "news_count": "Cantidad de titulares por tema",
           "regional_zone": "Ciudad de la Red Regional (paraderos fuera de Santiago)",
           "regional_stops": "Paraderos de la Red Regional (códigos separados por coma, ej. 1253, P60094)",
           "benefit_cards": "Tus tarjetas de crédito y débito (para ver sus descuentos)",
@@ -42,7 +44,7 @@
       "regional_needs_stops": "Indica al menos un paradero de la Red Regional.",
       "regional_needs_zone": "Elige la ciudad de esos paraderos.",
       "regional_stop_not_found": "Ese paradero no existe en la ciudad elegida. Revisa el código en el letrero o en la app Red Regional.",
-      "invalid_trip": "Trayecto de tren inválido. Usa «Origen > Destino» con estaciones de la línea Limache–Puerto, ej. Villa Alemana > Puerto."
+      "invalid_trip": "Trayecto de tren inválido. Usa «Origen > Destino» con estaciones de la línea Limache–Puerto, ej. Villa Alemana > Puerto. Máximo 8 trayectos (contando el sentido inverso)."
     },
     "abort": {
       "already_configured": "Navaja Chilena ya está configurada."
@@ -73,6 +75,8 @@
           "fuel_types": "Combustibles más baratos cerca de tu casa (elige los que usas)",
           "fuel_radius": "Radio de búsqueda de estaciones de servicio",
           "fuel_max_age": "Antigüedad máxima de los precios de combustible",
+          "news_topics": "Temas de noticias (titulares de La Tercera y Cooperativa)",
+          "news_count": "Cantidad de titulares por tema",
           "regional_zone": "Ciudad de la Red Regional (paraderos fuera de Santiago)",
           "regional_stops": "Paraderos de la Red Regional (códigos separados por coma, ej. 1253, P60094)",
           "benefit_cards": "Tus tarjetas de crédito y débito (para ver sus descuentos)",
@@ -91,7 +95,7 @@
       "regional_needs_stops": "Indica al menos un paradero de la Red Regional.",
       "regional_needs_zone": "Elige la ciudad de esos paraderos.",
       "regional_stop_not_found": "Ese paradero no existe en la ciudad elegida. Revisa el código en el letrero o en la app Red Regional.",
-      "invalid_trip": "Trayecto de tren inválido. Usa «Origen > Destino» con estaciones de la línea Limache–Puerto, ej. Villa Alemana > Puerto."
+      "invalid_trip": "Trayecto de tren inválido. Usa «Origen > Destino» con estaciones de la línea Limache–Puerto, ej. Villa Alemana > Puerto. Máximo 8 trayectos (contando el sentido inverso)."
     }
   },
   "entity": {

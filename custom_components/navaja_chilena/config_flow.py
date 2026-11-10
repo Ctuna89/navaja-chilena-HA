@@ -26,6 +26,11 @@ from .const import (
     BENEFIT_CARDS,
     BENEFIT_CATEGORIES,
     CONF_BENEFIT_CARDS,
+    CONF_NEWS_COUNT,
+    CONF_NEWS_TOPICS,
+    NEWS_COUNTS,
+    NEWS_DEFAULT_COUNT,
+    NEWS_TOPICS,
     CONF_REGIONAL_STOPS,
     CONF_REGIONAL_ZONE,
     REGIONAL_NONE,
@@ -176,6 +181,23 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
                 )
             ),
             vol.Required(
+                CONF_NEWS_TOPICS, default=defaults.get(CONF_NEWS_TOPICS, [])
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[selector.SelectOptionDict(value=k, label=v) for k, v in NEWS_TOPICS.items()],
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(
+                CONF_NEWS_COUNT, default=str(defaults.get(CONF_NEWS_COUNT, NEWS_DEFAULT_COUNT))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[selector.SelectOptionDict(value=str(n), label=f"{n} titulares") for n in NEWS_COUNTS],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(
                 CONF_REGIONAL_ZONE, default=defaults.get(CONF_REGIONAL_ZONE, REGIONAL_NONE)
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
@@ -245,6 +267,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         return user_input, {CONF_STOPS: "invalid_stop"}
     try:
         trips = parse_trips(user_input.get(CONF_TRAIN_TRIPS, ""))
+        parse_trips(user_input.get(CONF_TRAIN_TRIPS, ""), bool(user_input.get(CONF_TRAIN_RETURN)))  # el tope cuenta el sentido inverso
     except ValueError:
         return user_input, {CONF_TRAIN_TRIPS: "invalid_trip"}
     zone = str(user_input.get(CONF_REGIONAL_ZONE, REGIONAL_NONE))
@@ -264,6 +287,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or user_input.get(CONF_PHARMACY_COMUNA, "").strip()
         or bool(user_input.get(CONF_FUEL_TYPES))
         or bool(user_input.get(CONF_BENEFIT_CARDS))
+        or bool(user_input.get(CONF_NEWS_TOPICS))
         or (zone != REGIONAL_NONE and bool(regional))
         or str(user_input.get(CONF_FOOTBALL_TEAM, FOOTBALL_NONE)) != FOOTBALL_NONE
         or bool(user_input.get(CONF_FOOTBALL_LEAGUE))

@@ -49,7 +49,7 @@ def train_coordinator(hass: HomeAssistant, trips: list[tuple[int, int]]) -> Nava
         if not result:
             raise api.NavajaApiError("; ".join(errors) or "sin datos")
         if errors:
-            _LOGGER.warning("Trayectos de tren con error: %s", "; ".join(errors))
+            _LOGGER.debug("Trayectos de tren con error: %s", "; ".join(errors))  # cada minuto: no ensuciar el log
         return result
 
     return NavajaCoordinator(hass, "tren", efe_train.TRAIN_INTERVAL, fetch)

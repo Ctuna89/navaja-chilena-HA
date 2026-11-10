@@ -28,6 +28,7 @@ TRAIN_URL = "https://ms4.metrovalparaiso.cl/"
 TRAIN_INTERVAL = timedelta(minutes=1)
 REQUEST_TIMEOUT = 15
 MAX_RESPONSE_BYTES = 1_048_576
+MAX_TRIPS = 8  # cada trayecto es una consulta por minuto a EFE: se limita para no cargarla de más
 
 # EFE entrega solo el certificado de hoja. Se añade el intermedio público de
 # GlobalSign para construir la cadena hasta las raíces de confianza. La
@@ -157,6 +158,8 @@ def parse_trips(raw: str, with_return: bool = False) -> list[tuple[int, int]]:
         for trip in ((origin, destination), (destination, origin)) if with_return else ((origin, destination),):
             if trip not in trips:
                 trips.append(trip)
+    if len(trips) > MAX_TRIPS:
+        raise ValueError(f"máximo {MAX_TRIPS} trayectos")
     return trips
 
 

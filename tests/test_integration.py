@@ -868,3 +868,104 @@ async def test_regional_config_flow_validation(hass, aioclient_mock):
     assert (await submit({"regional_zone": "temuco", "regional_stops": "NOEXISTE9"}))["errors"] == {"regional_stops": "regional_stop_not_found"}
     ok = await submit({"regional_zone": "temuco", "regional_stops": "75, 53"})
     assert ok["type"] == FlowResultType.CREATE_ENTRY and ok["data"]["regional_stops"] == "75, 53"
+
+
+# ------------------------------------------------------------------- Noticias
+
+LT_NAC = (FIX_DIR / "noticias_latercera_nacional.xml").read_text()
+LT_DEP = (FIX_DIR / "noticias_latercera_deportivo.xml").read_text()
+COOP_3 = (FIX_DIR / "noticias_cooperativa_3.xml").read_text()
+COOP_1 = (FIX_DIR / "noticias_cooperativa_1.xml").read_text()
+LT_URL = "https://www.latercera.com/arc/outboundfeeds/rss/category/{}/?outputType=xml"
+COOP_URL = "https://www.cooperativa.cl/noticias/site/tax/port/all/rss_{}___1.xml"
+
+
+async def _setup_news(hass, aioclient_mock, monkeypatch, topics, lt_status=200, **extra):
+    from custom_components.navaja_chilena import api as _api
+    monkeypatch.setattr(_api, "NEWS_PAUSE", 0)
+    mock_all(aioclient_mock)
+    aioclient_mock.get(LT_URL.format("nacional"), text=LT_NAC, status=lt_status)
+    aioclient_mock.get(LT_URL.format("el-deportivo"), text=LT_DEP, status=lt_status)
+    for n in range(1, 9):
+        aioclient_mock.get(COOP_URL.format(n), text=COOP_1 if n == 1 else COOP_3)
+    data = {"indicators": ["uf"], "metro": False, "news_topics": topics, "news_count": "5", **extra}
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+def _news_calls(aioclient_mock, host):
+    return len([c for c in aioclient_mock.mock_calls if host in str(c[1])])
+
+
+async def test_news_topics_merge_both_outlets(hass, aioclient_mock, freezer, monkeypatch):
+    freezer.move_to("2026-11-10 20:00:00+00:00")
+    entry = await _setup_news(hass, aioclient_mock, monkeypatch, ["nacional", "deportes", "economia"])
+    nac = hass.states.get("sensor.noticias_titulares_nacional")
+    assert nac is not None and nac.state not in ("unknown", "unavailable")
+    medios = {t["medio"] for t in nac.attributes["titulares"]}
+    assert medios == {"La Tercera", "Cooperativa"} and len(nac.attributes["titulares"]) == 5
+    horas = [t["hora"] for t in nac.attributes["titulares"]]
+    assert horas == sorted(horas, reverse=True)
+    dep = hass.states.get("sensor.noticias_titulares_deportes")
+    assert {t["medio"] for t in dep.attributes["titulares"]} == {"La Tercera", "Cooperativa"}
+    eco = hass.states.get("sensor.noticias_titulares_economia")
+    assert eco is not None and {t["medio"] for t in eco.attributes["titulares"]} == {"Cooperativa"}
+
+
+async def test_news_cooperativa_cached_for_an_hour(hass, aioclient_mock, freezer, monkeypatch):
+    freezer.move_to("2026-11-10 20:00:00+00:00")
+    entry = await _setup_news(hass, aioclient_mock, monkeypatch, ["nacional"])
+    assert _news_calls(aioclient_mock, "cooperativa.cl") == 8 and _news_calls(aioclient_mock, "latercera.com") == 1
+    freezer.move_to("2026-11-10 20:31:00+00:00")
+    await entry.runtime_data.news.async_refresh()
+    assert _news_calls(aioclient_mock, "cooperativa.cl") == 8 and _news_calls(aioclient_mock, "latercera.com") == 2
+    freezer.move_to("2026-11-10 21:05:00+00:00")
+    await entry.runtime_data.news.async_refresh()
+    assert _news_calls(aioclient_mock, "cooperativa.cl") == 16
+
+
+async def test_news_one_outlet_down_keeps_the_other(hass, aioclient_mock, freezer, monkeypatch):
+    freezer.move_to("2026-11-10 20:00:00+00:00")
+    await _setup_news(hass, aioclient_mock, monkeypatch, ["nacional"], lt_status=503)
+    nac = hass.states.get("sensor.noticias_titulares_nacional")
+    assert nac is not None and {t["medio"] for t in nac.attributes["titulares"]} == {"Cooperativa"}
+
+
+# ----------------------------------------------- Resumen matutino (ejemplo del README)
+
+def _readme_morning_automation():
+    import re
+    import yaml
+    text = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
+    section = text[text.index("### 🌅 Resumen de la mañana"):text.index("## Fuentes de datos")]
+    return yaml.safe_load(re.search(r"```yaml\n(.*?)```", section, re.S).group(1))
+
+
+async def test_readme_morning_summary_renders(hass):
+    from homeassistant.helpers.template import Template
+    data = _readme_morning_automation()["actions"][0]["data"]
+    s = hass.states.async_set
+    s("sensor.santoral_santo_del_dia", "San León Magno")
+    s("sensor.indicadores_economicos_uf", "41302.33")
+    s("sensor.indicadores_economicos_dolar_observado", "969.8")
+    s("binary_sensor.mi_vehiculo_restriccion_vehicular_hoy", "on", {"horario": "07:30–21:00"})
+    s("sensor.combustibles_descuentos_en_bencina_hoy", "1", {"hoy": [{"tarjeta": "Itaú Legend", "estaciones": ["Copec"], "descuento": "$100/L"}]})
+    s("sensor.feriados_chile_proximo_feriado", "2026-12-08", {"nombre": "Inmaculada Concepción", "es_hoy": False})
+    s("sensor.feriados_chile_dias_para_el_proximo_feriado", "28")
+    s("sensor.noticias_titulares_nacional", "T1", {"titulares": [{"titulo": f"Titular {i}", "enlace": "https://x/" + str(i)} for i in range(5)]})
+    title = Template(data["title"], hass).async_render()
+    msg = Template(data["message"], hass).async_render()
+    assert title == "🇨🇱 Buen día · San León Magno"
+    assert "UF $41.302 · Dólar $970" in msg and "restricción vehicular (07:30–21:00)" in msg
+    assert "Itaú Legend en Copec ($100/L)" in msg and "Inmaculada Concepción (en 28 días)" in msg
+    assert msg.count("📰") == 3 and "Titular 3" not in msg
+
+
+async def test_readme_morning_summary_is_empty_without_modules(hass):
+    from homeassistant.helpers.template import Template
+    data = _readme_morning_automation()["actions"][0]["data"]
+    assert Template(data["title"], hass).async_render() == "🇨🇱 Buen día"
+    assert Template(data["message"], hass).async_render().strip() == ""

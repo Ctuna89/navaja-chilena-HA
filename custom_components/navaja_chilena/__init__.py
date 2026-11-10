@@ -20,6 +20,10 @@ from .const import (
     BENEFIT_CARDS,
     BENEFIT_CATEGORIES,
     CONF_BENEFIT_CARDS,
+    CONF_NEWS_COUNT,
+    CONF_NEWS_TOPICS,
+    NEWS_DEFAULT_COUNT,
+    NEWS_TOPICS,
     CONF_REGIONAL_STOPS,
     CONF_REGIONAL_ZONE,
     REGIONAL_NONE,
@@ -57,6 +61,7 @@ from .coordinator import (
     football_coordinator,
     national_coordinator,
     benefits_coordinator,
+    news_coordinator,
     regional_coordinator,
     fuel_discounts_coordinator,
     fuel_coordinator,
@@ -99,6 +104,8 @@ class RuntimeData:
     benefits: NavajaCoordinator | None = None
     fuel_discounts: NavajaCoordinator | None = None
     regional: NavajaCoordinator | None = None
+    news: NavajaCoordinator | None = None
+    news_topics: list[str] = field(default_factory=list)
     regional_zone: str = ""
     benefit_cards: list[str] = field(default_factory=list)
     benefit_categories: list[str] = field(default_factory=list)
@@ -194,6 +201,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         except (TypeError, ValueError):
             data.fuel_max_age = FUEL_DEFAULT_MAX_AGE
         data.fuel = fuel_coordinator(hass)
+    topics = [t for t in (opts.get(CONF_NEWS_TOPICS) or []) if t in NEWS_TOPICS]
+    if topics:
+        try:
+            count = int(opts.get(CONF_NEWS_COUNT, NEWS_DEFAULT_COUNT))
+        except (TypeError, ValueError):
+            count = NEWS_DEFAULT_COUNT
+        data.news_topics = topics
+        data.news = news_coordinator(hass, topics, count)
     zone = str(opts.get(CONF_REGIONAL_ZONE, REGIONAL_NONE))
     try:
         regional_codes = api.parse_regional_codes(str(opts.get(CONF_REGIONAL_STOPS) or ""))
@@ -236,7 +251,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     coordinators = [
         c
         for c in (data.indicators, data.metro, data.stops, data.train, data.quakes,
-                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.benefits, data.fuel_discounts, data.regional, data.football, data.national)
+                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.benefits, data.fuel_discounts, data.regional, data.news, data.football, data.national)
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]
