@@ -939,8 +939,8 @@ async def test_news_one_outlet_down_keeps_the_other(hass, aioclient_mock, freeze
 def _readme_morning_automation():
     import re
     import yaml
-    text = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
-    section = text[text.index("### 🌅 Resumen de la mañana"):text.index("## Fuentes de datos")]
+    text = (Path(__file__).parents[1] / "docs" / "tarjetas.md").read_text(encoding="utf-8")
+    section = text[text.index("## 🌅 Resumen de la mañana"):]
     return yaml.safe_load(re.search(r"```yaml\n(.*?)```", section, re.S).group(1))
 
 
