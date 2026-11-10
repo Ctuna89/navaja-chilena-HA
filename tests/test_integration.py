@@ -12,7 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa
 
 from custom_components.navaja_chilena import api  # noqa: E402
 from custom_components.navaja_chilena.const import (  # noqa: E402
-    AIR_URL, CINEMARK_URL, CRYPTO_URL, EPHEMERIDES_URL, HOLIDAYS_URLS, IPSA_URL, DOMAIN, INDICATORS_URL, METRO_URL, PHARMACY_URL, QUAKES_CSN_URL,
+    AIR_URL, CINEMARK_URL, CRYPTO_URL, EPHEMERIDES_URL, FUEL_BRANDS_URL, FUEL_URL, HOLIDAYS_URLS, IPSA_URL, DOMAIN, INDICATORS_URL, METRO_URL, PHARMACY_URL, QUAKES_CSN_URL,
     QUAKES_URL, STOP_URL,
 )
 
@@ -452,3 +452,101 @@ async def test_saint_updates_at_midnight(hass, aioclient_mock, freezer):
     async_fire_time_changed(hass, dt_util.utcnow())
     await hass.async_block_till_done()
     assert _veh(hass, "Santo del día").state == "San Martín de Tours"
+
+
+# -------------------------------------------------------------- Combustibles
+
+FIX_DIR = Path(__file__).parent / "fixtures"
+
+
+async def _setup_fuel(hass, aioclient_mock, fuel_status=200, brands_status=200, **extra):
+    import json as _json
+    hass.config.latitude, hass.config.longitude = -33.4489, -70.6693            # Santiago centro
+    mock_all(aioclient_mock)
+    aioclient_mock.get(FUEL_URL, json=_json.loads((FIX_DIR / "combustibles_estaciones.json").read_text()), status=fuel_status)
+    aioclient_mock.get(FUEL_BRANDS_URL, json=_json.loads((FIX_DIR / "combustibles_marcas.json").read_text()), status=brands_status)
+    data = {"indicators": ["uf"], "metro": False, "fuel_types": ["93", "DI"], "fuel_radius": "5", "fuel_max_age": "30", **extra}
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_fuel_cheapest_near_home(hass, aioclient_mock, freezer):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    entry = await _setup_fuel(hass, aioclient_mock)
+    s93 = _veh(hass, "Gasolina 93 más barata")
+    stations = entry.runtime_data.fuel.data
+    expected = api.cheapest_nearby(stations, "93", -33.4489, -70.6693, 5,
+                                   datetime(2026, 11, 10, 12, tzinfo=ZoneInfo("America/Santiago")), 30)
+    assert expected and float(s93.state) == expected[0].price.price
+    a = s93.attributes
+    assert a["unit_of_measurement"] == "CLP/L" and a["radio_km"] == 5.0
+    assert a["estaciones_en_radio"] == len(expected) and a["marca"] == expected[0].station.brand
+    assert a["distancia_km"] <= 5 and 1000 < a["promedio_en_radio"] < 3000
+    prices = [x["precio"] for x in a["mas_baratas"]]
+    assert prices == sorted(prices) and len(prices) == min(5, len(expected)) and prices[0] == float(s93.state)
+    assert a["entity_picture"].startswith("https://") and "latitude" in a
+    assert _veh(hass, "Diésel más barato").state not in ("unknown", "unavailable")      # nombre en masculino
+    assert not any("Gasolina 95" in x.name for x in hass.states.async_all("sensor"))   # solo los elegidos
+
+
+async def test_fuel_nothing_in_radius_is_unknown_with_reason(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    await _setup_fuel(hass, aioclient_mock)
+    hass.config.latitude, hass.config.longitude = -53.1, -70.9                  # Punta Arenas: sin estaciones en la muestra
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    await entry.runtime_data.fuel.async_refresh()
+    await hass.async_block_till_done()
+    s = _veh(hass, "Gasolina 93 más barata")
+    assert s.state == "unknown" and "No hay estaciones" in s.attributes["motivo"]
+
+
+async def test_fuel_stale_prices_are_ignored(hass, aioclient_mock, freezer):
+    freezer.move_to("2027-03-10 12:00:00-03:00")                                 # meses después: todos los precios son viejos
+    await _setup_fuel(hass, aioclient_mock)
+    assert _veh(hass, "Gasolina 93 más barata").state == "unknown"
+
+
+async def test_fuel_source_down_does_not_break_the_rest(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    entry = await _setup_fuel(hass, aioclient_mock, fuel_status=503)
+    assert entry.state is config_entries.ConfigEntryState.LOADED
+    assert states(hass)["UF"] == "39000.5"
+    assert _veh(hass, "Gasolina 93 más barata").state == "unavailable"          # nunca un precio inventado
+
+
+async def test_fuel_brands_endpoint_failure_is_not_fatal(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    await _setup_fuel(hass, aioclient_mock, brands_status=500)
+    s = _veh(hass, "Gasolina 93 más barata")
+    assert float(s.state) > 0 and s.attributes["marca"].startswith("Marca ")     # sin nombre, pero con precio
+
+
+async def test_fuel_options_flow(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    entry = await _setup_fuel(hass, aioclient_mock)
+    r = await hass.config_entries.options.async_init(entry.entry_id)
+    r = await hass.config_entries.options.async_configure(
+        r["flow_id"], {"indicators": ["uf"], "metro": False, "fuel_types": ["95", "97"], "fuel_radius": "10", "fuel_max_age": "7"})
+    assert r["type"] is FlowResultType.CREATE_ENTRY
+    assert r["data"]["fuel_types"] == ["95", "97"] and r["data"]["fuel_radius"] == "10" and r["data"]["fuel_max_age"] == "7"
+
+
+async def test_fuel_max_age_option_changes_result(hass, aioclient_mock, freezer):
+    """Con un tope más estricto se consideran menos estaciones (y el precio puede subir)."""
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    entry = await _setup_fuel(hass, aioclient_mock, fuel_max_age="30")
+    wide = _veh(hass, "Gasolina 93 más barata")
+    n30 = wide.attributes["estaciones_en_radio"]
+    assert wide.attributes["max_antiguedad_dias"] == 30 and wide.attributes["antiguedad_dias"] <= 30
+    hass.config_entries.async_update_entry(entry, data={**entry.data, "fuel_max_age": "7"})
+    await hass.async_block_till_done()
+    strict = _veh(hass, "Gasolina 93 más barata")
+    assert strict.attributes["max_antiguedad_dias"] == 7
+    assert strict.attributes.get("estaciones_en_radio", 0) <= n30
+    if strict.state != "unknown":
+        assert strict.attributes["antiguedad_dias"] <= 7 and float(strict.state) >= float(wide.state)

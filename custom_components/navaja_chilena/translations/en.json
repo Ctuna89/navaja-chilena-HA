@@ -18,7 +18,10 @@
           "cinema": "Cinemark cinema for today's listings",
           "ephemerides": "Chilean 'on this day' events (Wikipedia)",
           "vehicle_digit": "Last digit of your license plate (traffic restriction and vehicle inspection)",
-          "vehicle_type": "Vehicle type (for the traffic restriction)"
+          "vehicle_type": "Vehicle type (for the traffic restriction)",
+          "fuel_types": "Cheapest fuel near your home (choose the ones you use)",
+          "fuel_radius": "Search radius for gas stations",
+          "fuel_max_age": "Maximum age of fuel prices"
         }
       }
     },
@@ -50,7 +53,10 @@
           "cinema": "Cinemark cinema for today's listings",
           "ephemerides": "Chilean 'on this day' events (Wikipedia)",
           "vehicle_digit": "Last digit of your license plate (traffic restriction and vehicle inspection)",
-          "vehicle_type": "Vehicle type (for the traffic restriction)"
+          "vehicle_type": "Vehicle type (for the traffic restriction)",
+          "fuel_types": "Cheapest fuel near your home (choose the ones you use)",
+          "fuel_radius": "Search radius for gas stations",
+          "fuel_max_age": "Maximum age of fuel prices"
         }
       }
     },

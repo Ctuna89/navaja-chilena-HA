@@ -22,6 +22,7 @@ from . import NavajaConfigEntry, api
 from .santoral import saint_of
 from . import vehicle
 from .vehicle_entity import REASON_TEXT, VehicleMixin
+from .api import FUEL_LABELS
 from .const import CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
 
 
@@ -92,6 +93,8 @@ async def async_setup_entry(
         fixed += [AirSensor(rt.air, entry, spec) for spec in AIR_SENSORS]
     if rt.pharmacy:
         fixed.append(PharmacySensor(rt.pharmacy, entry, rt.pharmacy_comuna))
+    if rt.fuel:
+        fixed += [FuelSensor(rt.fuel, entry, fuel, rt.fuel_radius, rt.fuel_max_age) for fuel in rt.fuel_types]
     if rt.saint:
         fixed.append(SaintSensor(entry))
     if rt.vehicle_digit is not None:
@@ -785,3 +788,82 @@ class RevisionMonthSensor(VehicleMixin, SensorEntity):
             "nota": "Mes de preferencia en las plantas, no una fecha límite: tu plazo depende del certificado anterior.",
             "fuente": "ChileAtiende (Subsecretaría de Transportes)",
         }
+
+
+class FuelSensor(_Base):
+    """Precio más bajo de un combustible en las estaciones cercanas a tu casa."""
+
+    _kind = "combustible"
+    _attr_icon = "mdi:gas-station"
+    _attr_native_unit_of_measurement = "CLP/L"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
+    TOP = 5
+
+    def __init__(self, coordinator, entry, fuel: str, radius: float, max_age: int) -> None:
+        super().__init__(coordinator, entry, fuel)
+        self._fuel = fuel
+        self._radius = radius
+        self._max_age = max_age
+        self._attr_name = f"{FUEL_LABELS[fuel]} más barat{'o' if fuel == 'DI' else 'a'}"
+        self._attr_device_info = _device("combustibles", "Combustibles")
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None
+
+    def _candidates(self) -> list[api.FuelCandidate]:
+        cfg = self.coordinator.hass.config
+        return api.cheapest_nearby(
+            self.coordinator.data, self._fuel, cfg.latitude, cfg.longitude, self._radius, dt_util.now(), self._max_age
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        found = self._candidates()
+        return found[0].price.price if found else None
+
+    @property
+    def entity_picture(self) -> str | None:
+        found = self._candidates() if self.coordinator.data is not None else []
+        return found[0].station.logo if found else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        found = self._candidates()
+        attrs: dict[str, Any] = {
+            "radio_km": self._radius,
+            "max_antiguedad_dias": self._max_age,
+            "estaciones_en_radio": len(found),
+            "fuente": "Bencina en Línea (Comisión Nacional de Energía)",
+        }
+        if not found:
+            attrs["motivo"] = f"No hay estaciones con un precio de los últimos {self._max_age} días a {self._radius:g} km de tu casa"
+            return attrs
+        best = found[0]
+        attrs.update(
+            {
+                "marca": best.station.brand,
+                "direccion": best.station.address,
+                "comuna": best.station.commune,
+                "distancia_km": round(best.distance_km, 1),
+                "atencion": best.price.attention,
+                "antiguedad_dias": (dt_util.now() - best.price.updated).days if best.price.updated else None,
+                "actualizado": best.price.updated.strftime("%Y-%m-%d %H:%M") if best.price.updated else None,
+                "latitude": best.station.lat,
+                "longitude": best.station.lon,
+                "promedio_en_radio": round(sum(c.price.price for c in found) / len(found)),
+                "mas_baratas": [
+                    {
+                        "precio": c.price.price,
+                        "marca": c.station.brand,
+                        "direccion": c.station.address,
+                        "comuna": c.station.commune,
+                        "distancia_km": round(c.distance_km, 1),
+                        "atencion": c.price.attention,
+                        "actualizado": c.price.updated.strftime("%Y-%m-%d") if c.price.updated else None,
+                    }
+                    for c in found[: self.TOP]
+                ],
+            }
+        )
+        return attrs

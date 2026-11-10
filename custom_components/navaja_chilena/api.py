@@ -19,6 +19,8 @@ from .const import (
     CRYPTO_URL,
     EPHEMERIDES_CL_URL,
     EPHEMERIDES_URL,
+    FUEL_BRANDS_URL,
+    FUEL_URL,
     INDICATORS_FALLBACK_URL,
     INDICATORS_URL,
     IPSA_URL,
@@ -957,3 +959,155 @@ def parse_efemerides_cl(page: str) -> list[SignificantDay]:
 
 async def fetch_efemerides_cl(session: aiohttp.ClientSession) -> list[SignificantDay]:
     return parse_efemerides_cl(await _get_text(session, EPHEMERIDES_CL_URL))
+
+
+# ------------------------------------------------------------------ Combustibles
+
+FUEL_LABELS = {
+    "93": "Gasolina 93",
+    "95": "Gasolina 95",
+    "97": "Gasolina 97",
+    "DI": "Diésel",
+}
+# código de autoservicio y código de atención asistida (prefijo «A»)
+_FUEL_CODES = {k: (k, "A" + k) for k in FUEL_LABELS}
+PRICE_MIN, PRICE_MAX = 300.0, 5000.0   # $/L: fuera de este rango es un error de ingreso
+PRICE_MAX_AGE_DAYS = 14                # por defecto, precios más antiguos no se consideran
+
+
+@dataclass(frozen=True)
+class FuelPrice:
+    price: float
+    updated: datetime | None
+    attention: str  # "autoservicio" | "asistido"
+
+
+@dataclass(frozen=True)
+class Station:
+    id: int
+    brand: str
+    address: str
+    commune: str
+    region: str
+    lat: float
+    lon: float
+    logo: str | None
+    prices: dict[str, FuelPrice]
+
+
+@dataclass(frozen=True)
+class FuelCandidate:
+    station: Station
+    price: FuelPrice
+    distance_km: float
+
+
+def _coord(value: Any) -> float | None:
+    try:
+        return float(str(value).strip().replace(",", "."))   # algunas vienen con coma decimal
+    except ValueError:
+        return None
+
+
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+    return 6371 * 2 * math.asin(math.sqrt(a))
+
+
+def _brand_name(raw: str) -> str:
+    """COPEC -> Copec; las siglas cortas (JLC, HN) se dejan en mayúsculas."""
+    name = raw.strip()
+    return name.title() if name.isupper() and len(name) > 3 else name
+
+
+def parse_brands(data: Any) -> dict[int, tuple[str, str | None]]:
+    """id de marca -> (nombre, logo)."""
+    out: dict[int, tuple[str, str | None]] = {}
+    items = data.get("data") if isinstance(data, dict) else None
+    for b in items or []:
+        if isinstance(b, dict) and isinstance(b.get("id"), int) and b.get("nombre"):
+            out[b["id"]] = (_brand_name(str(b["nombre"])), b.get("imagen") or b.get("logo") or None)
+    return out
+
+
+def _parse_updated(raw: Any) -> datetime | None:
+    try:
+        return datetime.strptime(str(raw), "%Y-%m-%d %H:%M:%S").replace(tzinfo=ZoneInfo(METRO_TZ))
+    except ValueError:
+        return None
+
+
+def parse_stations(data: Any, brands: dict[int, tuple[str, str | None]] | None = None) -> list[Station]:
+    """Interpreta la respuesta de Bencina en Línea, descartando datos inválidos."""
+    items = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        raise NavajaApiError("Respuesta de combustibles inesperada")
+    brands = brands or {}
+    stations: list[Station] = []
+    for e in items:
+        if not isinstance(e, dict) or not e.get("gasolinera_bandera") or e.get("en_mantenimiento_bandera"):
+            continue
+        lat, lon = _coord(e.get("latitud")), _coord(e.get("longitud"))
+        if lat is None or lon is None or not (-56 <= lat <= -17 and -110 <= lon <= -66):
+            continue
+        prices: dict[str, FuelPrice] = {}
+        by_code = {c.get("nombre_corto"): c for c in e.get("combustibles") or [] if isinstance(c, dict)}
+        for fuel, (self_service, assisted) in _FUEL_CODES.items():
+            for code, attention in ((self_service, "autoservicio"), (assisted, "asistido")):
+                c = by_code.get(code)
+                price = _num(c.get("precio")) if c else None
+                if c is None or not c.get("suministra") or price is None or not (PRICE_MIN <= price <= PRICE_MAX):
+                    continue
+                prices[fuel] = FuelPrice(price, _parse_updated(c.get("precio_fecha")), attention)
+                break  # se prefiere autoservicio; si no hay, asistido
+        if not prices:
+            continue
+        brand_name, brand_logo = brands.get(e.get("marca"), (f"Marca {e.get('marca')}", None))
+        stations.append(
+            Station(
+                id=int(e.get("id", 0)),
+                brand=brand_name,
+                address=str(e.get("direccion") or "").strip().title(),
+                commune=str(e.get("comuna") or "").strip(),
+                region=str(e.get("region") or "").strip(),
+                lat=lat,
+                lon=lon,
+                logo=e.get("logo") or brand_logo,
+                prices=prices,
+            )
+        )
+    if not stations:
+        raise NavajaApiError("La respuesta no contiene estaciones con precios")
+    return stations
+
+
+def cheapest_nearby(
+    stations: list[Station],
+    fuel: str,
+    lat: float,
+    lon: float,
+    radius_km: float,
+    now: datetime,
+    max_age_days: int = PRICE_MAX_AGE_DAYS,
+) -> list[FuelCandidate]:
+    """Estaciones en el radio con precio vigente de `fuel`, de la más barata a la más cara."""
+    found: list[FuelCandidate] = []
+    for s in stations:
+        p = s.prices.get(fuel)
+        if p is None or p.updated is None or (now - p.updated).days > max_age_days:
+            continue
+        dist = haversine_km(lat, lon, s.lat, s.lon)
+        if dist <= radius_km:
+            found.append(FuelCandidate(s, p, dist))
+    return sorted(found, key=lambda c: (c.price.price, c.distance_km))
+
+
+async def fetch_fuel(session: aiohttp.ClientSession, brands_cache: dict[int, tuple[str, str | None]]) -> list[Station]:
+    """Descarga las estaciones; los nombres de marca se piden aparte y su falla no es grave."""
+    if not brands_cache:
+        try:
+            brands_cache.update(parse_brands(await _get_json(session, FUEL_BRANDS_URL)))
+        except NavajaApiError:
+            pass
+    return parse_stations(await _get_json(session, FUEL_URL), brands_cache)
