@@ -14,7 +14,11 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from . import api
 from .api import parse_stop_codes
+from .vehicle import VEHICLE_TYPES
 from .const import (
+    CONF_VEHICLE_DIGIT,
+    CONF_VEHICLE_TYPE,
+    VEHICLE_NONE,
     CONF_EPHEMERIDES,
     CINEMA_NEAREST,
     CINEMA_NONE,
@@ -96,6 +100,28 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
+            vol.Required(
+                CONF_VEHICLE_DIGIT, default=str(defaults.get(CONF_VEHICLE_DIGIT, VEHICLE_NONE))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=VEHICLE_NONE, label="No usar / None"),
+                        *[selector.SelectOptionDict(value=str(d), label=str(d)) for d in range(10)],
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(
+                CONF_VEHICLE_TYPE, default=defaults.get(CONF_VEHICLE_TYPE, "sello_verde")
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=k, label=label)
+                        for k, label in VEHICLE_TYPES.items()
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             vol.Optional(
                 CONF_PHARMACY_COMUNA, default=defaults.get(CONF_PHARMACY_COMUNA, "")
             ): selector.TextSelector(),
@@ -115,6 +141,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or any(user_input.get(k) for k in (CONF_METRO, CONF_QUAKES, CONF_HOLIDAYS, CONF_AIR, CONF_CRYPTO, CONF_BOLSA, CONF_SAINT, CONF_EPHEMERIDES))
         or user_input.get(CONF_PHARMACY_COMUNA, "").strip()
         or user_input.get(CONF_CINEMA, CINEMA_NONE) != CINEMA_NONE
+        or str(user_input.get(CONF_VEHICLE_DIGIT, VEHICLE_NONE)) != VEHICLE_NONE
     )
     if not has_any:
         errors["base"] = "nothing_selected"

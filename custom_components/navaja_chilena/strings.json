@@ -16,7 +16,9 @@
           "bolsa": "Bolsa de Santiago: IPSA y su variación diaria",
           "saint": "Santo del día (santoral católico)",
           "cinema": "Cine Cinemark para ver su cartelera de hoy",
-          "ephemerides": "Efemérides chilenas de hoy (Wikipedia)"
+          "ephemerides": "Efemérides chilenas de hoy (Wikipedia)",
+          "vehicle_digit": "Último dígito de la patente de tu vehículo (restricción y revisión técnica)",
+          "vehicle_type": "Tipo de vehículo (para la restricción vehicular)"
         }
       }
     },
@@ -46,7 +48,9 @@
           "bolsa": "Bolsa de Santiago: IPSA y su variación diaria",
           "saint": "Santo del día (santoral católico)",
           "cinema": "Cine Cinemark para ver su cartelera de hoy",
-          "ephemerides": "Efemérides chilenas de hoy (Wikipedia)"
+          "ephemerides": "Efemérides chilenas de hoy (Wikipedia)",
+          "vehicle_digit": "Último dígito de la patente de tu vehículo (restricción y revisión técnica)",
+          "vehicle_type": "Tipo de vehículo (para la restricción vehicular)"
         }
       }
     },
@@ -63,6 +67,20 @@
           "operativa": "Operativa",
           "con_problemas": "Con problemas",
           "cerrada": "Cerrada"
+        }
+      }
+    },
+    "binary_sensor": {
+      "restriction_today": {
+        "state": {
+          "on": "Con restricción",
+          "off": "Sin restricción"
+        }
+      },
+      "revision_this_month": {
+        "state": {
+          "on": "Este mes",
+          "off": "Otro mes"
         }
       }
     }

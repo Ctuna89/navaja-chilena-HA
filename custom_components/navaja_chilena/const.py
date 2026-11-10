@@ -126,3 +126,8 @@ EPHEMERIDES_URL = "https://es.wikipedia.org/api/rest_v1/feed/onthisday/all/{mont
 EPHEMERIDES_INTERVAL = timedelta(hours=1)  # solo recalcula; la descarga es una vez al día
 
 EPHEMERIDES_CL_URL = "https://www.efemerides.cl/"  # días significativos del mes en curso
+
+# Vehículo: restricción vehicular y revisión técnica (reglas en vehicle.py)
+CONF_VEHICLE_DIGIT = "vehicle_digit"
+CONF_VEHICLE_TYPE = "vehicle_type"
+VEHICLE_NONE = "none"

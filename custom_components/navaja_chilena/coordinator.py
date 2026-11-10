@@ -149,7 +149,12 @@ def holidays_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
             cache.update(at=now, year=now.year, data=data)
         today = now.date()
         nxt = api.next_holiday(cache["data"], today)
-        return {"next": nxt, "today": today, "is_holiday_today": bool(nxt and nxt.date == today)}
+        return {
+            "next": nxt,
+            "today": today,
+            "is_holiday_today": bool(nxt and nxt.date == today),
+            "all": frozenset(h.date for h in cache["data"]),
+        }
 
     return NavajaCoordinator(hass, "feriados", HOLIDAYS_INTERVAL, fetch)
 

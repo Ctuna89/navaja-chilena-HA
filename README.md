@@ -24,6 +24,7 @@ feriados, efemérides y mucho más, en una sola integración que se instala en u
 | 💊 **Farmacias de turno** | Las farmacias de turno de tu comuna, con dirección, horario y teléfono |
 | 🎬 **Cartelera de cine** | La cartelera de hoy de tu cine Cinemark favorito, o **el más cercano a tu casa** |
 | 🇨🇱 **Efemérides** | Los días significativos y las efemérides chilenas de hoy, y el próximo día significativo |
+| 🚗 **Restricción vehicular y revisión técnica** | Con el último dígito de tu patente: si hoy tienes restricción, tu próximo día con restricción y el mes de tu revisión técnica |
 | ✝️ **Santoral** | El santo del día (y el de mañana), sin necesidad de internet |
 
 ## Por qué Navaja Chilena
@@ -52,6 +53,7 @@ El asistente te pregunta qué quieres activar:
 - el **Metro**, los **sismos**, los **feriados**, el **IPSA**, el **santoral**, las **efemérides**, la **calidad del aire** y las **criptomonedas** (un interruptor cada uno),
 - tus **paraderos** (códigos separados por coma, por ejemplo `PC615, PA433`; se comprueba que existan),
 - tu **comuna** para las farmacias de turno,
+- el **último dígito de tu patente** y el tipo de vehículo, para la restricción vehicular y la revisión técnica,
 - tu **cine** Cinemark: uno de los 22 cines del país, o *«El más cercano a mi casa»* según la ubicación de tu Home Assistant.
 
 Todo se puede cambiar después en *Configurar*, sin reinstalar.
@@ -79,7 +81,7 @@ actualización cada 2 minutos.
 - Los estados se muestran como «Operativa», «Con problemas» y «Cerrada» (en la interfaz en español).
 - Atributos: `mensaje`, `estaciones` (estado de cada una), `estaciones_con_problemas`, `horario_apertura` y `horario_cierre`.
 - **Horario de servicio** (hora de Santiago): lunes a viernes 06:00–23:00, sábado 06:30–23:00, domingo y festivos 07:30–23:00.
-  Fuera de ese horario todas las líneas y estaciones figuran como `cerrada`. Para que los festivos cuenten como domingo, activa también el módulo de feriados.
+  Fuera de ese horario todas las líneas y estaciones figuran como `cerrada`.  Los festivos se consideran automáticamente.
 - Si la fuente no responde, el sensor queda «no disponible».
 
 ### 🚌 Paraderos
@@ -118,6 +120,65 @@ Cines disponibles: los 22 de **Cinemark** en Chile.
   `resumen` y `fuentes`.
 - `sensor.efemerides_chilenas_proximo_dia_significativo`: título, `fecha`, `dias_restantes` y `descripcion`. La lista de días
   significativos corresponde al mes en curso, así que tras el último del mes el sensor se muestra «no disponible» hasta que cambia el mes.
+
+### 🚗 Mi vehículo: restricción vehicular y revisión técnica
+Eliges el **último dígito** de tu patente y el **tipo de vehículo**. No usa internet: las reglas están incluidas en la integración y se
+actualizan con ella cuando el Ministerio publica una nueva resolución.
+
+| Entidad | Qué muestra |
+|---|---|
+| `binary_sensor.mi_vehiculo_restriccion_vehicular_hoy` | «Con restricción» o «Sin restricción»; atributos `motivo`, `digitos_hoy`, `rige_ahora`, `horario` |
+| `sensor.mi_vehiculo_digitos_con_restriccion_hoy` | Los dígitos restringidos hoy para tu tipo de vehículo (por ejemplo `8-9`, `Todos` o `Ninguno`) |
+| `sensor.mi_vehiculo_proxima_restriccion` | Fecha de tu próximo día con restricción, con `dias_restantes` |
+| `sensor.mi_vehiculo_mes_de_revision_tecnica` | Mes de preferencia de tu revisión técnica, con `meses_restantes` |
+| `binary_sensor.mi_vehiculo_revision_tecnica_este_mes` | «Este mes» si te toca ahora |
+
+**Restricción vehicular (Región Metropolitana, temporada 2026).** Del 1 de mayo al 31 de agosto, de lunes a viernes salvo festivos, entre las
+07:30 y las 21:00, en la provincia de Santiago y las comunas de Puente Alto y San Bernardo. Dígitos restringidos según la
+[Resolución Exenta N° 1698/2026](https://mtt.gob.cl/restriccion-vehicular-2026/) del Ministerio de Transportes:
+
+| Día | Con sello verde (inscrito antes de sept. 2011) y motos (antes de sept. 2010) | Sin sello verde, fuera del anillo Américo Vespucio |
+|---|---|---|
+| Lunes | 8 y 9 | 6, 7, 8 y 9 |
+| Martes | 0 y 1 | 0, 1, 2 y 3 |
+| Miércoles | 2 y 3 | 4, 5, 6 y 7 |
+| Jueves | 4 y 5 | 8, 9, 0 y 1 |
+| Viernes | 6 y 7 | 2, 3, 4 y 5 |
+
+Los autos sin sello verde que circulan **dentro del anillo Américo Vespucio** tienen restricción con **todos** los dígitos, y los autos con sello
+verde inscritos desde septiembre de 2011 no tienen restricción.
+
+> **Importante.** En preemergencia o emergencia ambiental el Ministerio decreta **dígitos adicionales** y los informa por sus canales
+> oficiales; la integración **no los incluye**, así que en esos días revisa también la información oficial. Cada año el Ministerio publica
+> una nueva resolución (en abril): hasta que se cargue, el sensor aparece «no disponible» (de enero a marzo no hay restricción).
+
+**Revisión técnica.** El mes depende del último dígito de la patente, según la
+[ficha de ChileAtiende](https://www.chileatiende.gob.cl/fichas/23978) (Subsecretaría de Transportes):
+
+| Dígito | 9 | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Mes | Enero | Febrero | Abril | Mayo | Junio | Julio | Agosto | Septiembre | Octubre | Noviembre |
+
+Marzo y diciembre no tienen dígito. Es el mes de **preferencia** en las plantas, no una fecha límite: tu plazo real depende de la vigencia de tu
+certificado anterior. Aplica a los vehículos con revisión anual; taxis, buses, vehículos de carga y otros con revisión semestral tienen plazos distintos.
+
+Ejemplo de automatización: aviso a las 7:00 los días con restricción.
+
+```yaml
+triggers:
+  - trigger: time
+    at: "07:00:00"
+conditions:
+  - condition: state
+    entity_id: binary_sensor.mi_vehiculo_restriccion_vehicular_hoy
+    state: "on"
+actions:
+  - action: notify.notify
+    data:
+      message: >-
+        Hoy tu auto tiene restricción vehicular (dígitos
+        {{ state_attr('binary_sensor.mi_vehiculo_restriccion_vehicular_hoy', 'digitos_hoy') }}).
+```
 
 ### ✝️ Santoral
 `sensor.santoral_santo_del_dia` · atributos `fecha` y `mañana`. Usa el santoral católico tradicional; está incluido en la
@@ -593,6 +654,56 @@ content: |
   Mañana: {{ state_attr('sensor.santoral_santo_del_dia', 'mañana') }}
 ```
 
+### 🚗 Mi vehículo
+
+Restricción de hoy, dígitos restringidos, próxima fecha y mes de revisión técnica:
+
+![Tarjetas con la restricción de hoy, los dígitos, la próxima fecha y el mes de revisión técnica](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/vehiculo-tarjetas.png)
+
+*Ejemplo con fecha simulada: lunes 8 de junio de 2026, dentro de la temporada de restricción (hoy no hay restricción).*
+
+```yaml
+type: grid
+title: Mi vehículo
+columns: 2
+square: false
+cards:
+  - type: tile
+    entity: binary_sensor.mi_vehiculo_restriccion_vehicular_hoy
+    name: Restricción hoy
+  - type: tile
+    entity: sensor.mi_vehiculo_digitos_con_restriccion_hoy
+    name: Dígitos restringidos
+  - type: tile
+    entity: sensor.mi_vehiculo_proxima_restriccion
+    name: Próxima restricción
+  - type: tile
+    entity: sensor.mi_vehiculo_mes_de_revision_tecnica
+    name: Revisión técnica
+```
+
+Aviso en palabras:
+
+![Aviso en palabras con la restricción del día y la revisión técnica](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/vehiculo-aviso.png)
+
+*Ejemplo con fecha simulada: lunes 8 de junio de 2026, dentro de la temporada de restricción (hoy no hay restricción).*
+
+```yaml
+type: markdown
+title: Mi vehículo
+content: |
+  {% set r = 'binary_sensor.mi_vehiculo_restriccion_vehicular_hoy' %}
+  {% if is_state(r, 'on') %}
+  🚫 **Hoy tienes restricción** (dígitos {{ state_attr(r, 'digitos_hoy') }}), de {{ state_attr(r, 'horario') }}.
+  {% elif is_state(r, 'off') %}
+  ✅ **Hoy no tienes restricción.** {{ state_attr(r, 'motivo') }}.
+  {% else %}
+  Sin datos de restricción para hoy.
+  {% endif %}
+
+  🔧 Revisión técnica: **{{ states('sensor.mi_vehiculo_mes_de_revision_tecnica') }}**{% if is_state('binary_sensor.mi_vehiculo_revision_tecnica_este_mes', 'on') %} (¡te toca este mes!){% endif %}
+```
+
 ### ☀️ Resumen del día (todo junto)
 
 ![Resumen del día](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/resumen-del-dia.png)
@@ -624,6 +735,8 @@ necesidad de registrarte.
 | Farmacias de turno | Ministerio de Salud, [Farmanet](https://www.minsal.cl/farmanet/) |
 | Cartelera de cine | [Cinemark Chile](https://www.cinemark.cl) |
 | Efemérides | [efemerides.cl](https://www.efemerides.cl) y [Wikipedia en español](https://es.wikipedia.org) |
+| Restricción vehicular | [Ministerio de Transportes](https://mtt.gob.cl/restriccion-vehicular-2026/): Resolución Exenta N° 1698/2026 (Seremi RM) |
+| Revisión técnica | [ChileAtiende](https://www.chileatiende.gob.cl/fichas/23978) (Subsecretaría de Transportes) |
 | Criptomonedas | [Buda.com](https://www.buda.com) |
 
 Los textos de Wikipedia están bajo licencia [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es); cada

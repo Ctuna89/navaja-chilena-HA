@@ -12,7 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa
 
 from custom_components.navaja_chilena import api  # noqa: E402
 from custom_components.navaja_chilena.const import (  # noqa: E402
-    AIR_URL, CINEMARK_URL, CRYPTO_URL, EPHEMERIDES_URL, IPSA_URL, DOMAIN, INDICATORS_URL, METRO_URL, PHARMACY_URL, QUAKES_CSN_URL,
+    AIR_URL, CINEMARK_URL, CRYPTO_URL, EPHEMERIDES_URL, HOLIDAYS_URLS, IPSA_URL, DOMAIN, INDICATORS_URL, METRO_URL, PHARMACY_URL, QUAKES_CSN_URL,
     QUAKES_URL, STOP_URL,
 )
 
@@ -306,3 +306,149 @@ async def test_ephemerides_both_down_is_unavailable_not_empty(hass, aioclient_mo
     freezer.move_to("2026-11-05 10:00:00-03:00")
     entry = await _setup_ephemerides(hass, aioclient_mock, (11, 5), cl=False, wiki=False)
     assert entry.state is config_entries.ConfigEntryState.SETUP_RETRY
+
+
+# --------------------------------------------------------------- Vehículo
+
+VEH = {"indicators": [], "metro": False, "vehicle_digit": "8", "vehicle_type": "sello_verde"}
+
+
+def _veh(hass, name):
+    pool = list(hass.states.async_all("sensor")) + list(hass.states.async_all("binary_sensor"))
+    return next(x for x in pool if x.name.endswith(name))
+
+
+async def _setup_vehicle(hass, aioclient_mock, data=None, holidays=None):
+    if holidays is not None:
+        for year in (2026, 2027):
+            aioclient_mock.get(HOLIDAYS_URLS[0].format(year=year),
+                               json={"status": "success", "data": [{"date": d, "title": "Feriado de prueba"} for d in holidays]})
+    mock_all(aioclient_mock)
+    entry = MockConfigEntry(domain=DOMAIN, data=data or VEH)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_vehicle_restricted_in_season(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-06-08 10:00:00-04:00")          # lunes de la temporada 2026
+    await _setup_vehicle(hass, aioclient_mock)
+    b = _veh(hass, "Restricción vehicular hoy")
+    assert b.state == "on" and b.attributes["digitos_hoy"] == "8-9" and b.attributes["tu_digito"] == 8
+    assert b.attributes["rige_ahora"] is True and b.attributes["horario"] == "07:30–21:00"
+    assert "preemergencia" in b.attributes["aviso"]
+    assert _veh(hass, "Dígitos con restricción hoy").state == "8-9"
+    nxt = _veh(hass, "Próxima restricción")
+    assert nxt.state == "2026-06-08" and nxt.attributes["es_hoy"] is True
+    assert nxt.attributes["temporada"] == "01-05-2026 al 31-08-2026"
+    rev = _veh(hass, "Mes de revisión técnica")
+    assert rev.state == "Noviembre" and rev.attributes["meses_restantes"] == 5 and rev.attributes["este_mes"] is False
+    assert _veh(hass, "Revisión técnica este mes").state == "off"
+
+
+async def test_vehicle_free_digit_and_next_date(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-06-09 10:00:00-04:00")          # martes: dígitos 0-1
+    await _setup_vehicle(hass, aioclient_mock)
+    b = _veh(hass, "Restricción vehicular hoy")
+    assert b.state == "off" and b.attributes["motivo"] == "Tu dígito no está restringido hoy"
+    assert _veh(hass, "Dígitos con restricción hoy").state == "0-1"
+    assert _veh(hass, "Próxima restricción").state == "2026-06-15"      # lunes siguiente
+
+
+async def test_vehicle_holiday_is_respected(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-06-08 10:00:00-04:00")
+    await _setup_vehicle(hass, aioclient_mock, holidays=["2026-06-08"])    # el lunes es festivo
+    b = _veh(hass, "Restricción vehicular hoy")
+    assert b.state == "off" and b.attributes["motivo"] == "Festivo: no hay restricción"
+    assert b.attributes["festivos_considerados"] is True
+    assert _veh(hass, "Próxima restricción").state == "2026-06-15"
+
+
+async def test_vehicle_out_of_season(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 10:00:00-03:00")
+    await _setup_vehicle(hass, aioclient_mock)
+    b = _veh(hass, "Restricción vehicular hoy")
+    assert b.state == "off" and b.attributes["motivo"] == "Fuera de la temporada de restricción"
+    assert _veh(hass, "Dígitos con restricción hoy").state == "Ninguno"
+    nxt = _veh(hass, "Próxima restricción")
+    assert nxt.state == "unknown" and "motivo" in nxt.attributes
+    assert _veh(hass, "Revisión técnica este mes").state == "on"          # dígito 8 = noviembre
+
+
+async def test_vehicle_no_resolution_year_is_unavailable_not_guessed(hass, aioclient_mock, freezer):
+    freezer.move_to("2027-06-07 10:00:00-04:00")
+    await _setup_vehicle(hass, aioclient_mock)
+    assert _veh(hass, "Restricción vehicular hoy").state == "unavailable"
+    assert _veh(hass, "Dígitos con restricción hoy").state == "unavailable"
+    assert _veh(hass, "Mes de revisión técnica").state == "Noviembre"      # la revisión no depende de la resolución
+
+
+async def test_vehicle_exempt_type(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-06-08 10:00:00-04:00")
+    await _setup_vehicle(hass, aioclient_mock, data={**VEH, "vehicle_type": "sello_verde_posterior"})
+    b = _veh(hass, "Restricción vehicular hoy")
+    assert b.state == "off" and b.attributes["motivo"] == "Tu tipo de vehículo no tiene restricción"
+
+
+async def test_vehicle_works_offline(hass, aioclient_mock, freezer):
+    """Sin internet (ni festivos) el módulo sigue funcionando y la entrada carga."""
+    freezer.move_to("2026-06-08 10:00:00-04:00")
+    entry = MockConfigEntry(domain=DOMAIN, data=VEH)       # nada está mockeado: toda consulta falla
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is config_entries.ConfigEntryState.LOADED
+    b = _veh(hass, "Restricción vehicular hoy")
+    assert b.state == "on" and b.attributes["festivos_considerados"] is False
+
+
+async def test_vehicle_updates_at_midnight(hass, aioclient_mock, freezer):
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+    await hass.config.async_set_time_zone("America/Santiago")
+    freezer.move_to("2026-06-08 23:00:00-04:00")
+    await _setup_vehicle(hass, aioclient_mock)
+    assert _veh(hass, "Restricción vehicular hoy").state == "on"
+    freezer.move_to("2026-06-09 00:00:10-04:00")           # martes: dígito 8 ya no
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert _veh(hass, "Restricción vehicular hoy").state == "off"
+
+
+async def test_vehicle_holidays_feed_metro_without_holiday_module(hass, aioclient_mock):
+    """El dato de festivos se obtiene solo cuando lo necesita el Metro, sin crear sensores de feriados."""
+    mock_all(aioclient_mock)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": [], "metro": True, "holidays": False})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.runtime_data.holidays is not None and entry.runtime_data.holidays_visible is False
+    assert not any("feriado" in s.name.lower() for s in hass.states.async_all("sensor"))
+
+
+async def test_options_flow_saves_vehicle(hass, aioclient_mock):
+    entry = await _setup_vehicle(hass, aioclient_mock)
+    r = await hass.config_entries.options.async_init(entry.entry_id)
+    r = await hass.config_entries.options.async_configure(
+        r["flow_id"], {**VEH, "vehicle_digit": "3", "vehicle_type": "sin_sello_fuera_anillo"})
+    assert r["type"] is FlowResultType.CREATE_ENTRY
+    assert r["data"]["vehicle_digit"] == "3" and r["data"]["vehicle_type"] == "sin_sello_fuera_anillo"
+
+
+async def test_saint_updates_at_midnight(hass, aioclient_mock, freezer):
+    """Regresión: la actualización de medianoche debe correr en el bucle de eventos (@callback)."""
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+    await hass.config.async_set_time_zone("America/Santiago")
+    freezer.move_to("2026-11-10 23:59:00-03:00")
+    mock_all(aioclient_mock)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": [], "metro": False, "saint": True})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert _veh(hass, "Santo del día").state == "San León Magno"
+    freezer.move_to("2026-11-11 00:00:10-03:00")
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert _veh(hass, "Santo del día").state == "San Martín de Tours"
