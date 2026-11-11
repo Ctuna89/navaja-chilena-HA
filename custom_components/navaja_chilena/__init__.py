@@ -20,6 +20,9 @@ from .const import (
     BENEFIT_CARDS,
     BENEFIT_CATEGORIES,
     CONF_BENEFIT_CARDS,
+    CONF_CLARO_ARENA,
+    CONF_EVENTS_COMMUNE,
+    CONF_EVENTS_FREE_ONLY,
     CONF_NEWS_COUNT,
     CONF_NEWS_TOPICS,
     NEWS_DEFAULT_COUNT,
@@ -51,16 +54,19 @@ from .const import (
     CONF_SAINT,
     CONF_STOPS,
     CONF_VEHICLE_DIGIT,
+    CONF_VEHICLES_MORE,
     CONF_VEHICLE_TYPE,
     VEHICLE_NONE,
 )
 from .efe_train import CONF_TRAIN_RETURN, CONF_TRAIN_TRIPS, parse_trips
 from .efe_train_entity import train_coordinator
-from .vehicle import VEHICLE_TYPES
+from .vehicle import VEHICLE_TYPES, VehicleSpec, build_vehicles, parse_extra_vehicles
 from .coordinator import (
     football_coordinator,
     national_coordinator,
+    arena_coordinator,
     benefits_coordinator,
+    culture_coordinator,
     news_coordinator,
     regional_coordinator,
     fuel_discounts_coordinator,
@@ -105,6 +111,10 @@ class RuntimeData:
     fuel_discounts: NavajaCoordinator | None = None
     regional: NavajaCoordinator | None = None
     news: NavajaCoordinator | None = None
+    culture: NavajaCoordinator | None = None
+    arena: NavajaCoordinator | None = None
+    events_commune: str = ""
+    events_free_only: bool = False
     news_topics: list[str] = field(default_factory=list)
     regional_zone: str = ""
     benefit_cards: list[str] = field(default_factory=list)
@@ -117,8 +127,7 @@ class RuntimeData:
     fuel_radius: float = FUEL_DEFAULT_RADIUS
     fuel_max_age: int = FUEL_DEFAULT_MAX_AGE
     holidays_visible: bool = False   # crear los sensores de feriados (el dato se usa también por Metro y vehículo)
-    vehicle_digit: int | None = None
-    vehicle_type: str = "sello_verde"
+    vehicles: list[VehicleSpec] = field(default_factory=list)
     indicator_codes: list[str] = field(default_factory=list)
 
 
@@ -177,10 +186,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     if opts.get(CONF_QUAKES):
         data.quakes = quakes_coordinator(hass)
     digit = str(opts.get(CONF_VEHICLE_DIGIT, VEHICLE_NONE))
-    if digit in tuple("0123456789"):
-        data.vehicle_digit = int(digit)
-        vtype = opts.get(CONF_VEHICLE_TYPE)
-        data.vehicle_type = vtype if vtype in VEHICLE_TYPES else "sello_verde"
+    vtype = opts.get(CONF_VEHICLE_TYPE)
+    vtype = vtype if vtype in VEHICLE_TYPES else "sello_verde"
+    try:
+        data.vehicles = build_vehicles(
+            int(digit) if digit in tuple("0123456789") else None,
+            vtype,
+            parse_extra_vehicles(str(opts.get(CONF_VEHICLES_MORE) or ""), vtype),
+        )
+    except ValueError:   # configuración inválida: se usa solo el vehículo principal
+        data.vehicles = build_vehicles(int(digit) if digit in tuple("0123456789") else None, vtype, [])
     data.holidays_visible = bool(opts.get(CONF_HOLIDAYS))
     team = str(opts.get(CONF_FOOTBALL_TEAM, FOOTBALL_NONE))
     data.football_team = team if team in FOOTBALL_TEAMS else ""
@@ -201,6 +216,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         except (TypeError, ValueError):
             data.fuel_max_age = FUEL_DEFAULT_MAX_AGE
         data.fuel = fuel_coordinator(hass)
+    commune = str(opts.get(CONF_EVENTS_COMMUNE) or "").strip()
+    if commune:
+        data.events_commune = commune
+        data.events_free_only = bool(opts.get(CONF_EVENTS_FREE_ONLY))
+        data.culture = culture_coordinator(hass, commune)
+    if opts.get(CONF_CLARO_ARENA):
+        data.arena = arena_coordinator(hass)
     topics = [t for t in (opts.get(CONF_NEWS_TOPICS) or []) if t in NEWS_TOPICS]
     if topics:
         try:
@@ -226,7 +248,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         data.benefit_categories = benefit_cats
         data.benefits = benefits_coordinator(hass, benefit_cards, benefit_cats)
     # Los festivos también los necesitan el horario del Metro y la restricción vehicular.
-    if data.holidays_visible or opts.get(CONF_METRO) or data.vehicle_digit is not None:
+    if data.holidays_visible or opts.get(CONF_METRO) or bool(data.vehicles):
         data.holidays = holidays_coordinator(hass)
     if opts.get(CONF_AIR):
         data.air = air_coordinator(hass)
@@ -251,11 +273,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     coordinators = [
         c
         for c in (data.indicators, data.metro, data.stops, data.train, data.quakes,
-                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.benefits, data.fuel_discounts, data.regional, data.news, data.football, data.national)
+                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.benefits, data.fuel_discounts, data.regional, data.news, data.culture, data.arena, data.football, data.national)
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]
-    offline_modules = data.saint or data.vehicle_digit is not None   # no dependen de internet
+    offline_modules = data.saint or bool(data.vehicles)   # no dependen de internet
     if coordinators and not any(results) and not offline_modules:
         # Ninguna fuente responde: reintentar la carga más tarde.
         raise ConfigEntryNotReady("Ninguna fuente de datos respondió")

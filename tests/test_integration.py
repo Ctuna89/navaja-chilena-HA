@@ -969,3 +969,153 @@ async def test_readme_morning_summary_is_empty_without_modules(hass):
     data = _readme_morning_automation()["actions"][0]["data"]
     assert Template(data["title"], hass).async_render() == "🇨🇱 Buen día"
     assert Template(data["message"], hass).async_render().strip() == ""
+
+
+async def test_several_vehicles_each_with_its_own_entities(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-06-08 10:00:00-04:00")          # lunes: restringidos 8 y 9
+    data = {**VEH, "vehicles_more": "3, 5:moto"}
+    entry = await _setup_vehicle(hass, aioclient_mock, data=data)
+    assert [s.digit for s in entry.runtime_data.vehicles] == [8, 3, 5]
+    # El principal conserva sus ids de siempre.
+    assert hass.states.get("sensor.mi_vehiculo_digitos_con_restriccion_hoy").state == "8-9"
+    assert hass.states.get("binary_sensor.mi_vehiculo_restriccion_vehicular_hoy").state == "on"
+    # Los demás, un dispositivo cada uno.
+    assert hass.states.get("binary_sensor.vehiculo_patente_3_restriccion_vehicular_hoy").state == "off"
+    assert hass.states.get("sensor.vehiculo_patente_3_mes_de_revision_tecnica").state == "Junio"
+    assert hass.states.get("sensor.vehiculo_patente_3_proxima_restriccion") is not None
+    moto = hass.states.get("sensor.vehiculo_patente_5_digitos_con_restriccion_hoy")
+    assert moto is not None and "moto" in moto.attributes["tipo_de_vehiculo"].lower()
+    assert hass.states.get("sensor.vehiculo_patente_5_mes_de_revision_tecnica").state == "Agosto"
+
+
+async def test_old_entries_without_extra_vehicles_are_unchanged(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-06-08 10:00:00-04:00")
+    entry = await _setup_vehicle(hass, aioclient_mock)
+    assert [(s.digit, s.primary) for s in entry.runtime_data.vehicles] == [(8, True)]
+    assert hass.states.get("sensor.vehiculo_patente_3_digitos_con_restriccion_hoy") is None
+
+
+async def test_extra_vehicles_without_a_primary_one(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-06-08 10:00:00-04:00")
+    data = {"indicators": [], "metro": False, "vehicle_digit": "none", "vehicles_more": "9"}
+    await _setup_vehicle(hass, aioclient_mock, data=data)
+    assert hass.states.get("binary_sensor.vehiculo_patente_9_restriccion_vehicular_hoy").state == "on"
+    assert hass.states.get("sensor.mi_vehiculo_digitos_con_restriccion_hoy") is None
+
+
+async def test_vehicles_more_config_flow_validation(hass, aioclient_mock):
+    mock_all(aioclient_mock)
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    base = {"indicators": ["uf"], "metro": False, "vehicle_digit": "8", "vehicle_type": "sello_verde"}
+    bad = await hass.config_entries.flow.async_configure(flow["flow_id"], {**base, "vehicles_more": "3, 7:camion"})
+    assert bad["errors"] == {"vehicles_more": "invalid_vehicle"}
+    many = await hass.config_entries.flow.async_configure(flow["flow_id"], {**base, "vehicles_more": "1,2,3,4,5"})
+    assert many["errors"] == {"vehicles_more": "invalid_vehicle"}                      # con el principal serían 6
+    ok = await hass.config_entries.flow.async_configure(flow["flow_id"], {**base, "vehicles_more": "3, 5:moto"})
+    assert ok["type"] == FlowResultType.CREATE_ENTRY
+    assert ok["data"]["vehicles_more"] == "3:sello_verde, 5:moto"
+
+
+# --------------------------------------------------------------------- Panoramas
+
+CULTURE_URL = "https://chilecultura.gob.cl/api/v1.0/events/"
+COMMUNES_URL = "https://chilecultura.gob.cl/api/v1.0/communes/"
+ARENA_URL = "https://claroarena.cl/cartelera/"
+
+
+async def _setup_events(hass, aioclient_mock, culture_status=200, arena_status=200, **extra):
+    import json as _json
+    mock_all(aioclient_mock)
+    aioclient_mock.get(CULTURE_URL, json=_json.loads((FIX_DIR / "cultura_eventos_santiago.json").read_text()), status=culture_status)
+    aioclient_mock.get(COMMUNES_URL, json=_json.loads((FIX_DIR / "cultura_comunas.json").read_text()))
+    aioclient_mock.get(ARENA_URL, text=(FIX_DIR / "claroarena_cartelera.html").read_text(), status=arena_status)
+    data = {"indicators": ["uf"], "metro": False, "events_commune": "Santiago", "claro_arena": True, **extra}
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_culture_events_today_and_next(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    entry = await _setup_events(hass, aioclient_mock)
+    events = entry.runtime_data.culture.data
+    hoy = hass.states.get("sensor.panoramas_culturales_santiago_hoy")
+    from datetime import date
+    today = date(2026, 11, 14)
+    assert int(hoy.state) == len([e for e in events if e.start <= today <= e.end])
+    assert hoy.attributes["comuna"] == "Santiago" and len(hoy.attributes["eventos"]) == int(hoy.state)
+    nxt = hass.states.get("sensor.panoramas_culturales_santiago_proximo_evento")
+    assert nxt.state not in ("unknown", "unavailable")
+    assert nxt.attributes["fecha"] >= "2026-11-14" and nxt.attributes["proximos"][0]["nombre"] == nxt.state
+    assert nxt.attributes["fuente"].startswith("Chile Cultura")
+    # La consulta pide la comuna y el rango de fechas a la API.
+    call = next(c for c in aioclient_mock.mock_calls if "chilecultura" in str(c[1]) and "events" in str(c[1]))
+    assert "commune=Santiago" in str(call[1]) and "start_date=2026-09-30" in str(call[1])
+
+
+async def test_culture_free_only_option(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    entry = await _setup_events(hass, aioclient_mock, events_free_only=True)
+    nxt = hass.states.get("sensor.panoramas_culturales_santiago_proximo_evento")
+    assert nxt.attributes["solo_gratis"] is True and all(e["gratis"] for e in nxt.attributes["proximos"])
+
+
+async def test_arena_next_event(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    await _setup_events(hass, aioclient_mock)
+    arena = hass.states.get("sensor.claro_arena_proximo_evento")
+    assert arena.state.startswith("Atletico Colina") and arena.attributes["hora"] == "18:00"
+    assert arena.attributes["hay_evento_hoy"] is True and arena.attributes["entradas"].startswith("https://www.puntoticket.com/")
+    assert len(arena.attributes["eventos"]) == 5 and "Universidad Católica vs. Huachipato" in arena.attributes["proximamente"]
+
+
+async def test_arena_event_that_already_ended_is_not_the_next(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-14 23:30:00-03:00")          # el partido de las 18:00 ya terminó
+    await _setup_events(hass, aioclient_mock)
+    arena = hass.states.get("sensor.claro_arena_proximo_evento")
+    assert arena.state.startswith("Universidad Católica vs. Universidad de Chile")
+    assert arena.attributes["hay_evento_hoy"] is False
+
+
+async def test_events_sources_fail_independently(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    await _setup_events(hass, aioclient_mock, culture_status=503)
+    assert hass.states.get("sensor.indicadores_economicos_uf") is not None
+    assert hass.states.get("sensor.claro_arena_proximo_evento").state.startswith("Atletico Colina")
+    for eid in ("sensor.panoramas_culturales_santiago_hoy", "sensor.panoramas_culturales_santiago_proximo_evento"):
+        st = hass.states.get(eid)
+        assert st is None or st.state == "unavailable"
+
+
+async def test_arena_redesign_makes_it_unavailable_not_empty(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    mock_all(aioclient_mock)
+    aioclient_mock.get(ARENA_URL, text="<html><body>otro sitio</body></html>")
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False, "claro_arena": True})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    st = hass.states.get("sensor.claro_arena_proximo_evento")
+    assert st is None or st.state == "unavailable"
+
+
+async def test_events_config_flow_resolves_the_official_commune_name(hass, aioclient_mock):
+    import json as _json
+    mock_all(aioclient_mock)
+    aioclient_mock.get(COMMUNES_URL, json=_json.loads((FIX_DIR / "cultura_comunas.json").read_text()))
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    base = {"indicators": ["uf"], "metro": False}
+    bad = await hass.config_entries.flow.async_configure(flow["flow_id"], {**base, "events_commune": "Narnia"})
+    assert bad["errors"] == {"events_commune": "events_commune_not_found"}
+    ok = await hass.config_entries.flow.async_configure(flow["flow_id"], {**base, "events_commune": "  nunoa "})
+    assert ok["type"] == FlowResultType.CREATE_ENTRY and ok["data"]["events_commune"] == "Ñuñoa"
+
+
+async def test_events_config_flow_does_not_block_if_the_commune_list_is_down(hass, aioclient_mock):
+    mock_all(aioclient_mock)
+    aioclient_mock.get(COMMUNES_URL, status=503)
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    ok = await hass.config_entries.flow.async_configure(flow["flow_id"], {"indicators": ["uf"], "metro": False, "events_commune": "Providencia"})
+    assert ok["type"] == FlowResultType.CREATE_ENTRY and ok["data"]["events_commune"] == "Providencia"

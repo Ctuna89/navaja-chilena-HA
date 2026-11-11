@@ -781,6 +781,41 @@ content: |
   {% endfor %}
 ```
 
+## 🎭 Panoramas
+
+Los eventos culturales de hoy en tu comuna, con el recinto, si son gratis y el enlace (cambia `santiago` por tu comuna en los ids):
+
+![Eventos culturales de hoy en Santiago con recinto, si son gratis y enlace](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/panoramas-hoy.png)
+
+```yaml
+type: markdown
+title: 🎭 Panoramas de hoy · Santiago
+content: |
+  {% set hoy = state_attr('sensor.panoramas_culturales_santiago_hoy', 'eventos') or [] %}
+  {% for e in hoy[:6] %}
+  - **{{ e.nombre }}** · {{ e.recinto }} · {{ 'gratis' if e.gratis else 'pago' }} · [ver]({{ e.enlace }})
+  {% else %}
+  Hoy no hay eventos publicados en tu comuna.
+  {% endfor %}
+  {% if hoy | length > 6 %}…y {{ hoy | length - 6 }} más.{% endif %}
+```
+
+Lo que viene en el Claro Arena, con enlace para comprar entradas:
+
+![Próximos eventos del Claro Arena con fecha, hora y enlace a las entradas](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/panoramas-claro-arena.png)
+
+```yaml
+type: markdown
+title: 🏟️ Claro Arena
+content: |
+  {% set e = state_attr('sensor.claro_arena_proximo_evento', 'eventos') or [] %}
+  {% for x in e[:4] %}
+  - **{{ x.fecha[8:10] }}/{{ x.fecha[5:7] }} {{ x.hora }}** · {{ x.titulo }}{% if x.entradas %} · [entradas]({{ x.entradas }}){% endif %}
+  {% else %}
+  Sin eventos con fecha por ahora.
+  {% endfor %}
+```
+
 ## 🚗 Mi vehículo
 
 Restricción de hoy, dígitos restringidos, próxima fecha y mes de revisión técnica:
@@ -829,6 +864,26 @@ content: |
   {% endif %}
 
   🔧 Revisión técnica: **{{ states('sensor.mi_vehiculo_mes_de_revision_tecnica') }}**{% if is_state('binary_sensor.mi_vehiculo_revision_tecnica_este_mes', 'on') %} (¡te toca este mes!){% endif %}
+```
+
+### 🚗 Varios vehículos
+
+Si registraste más de un vehículo (el principal y los de *Otros vehículos*), este resumen los junta en una sola tarjeta. Ajusta la lista de nombres y de dispositivos a los tuyos:
+
+![Resumen de tres vehículos con su restricción de hoy, próxima restricción y mes de revisión técnica](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/vehiculos-varios.png)
+
+*Ejemplo con fecha simulada: lunes 8 de junio de 2026, dentro de la temporada de restricción.*
+
+```yaml
+type: markdown
+title: 🚗 Mis vehículos
+content: |
+  {% set autos = {'Auto (patente …8)': 'mi_vehiculo', 'Auto (patente …3)': 'vehiculo_patente_3', 'Moto (patente …5)': 'vehiculo_patente_5'} %}
+  {% for nombre, id in autos.items() %}
+  **{{ nombre }}**  
+  {% if is_state('binary_sensor.' ~ id ~ '_restriccion_vehicular_hoy', 'on') %}🚫 Hoy tiene restricción{% else %}✅ Hoy sin restricción{% endif %}{% if has_value('sensor.' ~ id ~ '_proxima_restriccion') %} · próxima: {{ states('sensor.' ~ id ~ '_proxima_restriccion') }}{% endif %}  
+  🔧 Revisión técnica: {{ states('sensor.' ~ id ~ '_mes_de_revision_tecnica') }}{% if is_state('binary_sensor.' ~ id ~ '_revision_tecnica_este_mes', 'on') %} · **¡este mes!**{% endif %}
+  {% endfor %}
 ```
 
 ## ☀️ Resumen del día (todo junto)

@@ -695,3 +695,95 @@ def test_docs_yaml_images_and_links_are_valid():
             base = root / "docs" if name.startswith("docs/") else root
             assert (base / target).resolve().exists(), f"{name}: enlace roto {target}"
     assert "docs/tarjetas.md" in (root / "README.md").read_text(encoding="utf-8")
+
+
+# ----------------------------------------------------------- Panoramas (eventos)
+
+def _culture_events():
+    return api.parse_culture_events(json.loads((Path(__file__).parent / "fixtures/cultura_eventos_santiago.json").read_text()))
+
+
+def test_culture_events_parse_real_response():
+    events = _culture_events()
+    assert len(events) == 18 and all(e.name and e.url.startswith("https://chilecultura.gob.cl/") for e in events)
+    assert any(e.free for e in events) and any(not e.free for e in events)
+    assert any(e.end > e.start for e in events)                    # eventos de varios días
+    assert all(e.start <= e.end for e in events)
+
+
+def test_culture_events_between_filters_and_sorts():
+    from datetime import date
+    events = _culture_events()
+    today = date(2026, 11, 14)
+    upcoming = api.culture_events_between(events, today)
+    assert [e.start for e in upcoming] == sorted(e.start for e in upcoming)
+    assert all(e.end >= today for e in upcoming)
+    free = api.culture_events_between(events, today, free_only=True)
+    assert free and all(e.free for e in free) and len(free) < len(upcoming)
+    # un evento que ya terminó no aparece
+    assert api.culture_events_between(events, date(2030, 1, 1)) == []
+
+
+def test_culture_events_bad_records_are_skipped_and_bad_format_is_an_error():
+    ok = {"id": 1, "name": "Obra", "start_date": "2026-11-14", "end_date": "2026-11-14", "free": True, "url": "https://x/1"}
+    bad = [{"id": 2, "name": "Sin fecha"}, {"id": 3, "name": "Fin antes", "start_date": "2026-11-14", "end_date": "2026-11-01"}, "x"]
+    parsed = api.parse_culture_events({"results": [ok, *bad]})
+    assert [e.id for e in parsed] == [1]
+    for wrong in ({}, {"results": "no"}, [], "texto"):
+        with pytest.raises(api.NavajaApiError):
+            api.parse_culture_events(wrong)
+
+
+def test_culture_fetch_follows_pages_and_dedupes():
+    import asyncio
+    from datetime import date
+
+    def page(ids, nxt):
+        return {"results": [{"id": i, "name": f"Evento {i}", "start_date": "2026-11-20", "end_date": "2026-11-20"} for i in ids],
+                "next": nxt}
+
+    pages = {"1": page([1, 2], "https://x/?page=2"), "2": page([2, 3], None)}
+    urls = []
+
+    class Resp:
+        def __init__(self, data):
+            self._d = data
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        def raise_for_status(self):
+            pass
+        async def json(self, content_type=None):
+            return self._d
+
+    class Session:
+        def get(self, url, **kw):
+            urls.append(url)
+            return Resp(pages[url.split("page=")[1].split("&")[0]])
+
+    events = asyncio.run(api.fetch_culture_events(Session(), "Ñuñoa", date(2026, 11, 14), pause=0))
+    assert sorted(e.id for e in events) == [1, 2, 3] and len(urls) == 2
+    assert "commune=%C3%91u%C3%B1oa" in urls[0] and "start_date=2026-09-30" in urls[0] and "page_size=100" in urls[0]
+
+
+def test_resolve_commune_ignores_accents_and_case():
+    communes = ["Providencia", "Ñuñoa", "Viña del Mar", "Santiago"]
+    assert api.resolve_commune("nunoa", communes) == "Ñuñoa"
+    assert api.resolve_commune("  VIÑA   DEL MAR ", communes) == "Viña del Mar"
+    assert api.resolve_commune("vina del mar", communes) == "Viña del Mar"
+    assert api.resolve_commune("Narnia", communes) is None
+
+
+def test_arena_events_parse_real_page():
+    from datetime import timezone
+    page = (Path(__file__).parent / "fixtures/claroarena_cartelera.html").read_text()
+    events = api.parse_arena_events(page)
+    assert len(events) == 8
+    first = events[0]
+    assert first.title.startswith("Atletico Colina") and first.start.strftime("%Y-%m-%d %H:%M") == "2026-11-14 18:00"
+    assert first.start.utcoffset() is not None and first.url.startswith("https://www.puntoticket.com/")
+    assert any(e.start is None for e in events)                    # «Próximamente»: sin fecha, sin enlace
+    assert [e.category for e in events if e.title == "Fede Vigevani"] == ["Conciertos"]
+    with pytest.raises(api.NavajaApiError):
+        api.parse_arena_events("<html><body>sitio rediseñado</body></html>")

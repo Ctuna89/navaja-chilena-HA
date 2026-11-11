@@ -16,6 +16,7 @@ from homeassistant.helpers.storage import Store
 from . import api
 from .const import (
     BENEFITS_INTERVAL,
+    EVENTS_INTERVAL,
     NEWS_COOP_MIN_AGE,
     NEWS_INTERVAL,
     REGIONAL_INTERVAL,
@@ -352,3 +353,20 @@ def news_coordinator(hass: HomeAssistant, topics: list[str], count: int) -> Nava
         return await api.fetch_news(session, topics, count, cache, dt_util.utcnow(), NEWS_COOP_MIN_AGE)
 
     return NavajaCoordinator(hass, "noticias", NEWS_INTERVAL, fetch)
+
+
+def culture_coordinator(hass: HomeAssistant, commune: str) -> NavajaCoordinator:
+    """Agenda cultural de una comuna (Chile Cultura): cada 6 horas."""
+
+    async def fetch(session: Any) -> list[api.CultureEvent]:
+        today = dt_util.now().astimezone(ZoneInfo(api.METRO_TZ)).date()
+        return await api.fetch_culture_events(session, commune, today)
+
+    return NavajaCoordinator(hass, "cultura", EVENTS_INTERVAL, fetch)
+
+
+def arena_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
+    async def fetch(session: Any) -> list[api.ArenaEvent]:
+        return await api.fetch_arena_events(session)
+
+    return NavajaCoordinator(hass, "claro_arena", EVENTS_INTERVAL, fetch)

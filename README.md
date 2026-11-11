@@ -30,6 +30,7 @@ feriados, efemérides y mucho más, en una sola integración que se instala en u
 | 🇨🇱 **Efemérides** | Los días significativos y las efemérides chilenas de hoy, y el próximo día significativo |
 | ⚽ **Fútbol** | Próximos partidos, resultados y posición de tu equipo de la Primera División, la tabla y las fechas de la liga, y los partidos de La Roja |
 | 📰 **Noticias por tema** | Titulares de La Tercera y Cooperativa separados por tema (nacional, política, mundo, economía, deportes, tecnología…), con enlace a cada nota |
+| 🎭 **Panoramas** | Los eventos culturales de hoy y el próximo en tu comuna (agenda oficial de Chile Cultura, con filtro de solo gratis) y los conciertos y partidos del estadio Claro Arena |
 | ⛽ **Combustibles** | Dónde está la bencina (93, 95, 97) o el diésel más barato cerca de tu casa, con precio, marca, dirección y distancia |
 | 💳 **Descuentos de tus tarjetas** | Eliges tus tarjetas (Banco de Chile, BCI, Santander, CMR…) y las categorías que te interesan (combustibles, comida, salud…) y ves los descuentos que aplican **hoy**, con un calendario mensual de descuentos en bencina |
 | 🚗 **Restricción vehicular y revisión técnica** | Con el último dígito de tu patente: si hoy tienes restricción, tu próximo día con restricción y el mes de tu revisión técnica |
@@ -65,6 +66,7 @@ El asistente te pregunta qué quieres activar:
 - tu **comuna** para las farmacias de turno,
 - tu **equipo** de la Primera División (o toda la liga) y **La Roja**, para ver partidos, resultados y tabla,
 - los **combustibles** que usas (93, 95, 97 o diésel), el **radio** de búsqueda alrededor de tu casa y la **antigüedad máxima** de los precios,
+- tu **comuna** para los panoramas culturales (puedes escribirla sin tildes), si quieres **solo los gratuitos** y si quieres los eventos del **Claro Arena**,
 - los **temas de noticias** que quieres seguir y cuántos titulares por tema,
 - la **ciudad y los paraderos** de la Red Regional (si vives fuera de Santiago),
 - tus **tarjetas** (descuentos en bencina de hoy) y las **categorías** de descuentos que te interesan (combustibles, comida, salud y belleza, etc.),
@@ -186,6 +188,24 @@ cuando falta menos de 3 horas para que empiece).
 
 La lista de equipos corresponde a la Primera División 2026 y se actualiza cuando cambian los equipos de la liga.
 
+### 🎭 Panoramas
+Eventos para salir de casa, de dos fuentes abiertas. Cada una se activa por separado.
+
+**Panoramas culturales de tu comuna** (`sensor.panoramas_culturales_<comuna>_hoy` y `sensor.panoramas_culturales_<comuna>_proximo_evento`)
+
+- Eliges tu **comuna** (se valida con la lista oficial y se corrige sola: `nunoa` queda como «Ñuñoa») y, si quieres, **solo eventos gratuitos**.
+- **Hoy**: cuántos eventos hay hoy en tu comuna, con la lista en el atributo `eventos` (nombre, recinto, disciplina, público sugerido, si es gratis o pago, enlace e imagen).
+- **Próximo evento**: el que parte hoy o más adelante. Atributos: `fecha`, `recinto`, `gratis`, `disciplina`, `enlace` y `proximos` (los siguientes 15). La imagen de la entidad es la del evento.
+- Los datos vienen de [Chile Cultura](https://chilecultura.gob.cl), la agenda oficial del Ministerio de las Culturas, las Artes y el Patrimonio: música, teatro, danza, cine, patrimonio y más,
+  publicados por las propias instituciones. Se actualiza cada 6 horas. La agenda trae **fechas** (no horas ni precios): para eso, usa el enlace de cada evento.
+- Los eventos de varios días cuentan como «hoy» mientras estén en curso. Si tu comuna no tiene eventos publicados, el próximo evento queda sin valor y lo explica; si la fuente no responde, quedan «no disponibles».
+
+**Claro Arena** (`sensor.claro_arena_proximo_evento`) · el estadio de la UC en Las Condes: partidos y conciertos.
+
+- El valor es el próximo evento. Atributos: `fecha`, `hora`, `categoria`, `entradas` (enlace de compra en Puntoticket), `hay_evento_hoy`, `eventos` (los próximos con fecha y hora) y `proximamente` (los anunciados sin fecha). La imagen de la entidad es la del evento.
+- Se lee la cartelera pública de [claroarena.cl](https://claroarena.cl/cartelera/) cada 6 horas. Un partido sigue contando como «próximo» hasta 3 horas después de su inicio.
+- Es una página web sin API: si el sitio cambia de diseño, el sensor queda «no disponible» hasta que se actualice la integración, nunca con una lista vacía.
+
 ### ⛽ Combustibles
 `sensor.combustibles_gasolina_93_mas_barata`, `..._95_...`, `..._97_...` y `sensor.combustibles_diesel_mas_barato` · precio más bajo en CLP por
 litro entre las estaciones de servicio dentro del radio elegido (2, 5, 10 o 20 km) alrededor de la ubicación de tu Home Assistant ·
@@ -254,6 +274,16 @@ actualizan con ella cuando el Ministerio publica una nueva resolución.
 | `sensor.mi_vehiculo_proxima_restriccion` | Fecha de tu próximo día con restricción, con `dias_restantes` |
 | `sensor.mi_vehiculo_mes_de_revision_tecnica` | Mes de preferencia de tu revisión técnica, con `meses_restantes` |
 | `binary_sensor.mi_vehiculo_revision_tecnica_este_mes` | «Este mes» si te toca ahora |
+
+**Más de un vehículo.** Además del vehículo principal (dígito y tipo) puedes sumar **hasta 4 más** en el campo *Otros vehículos*: escribe el último dígito de cada
+patente separado por coma, y opcionalmente su tipo después de dos puntos, por ejemplo `3, 5:moto, 7:sin_sello`. Si no pones tipo, se usa el elegido para el vehículo principal.
+Tipos: `verde`, `verde_2011`, `sin_sello`, `sin_sello_anillo` y `moto`.
+
+- El vehículo principal **conserva sus entidades de siempre** (`..._mi_vehiculo_...`): no cambia nada si no agregas otros.
+- Cada vehículo adicional tiene su **propio dispositivo**, «Vehículo patente 3», con las mismas cinco entidades
+  (`sensor.vehiculo_patente_3_digitos_con_restriccion_hoy`, `binary_sensor.vehiculo_patente_3_restriccion_vehicular_hoy`, etc.). Si repites un dígito con otro tipo
+  (por ejemplo un auto y una moto con el 8), el nombre agrega el tipo: «Vehículo patente 8 (moto)».
+- También puedes dejar el vehículo principal en «No usar» y registrar solo los de *Otros vehículos*.
 
 **Restricción vehicular (Región Metropolitana, temporada 2026).** Del 1 de mayo al 31 de agosto, de lunes a viernes salvo festivos, entre las
 07:30 y las 21:00, en la provincia de Santiago y las comunas de Puente Alto y San Bernardo. Dígitos restringidos según la
@@ -333,6 +363,8 @@ necesidad de registrarte.
 | Efemérides | [efemerides.cl](https://www.efemerides.cl) y [Wikipedia en español](https://es.wikipedia.org) |
 | Fútbol | [ESPN](https://www.espn.cl/futbol/) (calendario, resultados y tabla; servicio público no documentado) |
 | Combustibles | [Bencina en Línea](https://www.bencinaenlinea.cl) (Comisión Nacional de Energía) |
+| Panoramas culturales | [Chile Cultura](https://chilecultura.gob.cl), agenda oficial del Ministerio de las Culturas, las Artes y el Patrimonio (los eventos los publican las instituciones culturales) |
+| Claro Arena | Cartelera pública de [claroarena.cl](https://claroarena.cl/cartelera/); las entradas se compran en Puntoticket |
 | Descuentos en bencina | Calendario mensual del repositorio ([`data/bencina.json`](data/bencina.json)); cada descuento cita su fuente (Copec, Shell, Aramco, bancos y prensa) |
 | Descuentos de tarjetas | [N Beneficios](https://www.nbeneficios.cl), un servicio de Infoacción (los beneficios, logos e imágenes pertenecen a sus emisores) |
 | Noticias por tema | Feeds RSS públicos de [La Tercera](https://www.latercera.com) y [Cooperativa.cl](https://www.cooperativa.cl); los titulares enlazan a las notas originales y su contenido pertenece a sus autores |

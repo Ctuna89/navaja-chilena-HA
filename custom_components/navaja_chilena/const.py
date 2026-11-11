@@ -130,6 +130,7 @@ EPHEMERIDES_CL_URL = "https://www.efemerides.cl/"  # días significativos del me
 # Vehículo: restricción vehicular y revisión técnica (reglas en vehicle.py)
 CONF_VEHICLE_DIGIT = "vehicle_digit"
 CONF_VEHICLE_TYPE = "vehicle_type"
+CONF_VEHICLES_MORE = "vehicles_more"
 VEHICLE_NONE = "none"
 
 # Combustibles (Bencina en Línea, Comisión Nacional de Energía)
@@ -314,3 +315,16 @@ NEWS_COOPERATIVA_CATEGORIES: dict[str, str] = {
     "cultura": "cultura",
     "magazine": "cultura",
 }
+
+# Panoramas: agenda cultural (Chile Cultura, Ministerio de las Culturas) y Claro Arena
+CONF_EVENTS_COMMUNE = "events_commune"
+CONF_EVENTS_FREE_ONLY = "events_free_only"
+CONF_CLARO_ARENA = "claro_arena"
+CULTURE_EVENTS_URL = "https://chilecultura.gob.cl/api/v1.0/events/"
+CULTURE_COMMUNES_URL = "https://chilecultura.gob.cl/api/v1.0/communes/"
+CULTURE_LOOKBACK_DAYS = 45     # eventos de varios días que empezaron antes de hoy y siguen en curso
+CULTURE_PAGE_SIZE = 100
+CULTURE_MAX_PAGES = 5
+CLARO_ARENA_URL = "https://claroarena.cl/cartelera/"
+EVENTS_INTERVAL = timedelta(hours=6)
+EVENTS_PAUSE = 1.0                # segundos entre páginas de la misma fuente

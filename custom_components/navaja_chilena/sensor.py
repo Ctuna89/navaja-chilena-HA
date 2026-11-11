@@ -120,6 +120,13 @@ async def async_setup_entry(
         rt.regional,
         lambda data: [RegionalStopSensor(rt.regional, entry, code, rt.regional_zone) for code in data],
     )
+    if rt.culture:
+        fixed += [
+            CultureTodaySensor(rt.culture, entry, rt.events_commune, rt.events_free_only),
+            CultureNextSensor(rt.culture, entry, rt.events_commune, rt.events_free_only),
+        ]
+    if rt.arena:
+        fixed.append(ArenaNextSensor(rt.arena, entry))
     if rt.news:
         fixed += [NewsSensor(rt.news, entry, topic) for topic in rt.news_topics]
     if rt.fuel_discounts:
@@ -130,11 +137,11 @@ async def async_setup_entry(
         fixed += [FuelSensor(rt.fuel, entry, fuel, rt.fuel_radius, rt.fuel_max_age) for fuel in rt.fuel_types]
     if rt.saint:
         fixed.append(SaintSensor(entry))
-    if rt.vehicle_digit is not None:
+    for spec in rt.vehicles:
         fixed += [
-            VehicleDigitsSensor(entry, rt, "digitos"),
-            NextRestrictionSensor(entry, rt, "proxima"),
-            RevisionMonthSensor(entry, rt, "revision"),
+            VehicleDigitsSensor(entry, rt, spec, "digitos"),
+            NextRestrictionSensor(entry, rt, spec, "proxima"),
+            RevisionMonthSensor(entry, rt, spec, "revision"),
         ]
     if rt.ephemerides:
         fixed += [
@@ -375,6 +382,176 @@ class NewsSensor(_Base):
             ],
             "fuente": "La Tercera y Cooperativa.cl (feeds RSS públicos)",
         }
+
+
+def _brief_culture(e: api.CultureEvent) -> dict[str, Any]:
+    return {
+        "nombre": e.name,
+        "fecha": e.start.isoformat() if e.start == e.end else f"{e.start.isoformat()} al {e.end.isoformat()}",
+        "desde": e.start.isoformat(),
+        "hasta": e.end.isoformat(),
+        "recinto": e.venue,
+        "comuna": e.commune,
+        "gratis": e.free,
+        "disciplina": e.discipline,
+        "publico": e.audience,
+        "enlace": e.url,
+        "imagen": e.image,
+    }
+
+
+class _EventsBase(_Base):
+    """Eventos: se recalculan a medianoche (qué está en curso hoy cambia sin nueva descarga)."""
+
+    MAX_LISTED = 15
+
+    def _has_data(self) -> bool:
+        return self.coordinator.data is not None
+
+    def _today(self):
+        return dt_util.now().astimezone(ZoneInfo(api.METRO_TZ)).date()
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+
+        @callback
+        def _refresh(_now: datetime) -> None:
+            self.async_write_ha_state()
+
+        self.async_on_remove(async_track_time_change(self.hass, _refresh, hour=0, minute=0, second=5))
+
+
+class CultureTodaySensor(_EventsBase):
+    """Eventos culturales de hoy en tu comuna (Chile Cultura)."""
+
+    _kind = "cultura_hoy"
+    _attr_icon = "mdi:palette"
+    _attr_native_unit_of_measurement = "eventos"
+
+    def __init__(self, coordinator, entry, commune: str, free_only: bool) -> None:
+        super().__init__(coordinator, entry, f"hoy_{commune}")
+        self._free_only = free_only
+        self._commune = commune
+        self._attr_name = "Hoy"
+        self._attr_device_info = _device(f"cultura_{commune}", f"Panoramas culturales: {commune}")
+
+    def _events(self) -> list[api.CultureEvent]:
+        today = self._today()
+        return [e for e in api.culture_events_between(self.coordinator.data, today, self._free_only) if e.start <= today]
+
+    @property
+    def native_value(self) -> int:
+        return len(self._events())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        events = self._events()
+        return {
+            "comuna": self._commune,
+            "solo_gratis": self._free_only,
+            "eventos": [_brief_culture(e) for e in events[: self.MAX_LISTED]],
+            "fuente": "Chile Cultura (Ministerio de las Culturas, las Artes y el Patrimonio)",
+        }
+
+
+class CultureNextSensor(_EventsBase):
+    """Próximo evento cultural en tu comuna (el que parte hoy o más adelante)."""
+
+    _kind = "cultura_proximo"
+    _attr_icon = "mdi:calendar-star"
+
+    def __init__(self, coordinator, entry, commune: str, free_only: bool) -> None:
+        super().__init__(coordinator, entry, f"proximo_{commune}")
+        self._free_only = free_only
+        self._commune = commune
+        self._attr_name = "Próximo evento"
+        self._attr_device_info = _device(f"cultura_{commune}", f"Panoramas culturales: {commune}")
+
+    def _upcoming(self) -> list[api.CultureEvent]:
+        today = self._today()
+        return [e for e in api.culture_events_between(self.coordinator.data, today, self._free_only) if e.start >= today]
+
+    @property
+    def native_value(self) -> str | None:
+        upcoming = self._upcoming()
+        if not upcoming:
+            return None
+        name = upcoming[0].name
+        return name if len(name) <= 255 else name[:254].rstrip() + "…"
+
+    @property
+    def entity_picture(self) -> str | None:
+        upcoming = self._upcoming() if self.coordinator.data is not None else []
+        return upcoming[0].image if upcoming else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        upcoming = self._upcoming()
+        attrs: dict[str, Any] = {
+            "comuna": self._commune,
+            "solo_gratis": self._free_only,
+            "proximos": [_brief_culture(e) for e in upcoming[: self.MAX_LISTED]],
+            "fuente": "Chile Cultura (Ministerio de las Culturas, las Artes y el Patrimonio)",
+        }
+        if upcoming:
+            attrs.update({k: v for k, v in _brief_culture(upcoming[0]).items() if k != "imagen"})
+        else:
+            attrs["motivo"] = f"No hay eventos publicados en {self._commune} desde hoy"
+        return attrs
+
+
+class ArenaNextSensor(_EventsBase):
+    """Próximo evento del estadio Claro Arena (conciertos y partidos)."""
+
+    _kind = "claro_arena"
+    _attr_icon = "mdi:stadium-variant"
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry, "proximo")
+        self._attr_name = "Próximo evento"
+        self._attr_device_info = _device("claro_arena", "Claro Arena")
+
+    def _dated(self) -> list[api.ArenaEvent]:
+        now = dt_util.now().astimezone(ZoneInfo(api.METRO_TZ))
+        return sorted(
+            (e for e in self.coordinator.data if e.start is not None and e.start + timedelta(hours=3) >= now),
+            key=lambda e: e.start,
+        )
+
+    @property
+    def native_value(self) -> str | None:
+        dated = self._dated()
+        return dated[0].title if dated else None
+
+    @property
+    def entity_picture(self) -> str | None:
+        dated = self._dated() if self.coordinator.data is not None else []
+        return dated[0].image if dated else None
+
+    @staticmethod
+    def _brief(e: api.ArenaEvent) -> dict[str, Any]:
+        return {
+            "titulo": e.title,
+            "fecha": e.start.strftime("%Y-%m-%d") if e.start else None,
+            "hora": e.start.strftime("%H:%M") if e.start else None,
+            "categoria": e.category or None,
+            "entradas": e.url,
+            "imagen": e.image,
+        }
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        dated = self._dated()
+        today = self._today()
+        attrs: dict[str, Any] = {
+            "hay_evento_hoy": any(e.start.date() == today for e in dated),
+            "eventos": [self._brief(e) for e in dated[: self.MAX_LISTED]],
+            "proximamente": [e.title for e in self.coordinator.data if e.start is None],
+            "fuente": "Claro Arena (claroarena.cl); entradas en Puntoticket",
+        }
+        if dated:
+            attrs.update({k: v for k, v in self._brief(dated[0]).items() if k != "imagen"})
+        return attrs
 
 
 class QuakeSensor(_Base):
@@ -836,8 +1013,8 @@ class VehicleDigitsSensor(VehicleMixin, SensorEntity):
     _attr_icon = "mdi:car-clock"
     _attr_name = "Dígitos con restricción hoy"
 
-    def __init__(self, entry, runtime, key: str) -> None:
-        self._setup_vehicle(entry, runtime, key)
+    def __init__(self, entry, runtime, spec, key: str) -> None:
+        self._setup_vehicle(entry, runtime, spec, key)
 
     @property
     def available(self) -> bool:
@@ -865,8 +1042,8 @@ class NextRestrictionSensor(VehicleMixin, SensorEntity):
     _attr_name = "Próxima restricción"
     _attr_device_class = SensorDeviceClass.DATE
 
-    def __init__(self, entry, runtime, key: str) -> None:
-        self._setup_vehicle(entry, runtime, key)
+    def __init__(self, entry, runtime, spec, key: str) -> None:
+        self._setup_vehicle(entry, runtime, spec, key)
 
     def _next(self):
         return vehicle.next_restriction(self.vehicle_type, self.digit, self.today(), self.holidays())
@@ -901,8 +1078,8 @@ class RevisionMonthSensor(VehicleMixin, SensorEntity):
     _attr_icon = "mdi:car-wrench"
     _attr_name = "Mes de revisión técnica"
 
-    def __init__(self, entry, runtime, key: str) -> None:
-        self._setup_vehicle(entry, runtime, key)
+    def __init__(self, entry, runtime, spec, key: str) -> None:
+        self._setup_vehicle(entry, runtime, spec, key)
 
     @property
     def native_value(self) -> str:

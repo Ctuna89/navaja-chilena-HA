@@ -34,23 +34,25 @@ class VehicleMixin:
     _attr_has_entity_name = True
     _attr_should_poll = False
 
-    def _setup_vehicle(self, entry: Any, runtime: Any, key: str) -> None:
+    def _setup_vehicle(self, entry: Any, runtime: Any, spec: vehicle.VehicleSpec, key: str) -> None:
         self._rt = runtime
-        self._attr_unique_id = f"{entry.entry_id}_vehiculo_{key}"
+        self._spec = spec
+        # El vehículo principal conserva sus ids de siempre; los demás llevan su dígito y tipo.
+        self._attr_unique_id = f"{entry.entry_id}_vehiculo_{key}{spec.suffix}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, "vehiculo")},
-            name="Mi vehículo",
+            identifiers={(DOMAIN, "vehiculo" + spec.suffix)},
+            name=spec.name,
             manufacturer="Navaja Chilena",
             entry_type=DeviceEntryType.SERVICE,
         )
 
     @property
     def digit(self) -> int:
-        return self._rt.vehicle_digit
+        return self._spec.digit
 
     @property
     def vehicle_type(self) -> str:
-        return self._rt.vehicle_type
+        return self._spec.type
 
     def now(self):
         return dt_util.now().astimezone(TZ)
