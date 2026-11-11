@@ -969,3 +969,48 @@ async def test_readme_morning_summary_is_empty_without_modules(hass):
     data = _readme_morning_automation()["actions"][0]["data"]
     assert Template(data["title"], hass).async_render() == "🇨🇱 Buen día"
     assert Template(data["message"], hass).async_render().strip() == ""
+
+
+async def test_several_vehicles_each_with_its_own_entities(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-06-08 10:00:00-04:00")          # lunes: restringidos 8 y 9
+    data = {**VEH, "vehicles_more": "3, 5:moto"}
+    entry = await _setup_vehicle(hass, aioclient_mock, data=data)
+    assert [s.digit for s in entry.runtime_data.vehicles] == [8, 3, 5]
+    # El principal conserva sus ids de siempre.
+    assert hass.states.get("sensor.mi_vehiculo_digitos_con_restriccion_hoy").state == "8-9"
+    assert hass.states.get("binary_sensor.mi_vehiculo_restriccion_vehicular_hoy").state == "on"
+    # Los demás, un dispositivo cada uno.
+    assert hass.states.get("binary_sensor.vehiculo_patente_3_restriccion_vehicular_hoy").state == "off"
+    assert hass.states.get("sensor.vehiculo_patente_3_mes_de_revision_tecnica").state == "Junio"
+    assert hass.states.get("sensor.vehiculo_patente_3_proxima_restriccion") is not None
+    moto = hass.states.get("sensor.vehiculo_patente_5_digitos_con_restriccion_hoy")
+    assert moto is not None and "moto" in moto.attributes["tipo_de_vehiculo"].lower()
+    assert hass.states.get("sensor.vehiculo_patente_5_mes_de_revision_tecnica").state == "Agosto"
+
+
+async def test_old_entries_without_extra_vehicles_are_unchanged(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-06-08 10:00:00-04:00")
+    entry = await _setup_vehicle(hass, aioclient_mock)
+    assert [(s.digit, s.primary) for s in entry.runtime_data.vehicles] == [(8, True)]
+    assert hass.states.get("sensor.vehiculo_patente_3_digitos_con_restriccion_hoy") is None
+
+
+async def test_extra_vehicles_without_a_primary_one(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-06-08 10:00:00-04:00")
+    data = {"indicators": [], "metro": False, "vehicle_digit": "none", "vehicles_more": "9"}
+    await _setup_vehicle(hass, aioclient_mock, data=data)
+    assert hass.states.get("binary_sensor.vehiculo_patente_9_restriccion_vehicular_hoy").state == "on"
+    assert hass.states.get("sensor.mi_vehiculo_digitos_con_restriccion_hoy") is None
+
+
+async def test_vehicles_more_config_flow_validation(hass, aioclient_mock):
+    mock_all(aioclient_mock)
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    base = {"indicators": ["uf"], "metro": False, "vehicle_digit": "8", "vehicle_type": "sello_verde"}
+    bad = await hass.config_entries.flow.async_configure(flow["flow_id"], {**base, "vehicles_more": "3, 7:camion"})
+    assert bad["errors"] == {"vehicles_more": "invalid_vehicle"}
+    many = await hass.config_entries.flow.async_configure(flow["flow_id"], {**base, "vehicles_more": "1,2,3,4,5"})
+    assert many["errors"] == {"vehicles_more": "invalid_vehicle"}                      # con el principal serían 6
+    ok = await hass.config_entries.flow.async_configure(flow["flow_id"], {**base, "vehicles_more": "3, 5:moto"})
+    assert ok["type"] == FlowResultType.CREATE_ENTRY
+    assert ok["data"]["vehicles_more"] == "3:sello_verde, 5:moto"

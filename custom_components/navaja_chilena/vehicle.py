@@ -15,6 +15,7 @@ informa por sus canales; eso no está incluido aquí.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, time, timedelta
 
@@ -160,3 +161,76 @@ def revision_month(digit: int) -> int:
 def months_until_revision(digit: int, today: date) -> int:
     """Meses que faltan para el mes de preferencia (0 = es este mes)."""
     return (REVISION_MONTH[digit] - today.month) % 12
+
+
+# ------------------------------------------------------------ Varios vehículos
+
+MAX_VEHICLES = 5
+
+# Nombres cortos para escribir el tipo en la configuración («3:moto»)
+TYPE_ALIASES: dict[str, str] = {
+    "verde": "sello_verde",
+    "verde_2011": "sello_verde_posterior",
+    "sin_sello": "sin_sello_fuera_anillo",
+    "sin_sello_anillo": "sin_sello_dentro_anillo",
+    "moto": "moto",
+}
+_SHORT_BY_TYPE = {v: k for k, v in TYPE_ALIASES.items()}
+
+
+@dataclass(frozen=True)
+class VehicleSpec:
+    """Un vehículo configurado: último dígito de la patente y tipo."""
+
+    digit: int
+    type: str
+    primary: bool = False
+    name: str = "Mi vehículo"
+
+    @property
+    def suffix(self) -> str:
+        """Sufijo de los ids únicos: vacío para el vehículo principal (conserva los ids existentes)."""
+        return "" if self.primary else f"_{self.digit}_{self.type}"
+
+
+def parse_extra_vehicles(raw: str, default_type: str = "sello_verde") -> list[tuple[int, str]]:
+    """«3, 5:moto» -> [(3, default_type), (5, "moto")]. ValueError si algo no es válido."""
+    result: list[tuple[int, str]] = []
+    for part in re.split(r"[,;\s]+", (raw or "").strip().lower()):
+        if not part:
+            continue
+        digit_text, colon, type_text = part.partition(":")
+        if len(digit_text) != 1 or not digit_text.isdigit() or (colon and not type_text):
+            raise ValueError(part)
+        vtype = default_type
+        if type_text:
+            vtype = TYPE_ALIASES.get(type_text, type_text)
+            if vtype not in VEHICLE_TYPES:
+                raise ValueError(part)
+        pair = (int(digit_text), vtype)
+        if pair not in result:
+            result.append(pair)
+    return result
+
+
+def build_vehicles(
+    primary_digit: int | None, primary_type: str, extra: list[tuple[int, str]]
+) -> list[VehicleSpec]:
+    """Lista de vehículos: el principal (ids de siempre) y los demás, sin repetidos, hasta MAX_VEHICLES."""
+    pairs: list[tuple[int, str, bool]] = []
+    if primary_digit is not None:
+        pairs.append((primary_digit, primary_type, True))
+    for digit, vtype in extra:
+        if all((digit, vtype) != (d, t) for d, t, _p in pairs):
+            pairs.append((digit, vtype, False))
+    if len(pairs) > MAX_VEHICLES:
+        raise ValueError(f"máximo {MAX_VEHICLES} vehículos")
+    specs: list[VehicleSpec] = []
+    for digit, vtype, primary in pairs:
+        if primary:
+            name = "Mi vehículo"
+        else:
+            same_digit = sum(1 for d, _t, _p in pairs if d == digit) > 1
+            name = f"Vehículo patente {digit}" + (f" ({_SHORT_BY_TYPE.get(vtype, vtype)})" if same_digit else "")
+        specs.append(VehicleSpec(digit, vtype, primary, name))
+    return specs

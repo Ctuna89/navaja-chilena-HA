@@ -21,6 +21,7 @@
           "ephemerides": "Efemérides chilenas de hoy (Wikipedia)",
           "vehicle_digit": "Último dígito de la patente de tu vehículo (restricción y revisión técnica)",
           "vehicle_type": "Tipo de vehículo (para la restricción vehicular)",
+          "vehicles_more": "Otros vehículos: dígito o dígito:tipo, separados por coma (ej. 3, 5:moto). Tipos: verde, verde_2011, sin_sello, sin_sello_anillo, moto. Máximo 5 en total",
           "fuel_types": "Combustibles más baratos cerca de tu casa (elige los que usas)",
           "fuel_radius": "Radio de búsqueda de estaciones de servicio",
           "fuel_max_age": "Antigüedad máxima de los precios de combustible",
@@ -44,7 +45,8 @@
       "regional_needs_stops": "Indica al menos un paradero de la Red Regional.",
       "regional_needs_zone": "Elige la ciudad de esos paraderos.",
       "regional_stop_not_found": "Ese paradero no existe en la ciudad elegida. Revisa el código en el letrero o en la app Red Regional.",
-      "invalid_trip": "Trayecto de tren inválido. Usa «Origen > Destino» con estaciones de la línea Limache–Puerto, ej. Villa Alemana > Puerto. Máximo 8 trayectos (contando el sentido inverso)."
+      "invalid_trip": "Trayecto de tren inválido. Usa «Origen > Destino» con estaciones de la línea Limache–Puerto, ej. Villa Alemana > Puerto. Máximo 8 trayectos (contando el sentido inverso).",
+      "invalid_vehicle": "Vehículo inválido. Usa un dígito de 0 a 9, con un tipo opcional (ej. 3, 5:moto, 7:sin_sello) y hasta 5 vehículos en total."
     },
     "abort": {
       "already_configured": "Navaja Chilena ya está configurada."
@@ -72,6 +74,7 @@
           "ephemerides": "Efemérides chilenas de hoy (Wikipedia)",
           "vehicle_digit": "Último dígito de la patente de tu vehículo (restricción y revisión técnica)",
           "vehicle_type": "Tipo de vehículo (para la restricción vehicular)",
+          "vehicles_more": "Otros vehículos: dígito o dígito:tipo, separados por coma (ej. 3, 5:moto). Tipos: verde, verde_2011, sin_sello, sin_sello_anillo, moto. Máximo 5 en total",
           "fuel_types": "Combustibles más baratos cerca de tu casa (elige los que usas)",
           "fuel_radius": "Radio de búsqueda de estaciones de servicio",
           "fuel_max_age": "Antigüedad máxima de los precios de combustible",
@@ -95,7 +98,8 @@
       "regional_needs_stops": "Indica al menos un paradero de la Red Regional.",
       "regional_needs_zone": "Elige la ciudad de esos paraderos.",
       "regional_stop_not_found": "Ese paradero no existe en la ciudad elegida. Revisa el código en el letrero o en la app Red Regional.",
-      "invalid_trip": "Trayecto de tren inválido. Usa «Origen > Destino» con estaciones de la línea Limache–Puerto, ej. Villa Alemana > Puerto. Máximo 8 trayectos (contando el sentido inverso)."
+      "invalid_trip": "Trayecto de tren inválido. Usa «Origen > Destino» con estaciones de la línea Limache–Puerto, ej. Villa Alemana > Puerto. Máximo 8 trayectos (contando el sentido inverso).",
+      "invalid_vehicle": "Vehículo inválido. Usa un dígito de 0 a 9, con un tipo opcional (ej. 3, 5:moto, 7:sin_sello) y hasta 5 vehículos en total."
     }
   },
   "entity": {

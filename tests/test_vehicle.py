@@ -101,3 +101,41 @@ def test_months_until_revision():
     assert v.months_until_revision(7, today) == 11      # octubre (ya pasó este año)
     for d in range(10):
         assert 0 <= v.months_until_revision(d, today) <= 11
+
+
+# ------------------------------------------------------------ Varios vehículos
+
+def test_parse_extra_vehicles():
+    assert v.parse_extra_vehicles("3, 5:moto;7:sin_sello 3") == [(3, "sello_verde"), (5, "moto"), (7, "sin_sello_fuera_anillo")]
+    assert v.parse_extra_vehicles("4:sin_sello_dentro_anillo", "moto") == [(4, "sin_sello_dentro_anillo")]
+    assert v.parse_extra_vehicles("2", "sin_sello_fuera_anillo") == [(2, "sin_sello_fuera_anillo")]
+    assert v.parse_extra_vehicles("") == []
+    for bad in ("12", "a", "3:camion", "3:", ":moto", "3-5"):
+        try:
+            v.parse_extra_vehicles(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"debía rechazar {bad!r}")
+
+
+def test_build_vehicles_keeps_primary_and_names_the_rest():
+    specs = v.build_vehicles(8, "sello_verde", [(3, "sello_verde"), (5, "moto"), (8, "sello_verde")])
+    assert [(s.digit, s.primary, s.name) for s in specs] == [(8, True, "Mi vehículo"), (3, False, "Vehículo patente 3"), (5, False, "Vehículo patente 5")]
+    assert specs[0].suffix == "" and specs[1].suffix == "_3_sello_verde"      # el principal conserva los ids existentes
+    # Mismo dígito con otro tipo: el nombre los distingue
+    same = v.build_vehicles(8, "sello_verde", [(8, "moto")])
+    assert [s.name for s in same] == ["Mi vehículo", "Vehículo patente 8 (moto)"]
+    # Sin vehículo principal
+    assert [s.name for s in v.build_vehicles(None, "sello_verde", [(2, "moto")])] == ["Vehículo patente 2"]
+    assert v.build_vehicles(None, "sello_verde", []) == []
+
+
+def test_build_vehicles_has_a_limit():
+    extra = [(d, "sello_verde") for d in range(1, 6)]
+    assert len(v.build_vehicles(0, "sello_verde", extra[:4])) == 5
+    try:
+        v.build_vehicles(0, "sello_verde", extra)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("debía rechazar más de 5 vehículos")

@@ -255,6 +255,16 @@ actualizan con ella cuando el Ministerio publica una nueva resolución.
 | `sensor.mi_vehiculo_mes_de_revision_tecnica` | Mes de preferencia de tu revisión técnica, con `meses_restantes` |
 | `binary_sensor.mi_vehiculo_revision_tecnica_este_mes` | «Este mes» si te toca ahora |
 
+**Más de un vehículo.** Además del vehículo principal (dígito y tipo) puedes sumar **hasta 4 más** en el campo *Otros vehículos*: escribe el último dígito de cada
+patente separado por coma, y opcionalmente su tipo después de dos puntos, por ejemplo `3, 5:moto, 7:sin_sello`. Si no pones tipo, se usa el elegido para el vehículo principal.
+Tipos: `verde`, `verde_2011`, `sin_sello`, `sin_sello_anillo` y `moto`.
+
+- El vehículo principal **conserva sus entidades de siempre** (`..._mi_vehiculo_...`): no cambia nada si no agregas otros.
+- Cada vehículo adicional tiene su **propio dispositivo**, «Vehículo patente 3», con las mismas cinco entidades
+  (`sensor.vehiculo_patente_3_digitos_con_restriccion_hoy`, `binary_sensor.vehiculo_patente_3_restriccion_vehicular_hoy`, etc.). Si repites un dígito con otro tipo
+  (por ejemplo un auto y una moto con el 8), el nombre agrega el tipo: «Vehículo patente 8 (moto)».
+- También puedes dejar el vehículo principal en «No usar» y registrar solo los de *Otros vehículos*.
+
 **Restricción vehicular (Región Metropolitana, temporada 2026).** Del 1 de mayo al 31 de agosto, de lunes a viernes salvo festivos, entre las
 07:30 y las 21:00, en la provincia de Santiago y las comunas de Puente Alto y San Bernardo. Dígitos restringidos según la
 [Resolución Exenta N° 1698/2026](https://mtt.gob.cl/restriccion-vehicular-2026/) del Ministerio de Transportes:

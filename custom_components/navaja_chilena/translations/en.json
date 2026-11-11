@@ -21,6 +21,7 @@
           "ephemerides": "Chilean 'on this day' events (Wikipedia)",
           "vehicle_digit": "Last digit of your license plate (traffic restriction and vehicle inspection)",
           "vehicle_type": "Vehicle type (for the traffic restriction)",
+          "vehicles_more": "Other vehicles: digit or digit:type, comma separated (e.g. 3, 5:moto). Types: verde, verde_2011, sin_sello, sin_sello_anillo, moto. Up to 5 in total",
           "fuel_types": "Cheapest fuel near your home (choose the ones you use)",
           "fuel_radius": "Search radius for gas stations",
           "fuel_max_age": "Maximum age of fuel prices",
@@ -44,7 +45,8 @@
       "regional_needs_stops": "Enter at least one Red Regional stop.",
       "regional_needs_zone": "Choose the city of those stops.",
       "regional_stop_not_found": "That stop does not exist in the chosen city. Check the code on the sign or in the Red Regional app.",
-      "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto. At most 8 trips (counting the reverse direction)."
+      "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto. At most 8 trips (counting the reverse direction).",
+      "invalid_vehicle": "Invalid vehicle. Use a digit from 0 to 9 with an optional type (e.g. 3, 5:moto, 7:sin_sello) and at most 5 vehicles in total."
     },
     "abort": {
       "already_configured": "Navaja Chilena is already configured."
@@ -72,6 +74,7 @@
           "ephemerides": "Chilean 'on this day' events (Wikipedia)",
           "vehicle_digit": "Last digit of your license plate (traffic restriction and vehicle inspection)",
           "vehicle_type": "Vehicle type (for the traffic restriction)",
+          "vehicles_more": "Other vehicles: digit or digit:type, comma separated (e.g. 3, 5:moto). Types: verde, verde_2011, sin_sello, sin_sello_anillo, moto. Up to 5 in total",
           "fuel_types": "Cheapest fuel near your home (choose the ones you use)",
           "fuel_radius": "Search radius for gas stations",
           "fuel_max_age": "Maximum age of fuel prices",
@@ -95,7 +98,8 @@
       "regional_needs_stops": "Enter at least one Red Regional stop.",
       "regional_needs_zone": "Choose the city of those stops.",
       "regional_stop_not_found": "That stop does not exist in the chosen city. Check the code on the sign or in the Red Regional app.",
-      "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto. At most 8 trips (counting the reverse direction)."
+      "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto. At most 8 trips (counting the reverse direction).",
+      "invalid_vehicle": "Invalid vehicle. Use a digit from 0 to 9 with an optional type (e.g. 3, 5:moto, 7:sin_sello) and at most 5 vehicles in total."
     }
   },
   "entity": {

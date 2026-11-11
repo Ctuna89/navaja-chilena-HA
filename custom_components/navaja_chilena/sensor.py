@@ -130,11 +130,11 @@ async def async_setup_entry(
         fixed += [FuelSensor(rt.fuel, entry, fuel, rt.fuel_radius, rt.fuel_max_age) for fuel in rt.fuel_types]
     if rt.saint:
         fixed.append(SaintSensor(entry))
-    if rt.vehicle_digit is not None:
+    for spec in rt.vehicles:
         fixed += [
-            VehicleDigitsSensor(entry, rt, "digitos"),
-            NextRestrictionSensor(entry, rt, "proxima"),
-            RevisionMonthSensor(entry, rt, "revision"),
+            VehicleDigitsSensor(entry, rt, spec, "digitos"),
+            NextRestrictionSensor(entry, rt, spec, "proxima"),
+            RevisionMonthSensor(entry, rt, spec, "revision"),
         ]
     if rt.ephemerides:
         fixed += [
@@ -836,8 +836,8 @@ class VehicleDigitsSensor(VehicleMixin, SensorEntity):
     _attr_icon = "mdi:car-clock"
     _attr_name = "Dígitos con restricción hoy"
 
-    def __init__(self, entry, runtime, key: str) -> None:
-        self._setup_vehicle(entry, runtime, key)
+    def __init__(self, entry, runtime, spec, key: str) -> None:
+        self._setup_vehicle(entry, runtime, spec, key)
 
     @property
     def available(self) -> bool:
@@ -865,8 +865,8 @@ class NextRestrictionSensor(VehicleMixin, SensorEntity):
     _attr_name = "Próxima restricción"
     _attr_device_class = SensorDeviceClass.DATE
 
-    def __init__(self, entry, runtime, key: str) -> None:
-        self._setup_vehicle(entry, runtime, key)
+    def __init__(self, entry, runtime, spec, key: str) -> None:
+        self._setup_vehicle(entry, runtime, spec, key)
 
     def _next(self):
         return vehicle.next_restriction(self.vehicle_type, self.digit, self.today(), self.holidays())
@@ -901,8 +901,8 @@ class RevisionMonthSensor(VehicleMixin, SensorEntity):
     _attr_icon = "mdi:car-wrench"
     _attr_name = "Mes de revisión técnica"
 
-    def __init__(self, entry, runtime, key: str) -> None:
-        self._setup_vehicle(entry, runtime, key)
+    def __init__(self, entry, runtime, spec, key: str) -> None:
+        self._setup_vehicle(entry, runtime, spec, key)
 
     @property
     def native_value(self) -> str:

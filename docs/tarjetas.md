@@ -831,6 +831,26 @@ content: |
   🔧 Revisión técnica: **{{ states('sensor.mi_vehiculo_mes_de_revision_tecnica') }}**{% if is_state('binary_sensor.mi_vehiculo_revision_tecnica_este_mes', 'on') %} (¡te toca este mes!){% endif %}
 ```
 
+### 🚗 Varios vehículos
+
+Si registraste más de un vehículo (el principal y los de *Otros vehículos*), este resumen los junta en una sola tarjeta. Ajusta la lista de nombres y de dispositivos a los tuyos:
+
+![Resumen de tres vehículos con su restricción de hoy, próxima restricción y mes de revisión técnica](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/vehiculos-varios.png)
+
+*Ejemplo con fecha simulada: lunes 8 de junio de 2026, dentro de la temporada de restricción.*
+
+```yaml
+type: markdown
+title: 🚗 Mis vehículos
+content: |
+  {% set autos = {'Auto (patente …8)': 'mi_vehiculo', 'Auto (patente …3)': 'vehiculo_patente_3', 'Moto (patente …5)': 'vehiculo_patente_5'} %}
+  {% for nombre, id in autos.items() %}
+  **{{ nombre }}**  
+  {% if is_state('binary_sensor.' ~ id ~ '_restriccion_vehicular_hoy', 'on') %}🚫 Hoy tiene restricción{% else %}✅ Hoy sin restricción{% endif %}{% if has_value('sensor.' ~ id ~ '_proxima_restriccion') %} · próxima: {{ states('sensor.' ~ id ~ '_proxima_restriccion') }}{% endif %}  
+  🔧 Revisión técnica: {{ states('sensor.' ~ id ~ '_mes_de_revision_tecnica') }}{% if is_state('binary_sensor.' ~ id ~ '_revision_tecnica_este_mes', 'on') %} · **¡este mes!**{% endif %}
+  {% endfor %}
+```
+
 ## ☀️ Resumen del día (todo junto)
 
 ![Resumen del día con indicadores, efeméride y los tres titulares principales](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/resumen-del-dia.png)

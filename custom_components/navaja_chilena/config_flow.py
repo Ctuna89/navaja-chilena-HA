@@ -15,7 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from . import api
 from .api import parse_stop_codes
 from .efe_train import CONF_TRAIN_RETURN, CONF_TRAIN_TRIPS, format_trips, parse_trips
-from .vehicle import VEHICLE_TYPES
+from .vehicle import VEHICLE_TYPES, build_vehicles, parse_extra_vehicles
 from .api import FUEL_LABELS
 from .const import (
     CONF_FOOTBALL_LEAGUE,
@@ -45,6 +45,7 @@ from .const import (
     FUEL_RADII,
     CONF_VEHICLE_DIGIT,
     CONF_VEHICLE_TYPE,
+    CONF_VEHICLES_MORE,
     VEHICLE_NONE,
     CONF_EPHEMERIDES,
     CINEMA_NEAREST,
@@ -155,6 +156,9 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
+            vol.Optional(
+                CONF_VEHICLES_MORE, default=defaults.get(CONF_VEHICLES_MORE, "")
+            ): selector.TextSelector(),
             vol.Required(
                 CONF_FUEL_TYPES, default=defaults.get(CONF_FUEL_TYPES, [])
             ): selector.SelectSelector(
@@ -266,6 +270,13 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
     except ValueError:
         return user_input, {CONF_STOPS: "invalid_stop"}
     try:
+        vtype_default = str(user_input.get(CONF_VEHICLE_TYPE) or "sello_verde")
+        more_vehicles = parse_extra_vehicles(user_input.get(CONF_VEHICLES_MORE, ""), vtype_default)
+        primary = str(user_input.get(CONF_VEHICLE_DIGIT, VEHICLE_NONE))
+        build_vehicles(int(primary) if primary.isdigit() else None, vtype_default, more_vehicles)
+    except ValueError:
+        return user_input, {CONF_VEHICLES_MORE: "invalid_vehicle"}
+    try:
         trips = parse_trips(user_input.get(CONF_TRAIN_TRIPS, ""))
         parse_trips(user_input.get(CONF_TRAIN_TRIPS, ""), bool(user_input.get(CONF_TRAIN_RETURN)))  # el tope cuenta el sentido inverso
     except ValueError:
@@ -294,6 +305,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or bool(user_input.get(CONF_FOOTBALL_NATIONAL))
         or user_input.get(CONF_CINEMA, CINEMA_NONE) != CINEMA_NONE
         or str(user_input.get(CONF_VEHICLE_DIGIT, VEHICLE_NONE)) != VEHICLE_NONE
+        or bool(more_vehicles)
     )
     if not has_any:
         errors["base"] = "nothing_selected"
@@ -301,6 +313,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         **user_input,
         CONF_STOPS: ", ".join(stops),
         CONF_TRAIN_TRIPS: format_trips(trips),
+        CONF_VEHICLES_MORE: ", ".join(f"{d}:{t}" for d, t in more_vehicles),
         CONF_PHARMACY_COMUNA: user_input.get(CONF_PHARMACY_COMUNA, "").strip(),
         CONF_REGIONAL_STOPS: ", ".join(regional),
     }, errors

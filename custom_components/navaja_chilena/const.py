@@ -130,6 +130,7 @@ EPHEMERIDES_CL_URL = "https://www.efemerides.cl/"  # días significativos del me
 # Vehículo: restricción vehicular y revisión técnica (reglas en vehicle.py)
 CONF_VEHICLE_DIGIT = "vehicle_digit"
 CONF_VEHICLE_TYPE = "vehicle_type"
+CONF_VEHICLES_MORE = "vehicles_more"
 VEHICLE_NONE = "none"
 
 # Combustibles (Bencina en Línea, Comisión Nacional de Energía)

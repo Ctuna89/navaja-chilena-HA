@@ -36,9 +36,9 @@ async def async_setup_entry(
 
             unsub = rt.regional.async_add_listener(_listener)
             entry.async_on_unload(unsub)
-    if rt.vehicle_digit is not None:
+    for spec in rt.vehicles:
         async_add_entities(
-            [RestrictionTodayBinarySensor(entry, rt, "restriccion"), RevisionThisMonthBinarySensor(entry, rt, "revision_mes")]
+            [RestrictionTodayBinarySensor(entry, rt, spec, "restriccion"), RevisionThisMonthBinarySensor(entry, rt, spec, "revision_mes")]
         )
 
 
@@ -48,8 +48,8 @@ class RestrictionTodayBinarySensor(VehicleMixin, BinarySensorEntity):
     _attr_name = "Restricción vehicular hoy"
     _attr_translation_key = "restriction_today"
 
-    def __init__(self, entry, runtime, key: str) -> None:
-        self._setup_vehicle(entry, runtime, key)
+    def __init__(self, entry, runtime, spec, key: str) -> None:
+        self._setup_vehicle(entry, runtime, spec, key)
 
     @property
     def available(self) -> bool:
@@ -87,8 +87,8 @@ class RevisionThisMonthBinarySensor(VehicleMixin, BinarySensorEntity):
     _attr_translation_key = "revision_this_month"
     _attr_icon = "mdi:car-wrench"
 
-    def __init__(self, entry, runtime, key: str) -> None:
-        self._setup_vehicle(entry, runtime, key)
+    def __init__(self, entry, runtime, spec, key: str) -> None:
+        self._setup_vehicle(entry, runtime, spec, key)
 
     @property
     def is_on(self) -> bool:
