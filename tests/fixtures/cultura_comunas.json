@@ -1,0 +1,58 @@
+{
+ "total_count": 10,
+ "page_count": 1,
+ "next": null,
+ "previous": null,
+ "results": [
+  {
+   "id": 146,
+   "region": "Región del Biobío",
+   "name": "Concepción"
+  },
+  {
+   "id": 308,
+   "region": "Región Metropolitana de Santiago",
+   "name": "Las Condes"
+  },
+  {
+   "id": 314,
+   "region": "Región Metropolitana de Santiago",
+   "name": "Ñuñoa"
+  },
+  {
+   "id": 316,
+   "region": "Región Metropolitana de Santiago",
+   "name": "Peñalolén"
+  },
+  {
+   "id": 317,
+   "region": "Región Metropolitana de Santiago",
+   "name": "Providencia"
+  },
+  {
+   "id": 295,
+   "region": "Región Metropolitana de Santiago",
+   "name": "Santiago"
+  },
+  {
+   "id": 116,
+   "region": "Región del Maule",
+   "name": "Talca"
+  },
+  {
+   "id": 200,
+   "region": "Región de la Araucanía",
+   "name": "Temuco"
+  },
+  {
+   "id": 232,
+   "region": "Región de Los Ríos",
+   "name": "Valdivia"
+  },
+  {
+   "id": 51,
+   "region": "Región de Valparaíso",
+   "name": "Viña del Mar"
+  }
+ ]
+}

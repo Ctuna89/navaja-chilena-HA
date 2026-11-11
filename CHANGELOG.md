@@ -5,6 +5,9 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+## 3.1.0
+
+- **Panoramas**: los eventos culturales de hoy y el próximo en tu comuna (Chile Cultura, con opción de solo gratis) y el próximo evento del estadio Claro Arena. Cada fuente se activa por separado.
 - **Varios vehículos**: además del vehículo principal puedes registrar hasta 4 más (`3, 5:moto`), cada uno con su restricción, próxima restricción y mes de revisión técnica en su propio dispositivo. El vehículo principal conserva sus entidades de siempre.
 - **Documentación**: las tarjetas de ejemplo pasaron a su propia página (`docs/tarjetas.md`) y el README quedó más corto; la tabla de la portada incluye la Red Regional y el resumen de la mañana.
 

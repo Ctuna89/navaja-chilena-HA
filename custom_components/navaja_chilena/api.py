@@ -15,6 +15,13 @@ import aiohttp
 
 from .const import (
     BENEFITS_MAX_PAGES,
+    CLARO_ARENA_URL,
+    CULTURE_COMMUNES_URL,
+    CULTURE_EVENTS_URL,
+    CULTURE_LOOKBACK_DAYS,
+    CULTURE_MAX_PAGES,
+    CULTURE_PAGE_SIZE,
+    EVENTS_PAUSE,
     BENEFITS_PAUSE,
     BENEFITS_SITE,
     BENEFITS_URL,
@@ -1996,3 +2003,166 @@ async def fetch_news(
     if not per_topic:
         raise NavajaApiError("; ".join(errors[:1]) or "Sin titulares")
     return merge_news(per_topic, topics, count)
+
+
+# ------------------------------------------- Panoramas: Chile Cultura y Claro Arena
+
+@dataclass(frozen=True)
+class CultureEvent:
+    id: int
+    name: str
+    discipline: str
+    venue: str
+    commune: str
+    region: str
+    start: date
+    end: date
+    free: bool
+    audience: str
+    url: str
+    image: str | None
+
+
+def parse_culture_events(data: Any) -> list[CultureEvent]:
+    """Eventos de la API de Chile Cultura. Los registros incompletos se descartan; un formato distinto es un error."""
+    if not isinstance(data, dict) or not isinstance(data.get("results"), list):
+        raise NavajaApiError("El formato de respuesta de Chile Cultura cambió")
+    events: list[CultureEvent] = []
+    for it in data["results"]:
+        if not isinstance(it, dict):
+            continue
+        try:
+            start = date.fromisoformat(str(it["start_date"])[:10])
+            end = date.fromisoformat(str(it.get("end_date") or it["start_date"])[:10])
+            name = _plain(it["name"])
+            ident = int(it["id"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if not name or end < start:
+            continue
+        events.append(
+            CultureEvent(
+                id=ident,
+                name=name,
+                discipline=str(it.get("main_discipline") or ""),
+                venue=_plain(it.get("venue_name") or it.get("institution") or ""),
+                commune=str(it.get("commune") or ""),
+                region=str(it.get("region") or ""),
+                start=start,
+                end=end,
+                free=bool(it.get("free")),
+                audience=str(it.get("suggested_audience") or ""),
+                url=str(it.get("url") or ""),
+                image=str(it["image"]) if it.get("image") else None,
+            )
+        )
+    return events
+
+
+def culture_events_between(events: list[CultureEvent], today: date, free_only: bool = False) -> list[CultureEvent]:
+    """Eventos en curso o por venir (terminan hoy o después), del más próximo al más lejano."""
+    keep = [e for e in events if e.end >= today and (e.free or not free_only)]
+    return sorted(keep, key=lambda e: (e.start, e.name))
+
+
+async def fetch_culture_events(
+    session: aiohttp.ClientSession, commune: str, today: date, pause: float | None = None
+) -> list[CultureEvent]:
+    """Eventos de una comuna desde hace unos días (por los de varios días aún en curso) en adelante."""
+    import asyncio
+    from urllib.parse import urlencode
+
+    pause = EVENTS_PAUSE if pause is None else pause
+    since = today - timedelta(days=CULTURE_LOOKBACK_DAYS)
+    events: dict[int, CultureEvent] = {}
+    page = 1
+    while page <= CULTURE_MAX_PAGES:
+        if page > 1:
+            await asyncio.sleep(pause)
+        query = urlencode({"commune": commune, "start_date": since.isoformat(), "page_size": CULTURE_PAGE_SIZE, "page": page})
+        data = await _get_json(session, f"{CULTURE_EVENTS_URL}?{query}")
+        for e in parse_culture_events(data):
+            events.setdefault(e.id, e)
+        if not data.get("next"):
+            break
+        page += 1
+    return list(events.values())
+
+
+def resolve_commune(name: str, communes: list[str]) -> str | None:
+    """Nombre oficial de la comuna, sin importar tildes ni mayúsculas («nunoa» -> «Ñuñoa»)."""
+    wanted = _folded(re.sub(r"\s+", " ", name))
+    for c in communes:
+        if _folded(c) == wanted:
+            return c
+    return None
+
+
+async def fetch_culture_communes(session: aiohttp.ClientSession) -> list[str]:
+    from urllib.parse import urlencode
+
+    names: list[str] = []
+    for page in (1, 2, 3):
+        data = await _get_json(session, f"{CULTURE_COMMUNES_URL}?{urlencode({'page_size': 200, 'page': page})}")
+        if not isinstance(data, dict) or not isinstance(data.get("results"), list):
+            raise NavajaApiError("El formato de comunas de Chile Cultura cambió")
+        names += [str(c["name"]) for c in data["results"] if isinstance(c, dict) and c.get("name")]
+        if not data.get("next"):
+            break
+    return names
+
+
+@dataclass(frozen=True)
+class ArenaEvent:
+    title: str
+    start: datetime | None      # hora de Chile; None si el sitio dice «Próximamente»
+    category: str
+    url: str | None
+    image: str | None
+
+
+_ARENA_DATE_RE = re.compile(r"(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(\d{4})", re.IGNORECASE)
+_ARENA_TIME_RE = re.compile(r"(\d{1,2}):(\d{2})\s*hrs", re.IGNORECASE)
+
+
+def parse_arena_events(page: str) -> list[ArenaEvent]:
+    """Eventos de la cartelera de Claro Arena. Sin ninguno reconocible es un error: el sitio cambió."""
+    tz = ZoneInfo(METRO_TZ)
+    events: list[ArenaEvent] = []
+    for block in re.split(r'(?=<div data-elementor-type="loop-item")', page)[1:]:
+        cls = re.search(r'class="([^"]*)"', block)
+        if not cls or "evento" not in cls.group(1).split():
+            continue
+        title = re.search(r"<h3[^>]*>(.*?)</h3>", block, re.S)
+        if not title or not _plain(title.group(1)):
+            continue
+        start = None
+        d = _ARENA_DATE_RE.search(block)
+        if d and _folded(d.group(2)) in MONTH_NAMES:
+            t = _ARENA_TIME_RE.search(block)
+            try:
+                start = datetime(
+                    int(d.group(3)), MONTH_NAMES.index(_folded(d.group(2))) + 1, int(d.group(1)),
+                    int(t.group(1)) if t else 0, int(t.group(2)) if t else 0, tzinfo=tz,
+                )
+            except ValueError:
+                start = None
+        cat = re.search(r"categoria-evento-([a-z0-9-]+)", cls.group(1))
+        link = re.search(r'<a class="elementor-button[^"]*"[^>]*href="(https://[^"]+)"', block)
+        img = re.search(r'<img[^>]+src="(https://[^"]+)"', block)
+        events.append(
+            ArenaEvent(
+                title=_plain(title.group(1)),
+                start=start,
+                category=(cat.group(1).replace("-", " ").capitalize() if cat else ""),
+                url=link.group(1) if link else None,
+                image=img.group(1) if img else None,
+            )
+        )
+    if not events:
+        raise NavajaApiError("No se reconocieron eventos en la cartelera de Claro Arena")
+    return events
+
+
+async def fetch_arena_events(session: aiohttp.ClientSession) -> list[ArenaEvent]:
+    return parse_arena_events(await _get_text(session, CLARO_ARENA_URL))

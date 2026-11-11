@@ -26,6 +26,9 @@ from .const import (
     BENEFIT_CARDS,
     BENEFIT_CATEGORIES,
     CONF_BENEFIT_CARDS,
+    CONF_CLARO_ARENA,
+    CONF_EVENTS_COMMUNE,
+    CONF_EVENTS_FREE_ONLY,
     CONF_NEWS_COUNT,
     CONF_NEWS_TOPICS,
     NEWS_COUNTS,
@@ -184,6 +187,15 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
+            vol.Optional(
+                CONF_EVENTS_COMMUNE, default=defaults.get(CONF_EVENTS_COMMUNE, "")
+            ): selector.TextSelector(),
+            vol.Required(
+                CONF_EVENTS_FREE_ONLY, default=defaults.get(CONF_EVENTS_FREE_ONLY, False)
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_CLARO_ARENA, default=defaults.get(CONF_CLARO_ARENA, False)
+            ): selector.BooleanSelector(),
             vol.Required(
                 CONF_NEWS_TOPICS, default=defaults.get(CONF_NEWS_TOPICS, [])
             ): selector.SelectSelector(
@@ -299,6 +311,8 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or bool(user_input.get(CONF_FUEL_TYPES))
         or bool(user_input.get(CONF_BENEFIT_CARDS))
         or bool(user_input.get(CONF_NEWS_TOPICS))
+        or bool(str(user_input.get(CONF_EVENTS_COMMUNE) or "").strip())
+        or bool(user_input.get(CONF_CLARO_ARENA))
         or (zone != REGIONAL_NONE and bool(regional))
         or str(user_input.get(CONF_FOOTBALL_TEAM, FOOTBALL_NONE)) != FOOTBALL_NONE
         or bool(user_input.get(CONF_FOOTBALL_LEAGUE))
@@ -334,6 +348,24 @@ async def _check_stops(hass, stops: list[str]) -> dict[str, str]:
     return {}
 
 
+async def _resolve_commune(hass, commune: str) -> tuple[str, dict[str, str]]:
+    """Nombre oficial de la comuna según Chile Cultura (corrige tildes y mayúsculas).
+
+    Si no se puede consultar la lista, se deja lo escrito y no se bloquea la configuración.
+    """
+    commune = " ".join(commune.split())
+    if not commune:
+        return "", {}
+    try:
+        communes = await api.fetch_culture_communes(async_get_clientsession(hass))
+    except api.NavajaApiError:
+        return commune, {}
+    official = api.resolve_commune(commune, communes)
+    if official is None:
+        return commune, {CONF_EVENTS_COMMUNE: "events_commune_not_found"}
+    return official, {}
+
+
 async def _check_regional(hass, zone: str, codes: list[str]) -> dict[str, str]:
     """Rechaza paraderos que no existen en la ciudad. Si no se puede comprobar, no se bloquea."""
     if zone == REGIONAL_NONE or not codes:
@@ -365,6 +397,9 @@ class NavajaConfigFlow(ConfigFlow, domain=DOMAIN):
                     self.hass, str(cleaned.get(CONF_REGIONAL_ZONE, REGIONAL_NONE)),
                     api.parse_regional_codes(cleaned.get(CONF_REGIONAL_STOPS, "")))
             if not errors:
+                commune, errors = await _resolve_commune(self.hass, str(cleaned.get(CONF_EVENTS_COMMUNE) or ""))
+                cleaned = {**cleaned, CONF_EVENTS_COMMUNE: commune}
+            if not errors:
                 return self.async_create_entry(title="Navaja Chilena", data=cleaned)
         return self.async_show_form(
             step_id="user", data_schema=_schema(user_input or {}), errors=errors
@@ -389,6 +424,9 @@ class NavajaOptionsFlow(OptionsFlow):
                 errors = await _check_regional(
                     self.hass, str(cleaned.get(CONF_REGIONAL_ZONE, REGIONAL_NONE)),
                     api.parse_regional_codes(cleaned.get(CONF_REGIONAL_STOPS, "")))
+            if not errors:
+                commune, errors = await _resolve_commune(self.hass, str(cleaned.get(CONF_EVENTS_COMMUNE) or ""))
+                cleaned = {**cleaned, CONF_EVENTS_COMMUNE: commune}
             if not errors:
                 return self.async_create_entry(data=cleaned)
         current = {**self.config_entry.data, **self.config_entry.options}
