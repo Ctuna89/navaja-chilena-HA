@@ -27,6 +27,7 @@
           "fuel_max_age": "Maximum age of fuel prices",
           "events_commune": "Commune for cultural events (Chile Cultura), e.g. Providencia",
           "events_free_only": "Show only free events",
+          "vamoh_url": "Panoramas por Vamoh: calendar link (.ics) for your commune or your personal link",
           "claro_arena": "Claro Arena stadium events (concerts and matches)",
           "news_topics": "News topics (headlines from La Tercera and Cooperativa)",
           "news_count": "Headlines per topic",
@@ -50,7 +51,9 @@
       "regional_stop_not_found": "That stop does not exist in the chosen city. Check the code on the sign or in the Red Regional app.",
       "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto. At most 8 trips (counting the reverse direction).",
       "invalid_vehicle": "Invalid vehicle. Use a digit from 0 to 9 with an optional type (e.g. 3, 5:moto, 7:sin_sello) and at most 5 vehicles in total.",
-      "events_commune_not_found": "That commune was not found in Chile Cultura. Write it as on their site (e.g. Providencia, Ñuñoa, Viña del Mar)."
+      "events_commune_not_found": "That commune was not found in Chile Cultura. Write it as on their site (e.g. Providencia, Ñuñoa, Viña del Mar).",
+      "invalid_vamoh_url": "The Vamoh link must start with https:// and be on vamoh.cl.",
+      "vamoh_not_calendar": "That link did not return a calendar. Check that it is the .ics link Vamoh gave you."
     },
     "abort": {
       "already_configured": "Navaja Chilena is already configured."
@@ -84,6 +87,7 @@
           "fuel_max_age": "Maximum age of fuel prices",
           "events_commune": "Commune for cultural events (Chile Cultura), e.g. Providencia",
           "events_free_only": "Show only free events",
+          "vamoh_url": "Panoramas por Vamoh: calendar link (.ics) for your commune or your personal link",
           "claro_arena": "Claro Arena stadium events (concerts and matches)",
           "news_topics": "News topics (headlines from La Tercera and Cooperativa)",
           "news_count": "Headlines per topic",
@@ -107,7 +111,9 @@
       "regional_stop_not_found": "That stop does not exist in the chosen city. Check the code on the sign or in the Red Regional app.",
       "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto. At most 8 trips (counting the reverse direction).",
       "invalid_vehicle": "Invalid vehicle. Use a digit from 0 to 9 with an optional type (e.g. 3, 5:moto, 7:sin_sello) and at most 5 vehicles in total.",
-      "events_commune_not_found": "That commune was not found in Chile Cultura. Write it as on their site (e.g. Providencia, Ñuñoa, Viña del Mar)."
+      "events_commune_not_found": "That commune was not found in Chile Cultura. Write it as on their site (e.g. Providencia, Ñuñoa, Viña del Mar).",
+      "invalid_vamoh_url": "The Vamoh link must start with https:// and be on vamoh.cl.",
+      "vamoh_not_calendar": "That link did not return a calendar. Check that it is the .ics link Vamoh gave you."
     }
   },
   "entity": {

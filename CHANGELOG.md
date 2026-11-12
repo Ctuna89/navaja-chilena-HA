@@ -5,6 +5,7 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+- **Panoramas por Vamoh**: lee el calendario (.ics) público de Vamoh, o tu enlace personal, con sus planes destacados: nombre, fecha, lugar y la ficha del evento en Vamoh. Atribución visible, consulta cada 6 horas con caché, y el enlace nunca se muestra ni se registra.
 ## 3.1.0
 
 - **Panoramas**: los eventos culturales de hoy y el próximo en tu comuna (Chile Cultura, con opción de solo gratis) y el próximo evento del estadio Claro Arena. Cada fuente se activa por separado.

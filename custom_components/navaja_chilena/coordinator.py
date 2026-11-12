@@ -17,6 +17,7 @@ from . import api
 from .const import (
     BENEFITS_INTERVAL,
     EVENTS_INTERVAL,
+    VAMOH_INTERVAL,
     NEWS_COOP_MIN_AGE,
     NEWS_INTERVAL,
     REGIONAL_INTERVAL,
@@ -370,3 +371,17 @@ def arena_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
         return await api.fetch_arena_events(session)
 
     return NavajaCoordinator(hass, "claro_arena", EVENTS_INTERVAL, fetch)
+
+
+def vamoh_coordinator(hass: HomeAssistant, url: str) -> NavajaCoordinator:
+    """Calendario de Panoramas por Vamoh: cada 6 horas, con ETag para no descargar lo que no cambió."""
+    state: dict[str, Any] = {"etag": None, "modified": None, "events": None}
+
+    async def fetch(session: Any) -> list[api.VamohEvent]:
+        events, etag, modified = await api.fetch_vamoh_calendar(session, url, state["etag"], state["modified"])
+        if events is None:           # 304: sin cambios
+            return state["events"] if state["events"] is not None else []
+        state.update(events=events, etag=etag, modified=modified)
+        return events
+
+    return NavajaCoordinator(hass, "vamoh", VAMOH_INTERVAL, fetch)

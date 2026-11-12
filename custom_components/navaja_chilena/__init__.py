@@ -21,6 +21,7 @@ from .const import (
     BENEFIT_CATEGORIES,
     CONF_BENEFIT_CARDS,
     CONF_CLARO_ARENA,
+    CONF_VAMOH_URL,
     CONF_EVENTS_COMMUNE,
     CONF_EVENTS_FREE_ONLY,
     CONF_NEWS_COUNT,
@@ -67,6 +68,7 @@ from .coordinator import (
     arena_coordinator,
     benefits_coordinator,
     culture_coordinator,
+    vamoh_coordinator,
     news_coordinator,
     regional_coordinator,
     fuel_discounts_coordinator,
@@ -113,6 +115,7 @@ class RuntimeData:
     news: NavajaCoordinator | None = None
     culture: NavajaCoordinator | None = None
     arena: NavajaCoordinator | None = None
+    vamoh: NavajaCoordinator | None = None
     events_commune: str = ""
     events_free_only: bool = False
     news_topics: list[str] = field(default_factory=list)
@@ -221,6 +224,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         data.events_commune = commune
         data.events_free_only = bool(opts.get(CONF_EVENTS_FREE_ONLY))
         data.culture = culture_coordinator(hass, commune)
+    vamoh_url = str(opts.get(CONF_VAMOH_URL) or "").strip()
+    if vamoh_url and api.vamoh_url_ok(vamoh_url):
+        data.vamoh = vamoh_coordinator(hass, vamoh_url)
     if opts.get(CONF_CLARO_ARENA):
         data.arena = arena_coordinator(hass)
     topics = [t for t in (opts.get(CONF_NEWS_TOPICS) or []) if t in NEWS_TOPICS]
@@ -273,7 +279,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     coordinators = [
         c
         for c in (data.indicators, data.metro, data.stops, data.train, data.quakes,
-                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.benefits, data.fuel_discounts, data.regional, data.news, data.culture, data.arena, data.football, data.national)
+                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.benefits, data.fuel_discounts, data.regional, data.news, data.culture, data.arena, data.vamoh, data.football, data.national)
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]

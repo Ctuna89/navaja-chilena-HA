@@ -816,6 +816,24 @@ content: |
   {% endfor %}
 ```
 
+### Panoramas por Vamoh
+
+Los planes destacados de Vamoh, con enlace a la ficha de cada uno en Vamoh. Requiere el enlace del calendario de Vamoh en las opciones de Navaja Chilena.
+
+```yaml
+type: markdown
+title: ✨ Panoramas por Vamoh
+content: |
+  {% set p = state_attr('sensor.panoramas_por_vamoh_proximo_panorama', 'proximos') or [] %}
+  {% for e in p[:5] %}
+  - **{{ e.fecha[8:10] }}/{{ e.fecha[5:7] }}{% if e.hora %} {{ e.hora }}{% endif %}** · {{ e.titulo }}{% if e.lugar %} · {{ e.lugar }}{% endif %}{% if e.ficha %} · [ver en Vamoh]({{ e.ficha }}){% endif %}
+  {% else %}
+  Vamoh no tiene panoramas destacados por ahora.
+  {% endfor %}
+
+  <sub>Panoramas por <a href="https://vamoh.cl">Vamoh</a></sub>
+```
+
 ## 🚗 Mi vehículo
 
 Restricción de hoy, dígitos restringidos, próxima fecha y mes de revisión técnica:

@@ -1119,3 +1119,88 @@ async def test_events_config_flow_does_not_block_if_the_commune_list_is_down(has
     flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
     ok = await hass.config_entries.flow.async_configure(flow["flow_id"], {"indicators": ["uf"], "metro": False, "events_commune": "Providencia"})
     assert ok["type"] == FlowResultType.CREATE_ENTRY and ok["data"]["events_commune"] == "Providencia"
+
+
+# ------------------------------------------------------------ Panoramas por Vamoh
+
+VAMOH_URL = "https://vamoh.cl/calendario/mi-enlace.ics?token=SECRETO123"
+VAMOH_ICS = (FIX_DIR / "vamoh_ejemplo_sintetico.ics").read_text(encoding="utf-8")
+
+
+async def _setup_vamoh(hass, aioclient_mock, url=VAMOH_URL, body=VAMOH_ICS, status=200, headers=None):
+    mock_all(aioclient_mock)
+    aioclient_mock.get(url, text=body, status=status, headers=headers or {"ETag": '"v1"'})
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False, "vamoh_url": url})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_vamoh_sensors_today_and_next_with_attribution(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    await _setup_vamoh(hass, aioclient_mock)
+    hoy = hass.states.get("sensor.panoramas_por_vamoh_hoy")
+    assert hoy.state == "3"                                                   # festival en curso, feria y concierto
+    assert {p["titulo"] for p in hoy.attributes["panoramas"]} == {"Festival de Teatro Callejero", "Feria de Diseño Local", "Concierto en el Cerro"}
+    nxt = hass.states.get("sensor.panoramas_por_vamoh_proximo_panorama")
+    assert nxt.state == "Festival de Teatro Callejero" and nxt.attributes["ficha"] == "https://vamoh.cl/events/festival-teatro-callejero"
+    assert nxt.attributes["lugar"] == "Barrio Yungay" and nxt.attributes["hasta"] == "2026-11-16"
+    # Condiciones de Vamoh: atribución visible y ficha de cada evento en vamoh.cl
+    for st in (hoy, nxt):
+        assert st.attributes["attribution"] == "Panoramas por Vamoh (vamoh.cl)" and st.attributes["sitio"] == "https://vamoh.cl/"
+    assert all(e["ficha"].startswith("https://vamoh.cl/") for e in nxt.attributes["proximos"])
+    concierto = next(e for e in nxt.attributes["proximos"] if e["titulo"] == "Concierto en el Cerro")
+    assert concierto["hora"] == "20:00" and concierto["fecha"] == "2026-11-14"
+    # El enlace (que puede ser personal) no se expone en ningún atributo.
+    assert "SECRETO123" not in str(hoy.attributes) + str(nxt.attributes)
+
+
+async def test_vamoh_uses_etag_and_keeps_data_on_304(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    entry = await _setup_vamoh(hass, aioclient_mock)
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(VAMOH_URL, status=304)
+    await entry.runtime_data.vamoh.async_refresh()
+    await hass.async_block_till_done()
+    call = [c for c in aioclient_mock.mock_calls if "vamoh.cl" in str(c[1])][-1]
+    assert call[3]["If-None-Match"] == '"v1"'
+    assert hass.states.get("sensor.panoramas_por_vamoh_hoy").state == "3"      # los datos anteriores se conservan
+
+
+async def test_vamoh_down_or_cloudflare_challenge_is_unavailable_never_empty(hass, aioclient_mock, freezer, caplog):
+    import logging
+    caplog.set_level(logging.DEBUG)
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    await _setup_vamoh(hass, aioclient_mock, body="<html><title>Just a moment...</title></html>")
+    assert hass.states.get("sensor.indicadores_economicos_uf") is not None
+    for eid in ("sensor.panoramas_por_vamoh_hoy", "sensor.panoramas_por_vamoh_proximo_panorama"):
+        st = hass.states.get(eid)
+        assert st is None or st.state == "unavailable"
+    assert "SECRETO123" not in caplog.text                                     # el token nunca llega al log
+
+
+async def test_vamoh_empty_calendar_has_zero_not_an_error(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    await _setup_vamoh(hass, aioclient_mock, body="BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n")
+    assert hass.states.get("sensor.panoramas_por_vamoh_hoy").state == "0"
+    nxt = hass.states.get("sensor.panoramas_por_vamoh_proximo_panorama")
+    assert nxt.state in ("unknown", "unavailable") and "motivo" in nxt.attributes
+
+
+async def test_vamoh_config_flow_validation(hass, aioclient_mock):
+    mock_all(aioclient_mock)
+    aioclient_mock.get("https://vamoh.cl/ok.ics", text=VAMOH_ICS)
+    aioclient_mock.get("https://vamoh.cl/html.ics", text="<html>no soy un calendario</html>")
+    aioclient_mock.get("https://vamoh.cl/caido.ics", status=503)
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    base = {"indicators": ["uf"], "metro": False}
+
+    async def submit(url):
+        return await hass.config_entries.flow.async_configure(flow["flow_id"], {**base, "vamoh_url": url})
+
+    assert (await submit("http://vamoh.cl/ok.ics"))["errors"] == {"vamoh_url": "invalid_vamoh_url"}
+    assert (await submit("https://otra-web.cl/ok.ics"))["errors"] == {"vamoh_url": "invalid_vamoh_url"}
+    assert (await submit("https://vamoh.cl/html.ics"))["errors"] == {"vamoh_url": "vamoh_not_calendar"}
+    ok = await submit("https://vamoh.cl/caido.ics")                          # si Vamoh no responde ahora, no se bloquea
+    assert ok["type"] == FlowResultType.CREATE_ENTRY and ok["data"]["vamoh_url"] == "https://vamoh.cl/caido.ics"

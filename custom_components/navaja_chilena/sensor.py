@@ -25,7 +25,7 @@ from . import vehicle
 from .vehicle_entity import REASON_TEXT, VehicleMixin
 from .api import FUEL_LABELS
 from .const import FOOTBALL_TEAMS, NATIONAL_TEAM_ID
-from .const import NEWS_TOPICS, REGIONAL_ZONES, BENEFIT_CATEGORIES, BENEFITS_SITE, CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
+from .const import VAMOH_ATTRIBUTION, VAMOH_SITE, NEWS_TOPICS, REGIONAL_ZONES, BENEFIT_CATEGORIES, BENEFITS_SITE, CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
 
 
 def _device(key: str, name: str) -> DeviceInfo:
@@ -127,6 +127,8 @@ async def async_setup_entry(
         ]
     if rt.arena:
         fixed.append(ArenaNextSensor(rt.arena, entry))
+    if rt.vamoh:
+        fixed += [VamohTodaySensor(rt.vamoh, entry), VamohNextSensor(rt.vamoh, entry)]
     if rt.news:
         fixed += [NewsSensor(rt.news, entry, topic) for topic in rt.news_topics]
     if rt.fuel_discounts:
@@ -551,6 +553,95 @@ class ArenaNextSensor(_EventsBase):
         }
         if dated:
             attrs.update({k: v for k, v in self._brief(dated[0]).items() if k != "imagen"})
+        return attrs
+
+
+class _VamohBase(_EventsBase):
+    """Panoramas por Vamoh. La atribución y la ficha de cada evento en vamoh.cl son parte del acuerdo con Vamoh."""
+
+    _attr_attribution = VAMOH_ATTRIBUTION
+
+    def _now(self) -> datetime:
+        return dt_util.now().astimezone(ZoneInfo(api.METRO_TZ))
+
+    def _upcoming(self) -> list[api.VamohEvent]:
+        return api.vamoh_events_between(self.coordinator.data, self._now())
+
+    @staticmethod
+    def _brief(e: api.VamohEvent) -> dict[str, Any]:
+        last = e.end - timedelta(days=1) if e.all_day else e.end   # el fin de un evento de día completo es exclusivo
+        return {
+            "titulo": e.title,
+            "fecha": e.start.strftime("%Y-%m-%d"),
+            "hora": None if e.all_day else e.start.strftime("%H:%M"),
+            "hasta": last.strftime("%Y-%m-%d") if e.all_day else last.strftime("%Y-%m-%d %H:%M"),
+            "lugar": e.place or None,
+            "categorias": list(e.categories),
+            "ficha": e.url,            # ficha del evento en Vamoh
+        }
+
+
+class VamohTodaySensor(_VamohBase):
+    """Panoramas de hoy elegidos por Vamoh."""
+
+    _kind = "vamoh_hoy"
+    _attr_icon = "mdi:party-popper"
+    _attr_native_unit_of_measurement = "panoramas"
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry, "hoy")
+        self._attr_name = "Hoy"
+        self._attr_device_info = _device("vamoh", "Panoramas por Vamoh")
+
+    def _today_events(self) -> list[api.VamohEvent]:
+        now = self._now()
+        tomorrow = datetime.combine(now.date() + timedelta(days=1), datetime.min.time(), tzinfo=now.tzinfo)
+        return [e for e in self._upcoming() if e.start < tomorrow]
+
+    @property
+    def native_value(self) -> int:
+        return len(self._today_events())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "panoramas": [self._brief(e) for e in self._today_events()[: self.MAX_LISTED]],
+            "atribucion": VAMOH_ATTRIBUTION,
+            "sitio": VAMOH_SITE,
+        }
+
+
+class VamohNextSensor(_VamohBase):
+    """Próximo panorama destacado por Vamoh, con enlace a su ficha en Vamoh."""
+
+    _kind = "vamoh_proximo"
+    _attr_icon = "mdi:calendar-heart"
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry, "proximo")
+        self._attr_name = "Próximo panorama"
+        self._attr_device_info = _device("vamoh", "Panoramas por Vamoh")
+
+    @property
+    def native_value(self) -> str | None:
+        upcoming = self._upcoming()
+        if not upcoming:
+            return None
+        title = upcoming[0].title
+        return title if len(title) <= 255 else title[:254].rstrip() + "…"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        upcoming = self._upcoming()
+        attrs: dict[str, Any] = {
+            "proximos": [self._brief(e) for e in upcoming[: self.MAX_LISTED]],
+            "atribucion": VAMOH_ATTRIBUTION,
+            "sitio": VAMOH_SITE,
+        }
+        if upcoming:
+            attrs.update(self._brief(upcoming[0]))
+        else:
+            attrs["motivo"] = "Vamoh no tiene panoramas destacados por ahora"
         return attrs
 
 

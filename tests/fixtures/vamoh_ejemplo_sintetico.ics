@@ -1,0 +1,58 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Ejemplo sintetico para pruebas//Panoramas por Vamoh//ES
+X-WR-CALNAME:EJEMPLO SINTETICO - no es un calendario real de Vamoh
+X-WR-TIMEZONE:America/Santiago
+BEGIN:VEVENT
+UID:ejemplo-1@vamoh.cl
+SUMMARY:Feria de Diseño Local
+DTSTART;VALUE=DATE:20261114
+DTEND;VALUE=DATE:20261115
+LOCATION:Parque Bustamante\, Providencia
+URL:https://vamoh.cl/events/feria-de-diseno-local
+CATEGORIES:Feria,Gratis
+END:VEVENT
+BEGIN:VEVENT
+UID:ejemplo-2@vamoh.cl
+SUMMARY:Concierto en el Cerro
+DTSTART;TZID=America/Santiago:20261114T200000
+DTEND;TZID=America/Santiago:20261114T230000
+LOCATION:Cerro San Cristóbal
+URL:https://vamoh.cl/events/concierto-en-el-cerro
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Recordatorio que no debe ser el titulo
+TRIGGER:-PT1H
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:ejemplo-3@vamoh.cl
+SUMMARY:Cine bajo las estrellas: una noche con películas chilenas y música en
+  vivo\; entrada liberada
+DTSTART:20261120T230000Z
+DESCRIPTION:Ficha completa en https://vamoh.cl/events/cine-bajo-las-estrellas\nTrae
+  una manta.
+LOCATION:Plaza Ñuñoa
+END:VEVENT
+BEGIN:VEVENT
+UID:ejemplo-4@vamoh.cl
+SUMMARY:Evento cancelado
+DTSTART;VALUE=DATE:20261115
+STATUS:CANCELLED
+END:VEVENT
+BEGIN:VEVENT
+UID:ejemplo-5@vamoh.cl
+SUMMARY:Panorama de octubre
+DTSTART;VALUE=DATE:20261001
+DTEND;VALUE=DATE:20261002
+URL:https://vamoh.cl/events/panorama-de-octubre
+END:VEVENT
+BEGIN:VEVENT
+UID:ejemplo-6@vamoh.cl
+SUMMARY:Festival de Teatro Callejero
+DTSTART;VALUE=DATE:20261113
+DTEND;VALUE=DATE:20261117
+LOCATION:Barrio Yungay
+URL:https://vamoh.cl/events/festival-teatro-callejero
+END:VEVENT
+END:VCALENDAR

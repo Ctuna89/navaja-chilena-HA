@@ -22,6 +22,8 @@ from .const import (
     CULTURE_MAX_PAGES,
     CULTURE_PAGE_SIZE,
     EVENTS_PAUSE,
+    VAMOH_HOST_SUFFIX,
+    VAMOH_MAX_BYTES,
     BENEFITS_PAUSE,
     BENEFITS_SITE,
     BENEFITS_URL,
@@ -2166,3 +2168,201 @@ def parse_arena_events(page: str) -> list[ArenaEvent]:
 
 async def fetch_arena_events(session: aiohttp.ClientSession) -> list[ArenaEvent]:
     return parse_arena_events(await _get_text(session, CLARO_ARENA_URL))
+
+
+# ---------------------------------------------- Panoramas por Vamoh (calendario .ics)
+
+@dataclass(frozen=True)
+class VamohEvent:
+    uid: str
+    title: str
+    start: datetime            # hora de Chile; los eventos de día completo parten a las 00:00
+    end: datetime              # exclusivo: un evento de día completo termina a las 00:00 del día siguiente
+    all_day: bool
+    place: str
+    url: str | None            # ficha del evento en Vamoh
+    categories: tuple[str, ...]
+
+
+def vamoh_url_ok(url: str) -> bool:
+    """Solo https hacia vamoh.cl (o un subdominio). El enlace puede ser personal: no se acepta nada más."""
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(url.strip())
+    except ValueError:
+        return False
+    host = (parts.hostname or "").lower()
+    return (
+        parts.scheme == "https"
+        and not parts.username
+        and not parts.password
+        and (host == VAMOH_HOST_SUFFIX or host.endswith("." + VAMOH_HOST_SUFFIX))
+    )
+
+
+def _ics_unfold(text: str) -> list[str]:
+    lines: list[str] = []
+    for raw in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if raw[:1] in (" ", "\t") and lines:
+            lines[-1] += raw[1:]
+        else:
+            lines.append(raw)
+    return lines
+
+
+def _ics_split(line: str) -> tuple[str, dict[str, str], str] | None:
+    """«DTSTART;TZID=America/Santiago:20261114T200000» -> (nombre, parámetros, valor)."""
+    in_quotes = False
+    cut = -1
+    for i, ch in enumerate(line):
+        if ch == '"':
+            in_quotes = not in_quotes
+        elif ch == ":" and not in_quotes:
+            cut = i
+            break
+    if cut < 1:
+        return None
+    head, value = line[:cut], line[cut + 1:]
+    name, *params = head.split(";")
+    pdict: dict[str, str] = {}
+    for p in params:
+        k, _, v = p.partition("=")
+        pdict[k.upper()] = v.strip('"')
+    return name.upper(), pdict, value
+
+
+def _ics_text(value: str) -> str:
+    out = re.sub(r"\\([nN])", "\n", value)
+    return re.sub(r"\\(.)", r"\1", out)
+
+
+def _ics_when(value: str, params: dict[str, str], tz: ZoneInfo) -> tuple[datetime, bool] | None:
+    """Fecha o fecha-hora de iCalendar -> (datetime con zona de Chile, es_de_día_completo)."""
+    value = value.strip()
+    try:
+        if params.get("VALUE", "").upper() == "DATE" or re.fullmatch(r"\d{8}", value):
+            d = datetime.strptime(value[:8], "%Y%m%d")
+            return d.replace(tzinfo=tz), True
+        if value.endswith("Z"):
+            return datetime.strptime(value[:-1], "%Y%m%dT%H%M%S").replace(tzinfo=ZoneInfo("UTC")).astimezone(tz), False
+        naive = datetime.strptime(value, "%Y%m%dT%H%M%S")
+    except ValueError:
+        return None
+    zone = tz
+    if params.get("TZID"):
+        try:
+            zone = ZoneInfo(params["TZID"])
+        except Exception:   # zona desconocida: se asume la hora de Chile
+            zone = tz
+    return naive.replace(tzinfo=zone).astimezone(tz), False
+
+
+def parse_vamoh_calendar(text: str) -> list[VamohEvent]:
+    """Eventos de un calendario .ics. Un texto que no es un calendario es un error, no una lista vacía.
+
+    Se ignoran los eventos cancelados, las alarmas y las repeticiones (RRULE): cada VEVENT es un panorama.
+    """
+    if "BEGIN:VCALENDAR" not in text[:2000].upper():
+        raise NavajaApiError("La respuesta no es un calendario .ics")
+    tz = ZoneInfo(METRO_TZ)
+    events: list[VamohEvent] = []
+    cur: dict[str, tuple[dict[str, str], str]] | None = None
+    depth = 0   # profundidad de componentes anidados dentro de un VEVENT (VALARM)
+    for line in _ics_unfold(text):
+        up = line.upper()
+        if up == "BEGIN:VEVENT":
+            cur, depth = {}, 0
+            continue
+        if cur is None:
+            continue
+        if up.startswith("BEGIN:"):
+            depth += 1
+            continue
+        if up.startswith("END:") and up != "END:VEVENT":
+            depth = max(0, depth - 1)
+            continue
+        if up == "END:VEVENT":
+            ev = _vamoh_event(cur, tz)
+            if ev is not None:
+                events.append(ev)
+            cur = None
+            continue
+        if depth:
+            continue
+        parsed = _ics_split(line)
+        if parsed:
+            name, params, value = parsed
+            cur.setdefault(name, (params, value))
+    return events
+
+
+def _vamoh_event(props: dict[str, tuple[dict[str, str], str]], tz: ZoneInfo) -> VamohEvent | None:
+    if "CANCELLED" in props.get("STATUS", ({}, ""))[1].upper() or "DTSTART" not in props:
+        return None
+    start = _ics_when(props["DTSTART"][1], props["DTSTART"][0], tz)
+    title = _plain(_ics_text(props.get("SUMMARY", ({}, ""))[1]))
+    if start is None or not title:
+        return None
+    start_dt, all_day = start
+    end_dt = None
+    if "DTEND" in props:
+        parsed_end = _ics_when(props["DTEND"][1], props["DTEND"][0], tz)
+        end_dt = parsed_end[0] if parsed_end else None
+    if end_dt is None or end_dt < start_dt:
+        end_dt = start_dt + (timedelta(days=1) if all_day else timedelta(hours=2))
+    url = _plain(_ics_text(props.get("URL", ({}, ""))[1])) or None
+    if not url:   # respaldo: el primer enlace https de la descripción
+        m = re.search(r"https://[^\s<>\"']+", _ics_text(props.get("DESCRIPTION", ({}, ""))[1]))
+        url = m.group(0).rstrip(".,;)") if m else None
+    if url and not url.startswith("https://"):
+        url = None
+    cats = tuple(c.strip() for c in _ics_text(props.get("CATEGORIES", ({}, ""))[1]).split(",") if c.strip())
+    return VamohEvent(
+        uid=_plain(props.get("UID", ({}, ""))[1]) or f"{title}-{start_dt.isoformat()}",
+        title=title,
+        start=start_dt,
+        end=end_dt,
+        all_day=all_day,
+        place=_plain(_ics_text(props.get("LOCATION", ({}, ""))[1])),
+        url=url,
+        categories=cats,
+    )
+
+
+def vamoh_events_between(events: list[VamohEvent], now: datetime) -> list[VamohEvent]:
+    """Panoramas en curso o por venir, del más próximo al más lejano."""
+    return sorted((e for e in events if e.end > now), key=lambda e: (e.start, e.title))
+
+
+async def fetch_vamoh_calendar(
+    session: aiohttp.ClientSession, url: str, etag: str | None = None, modified: str | None = None
+) -> tuple[list[VamohEvent] | None, str | None, str | None]:
+    """Descarga el calendario. Devuelve (eventos, etag, last-modified); eventos=None si no cambió (304).
+
+    El enlace puede ser personal (lleva un token): nunca aparece en los mensajes de error.
+    """
+    if not vamoh_url_ok(url):
+        raise NavajaApiError("El enlace del calendario de Vamoh no es válido")
+    headers = {**HEADERS, "Accept": "text/calendar, text/plain;q=0.8"}
+    if etag:
+        headers["If-None-Match"] = etag
+    if modified:
+        headers["If-Modified-Since"] = modified
+    try:
+        async with session.get(
+            url, headers=headers, allow_redirects=False, timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+        ) as resp:
+            if resp.status == 304:
+                return None, etag, modified
+            if resp.status >= 300:
+                raise NavajaApiError(f"Vamoh respondió HTTP {resp.status}", resp.status)
+            body = await resp.content.read(VAMOH_MAX_BYTES + 1)
+            new_etag, new_mod = resp.headers.get("ETag"), resp.headers.get("Last-Modified")
+    except aiohttp.ClientError as err:
+        raise NavajaApiError(f"No fue posible conectar con Vamoh: {type(err).__name__}") from err
+    except TimeoutError as err:
+        raise NavajaApiError("Vamoh no respondió a tiempo") from err
+    if len(body) > VAMOH_MAX_BYTES:
+        raise NavajaApiError("El calendario de Vamoh excede el tamaño admitido")
+    return parse_vamoh_calendar(body.decode("utf-8", "replace")), new_etag, new_mod

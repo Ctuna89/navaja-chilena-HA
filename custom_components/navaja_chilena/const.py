@@ -328,3 +328,11 @@ CULTURE_MAX_PAGES = 5
 CLARO_ARENA_URL = "https://claroarena.cl/cartelera/"
 EVENTS_INTERVAL = timedelta(hours=6)
 EVENTS_PAUSE = 1.0                # segundos entre páginas de la misma fuente
+
+# Panoramas por Vamoh: calendario público (.ics) por comuna, o el enlace personal de la cuenta de Vamoh
+CONF_VAMOH_URL = "vamoh_url"
+VAMOH_SITE = "https://vamoh.cl/"
+VAMOH_HOST_SUFFIX = "vamoh.cl"          # solo se leen enlaces https de vamoh.cl y sus subdominios
+VAMOH_INTERVAL = timedelta(hours=6)     # Vamoh pide consultar «cada unas horas»
+VAMOH_MAX_BYTES = 2_000_000
+VAMOH_ATTRIBUTION = "Panoramas por Vamoh (vamoh.cl)"
