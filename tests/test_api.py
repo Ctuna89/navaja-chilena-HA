@@ -877,3 +877,34 @@ def test_vamoh_fetch_uses_etag_never_redirects_and_hides_the_url_in_errors():
     assert "SECRETO123" not in str(err.value)
     with pytest.raises(api.NavajaApiError):
         asyncio.run(api.fetch_vamoh_calendar(Session(Resp(200, body)), "https://otro.cl/x.ics"))
+
+
+# ------------------------------------------------------------- «Cerca de ti» (lógica pura)
+
+def test_theaters_by_distance_and_cinema_upcoming():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    # Frente al Cinemark Alto Las Condes
+    ordered = api.theaters_by_distance(-33.3912, -70.5475)
+    assert ordered[0][0] == "cinemark-alto-las-condes" and ordered[0][1] < 5
+    assert [d for _s, d in ordered] == sorted(d for _s, d in ordered)
+    tz = ZoneInfo("America/Santiago")
+    mk = lambda title, h, m=0: api.Screening(title, datetime(2026, 11, 10, h, m, tzinfo=tz), "Sala 1", "2D", 100, "Drama", None, None)
+    cinema = api.Cinema("Cine", [mk("Tarde", 18), mk("Mañana", 11), mk("Noche", 21, 30), mk("Trasnoche", 0, 30)])
+    now = datetime(2026, 11, 10, 17, 0, tzinfo=tz)
+    assert [s.title for s in api.cinema_upcoming(cinema, now)] == ["Tarde", "Noche"]
+    assert [s.title for s in api.cinema_upcoming(cinema, now, limit=1)] == ["Tarde"]
+
+
+def test_nearest_discount_station_only_considers_brands_with_a_discount():
+    mk = lambda i, brand, lat, lon: api.Station(i, brand, "Dir", "Comuna", "RM", lat, lon, None, {})
+    stations = [mk(1, "Copec", -33.4500, -70.6600), mk(2, "Shell", -33.4490, -70.6600), mk(3, "Aramco", -33.4600, -70.6600), mk(4, "Copec", -33.4700, -70.6600)]
+    # El usuario está pegado a la Shell, pero hoy solo hay descuento en Copec y Aramco.
+    st, dist = api.nearest_discount_station(stations, {"copec", "aramco"}, -33.4490, -70.6600)
+    assert st.id == 1 and 100 < dist < 130
+    assert api.nearest_discount_station(stations, {"petrobras"}, -33.4490, -70.6600) is None
+    discounts = api.parse_fuel_discounts({"vigencia": "2026-11", "descuentos": [
+        {"dias": [2], "estaciones": ["Copec"], "tarjeta": "itau", "monto": "$100/L"},
+        {"dias": [2], "estaciones": ["Copec", "SHELL"], "tarjeta": "tenpo", "monto": "$50/L"}]}).items
+    grouped = api.discount_brands(list(discounts))
+    assert set(grouped) == {"copec", "shell"} and len(grouped["copec"]) == 2

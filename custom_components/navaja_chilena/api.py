@@ -2366,3 +2366,44 @@ async def fetch_vamoh_calendar(
     if len(body) > VAMOH_MAX_BYTES:
         raise NavajaApiError("El calendario de Vamoh excede el tamaño admitido")
     return parse_vamoh_calendar(body.decode("utf-8", "replace")), new_etag, new_mod
+
+
+# ------------------------------------------------------------- «Cerca de ti»
+
+def distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    return haversine_km(lat1, lon1, lat2, lon2) * 1000
+
+
+def theaters_by_distance(lat: float, lon: float) -> list[tuple[str, float]]:
+    """Cines Cinemark ordenados del más cercano al más lejano: [(slug, metros)]."""
+    found = [(slug, distance_m(lat, lon, t[2], t[3])) for slug, t in CINEMARK_THEATERS.items()]
+    return sorted(found, key=lambda item: item[1])
+
+
+def cinema_upcoming(cinema: Cinema, now: datetime, limit: int = 6) -> list[Screening]:
+    """Funciones que quedan en el día de cartelera de `now`, de la más próxima en adelante."""
+    today = listing_day(now)
+    return [s for s in sorted(cinema.screenings, key=lambda s: s.start) if s.listing_day == today and s.start >= now][:limit]
+
+
+def discount_brands(discounts: list[FuelDiscount]) -> dict[str, list[FuelDiscount]]:
+    """Descuentos de hoy agrupados por estación (sin importar mayúsculas): {'copec': [...], 'shell': [...]}."""
+    brands: dict[str, list[FuelDiscount]] = {}
+    for d in discounts:
+        for name in d.stations:
+            brands.setdefault(name.casefold(), []).append(d)
+    return brands
+
+
+def nearest_discount_station(
+    stations: list[Station], brands: set[str], lat: float, lon: float
+) -> tuple[Station, float] | None:
+    """Estación (de las marcas con descuento hoy) más cercana a unas coordenadas, con su distancia en metros."""
+    best: tuple[Station, float] | None = None
+    for st in stations:
+        if st.brand.casefold() not in brands:
+            continue
+        d = distance_m(lat, lon, st.lat, st.lon)
+        if best is None or d < best[1]:
+            best = (st, d)
+    return best

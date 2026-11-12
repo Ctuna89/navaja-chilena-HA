@@ -5,6 +5,7 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+- **Cerca de ti** (opcional): eliges tu teléfono y una distancia, y dos sensores se encienden cuando pasas cerca de un Cinemark (con la próxima función) o de una estación de servicio con descuento hoy para tus tarjetas. La ubicación no sale de tu Home Assistant. Incluye tarjetas y automatizaciones de ejemplo, también «con zona» para restaurantes.
 - **Panoramas por Vamoh**: lee el calendario (.ics) público de Vamoh, o tu enlace personal, con sus planes destacados: nombre, fecha, lugar y la ficha del evento en Vamoh. Atribución visible, consulta cada 6 horas con caché, y el enlace nunca se muestra ni se registra.
 ## 3.1.0
 

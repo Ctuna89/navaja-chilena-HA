@@ -834,6 +834,123 @@ content: |
   <sub>Panoramas por <a href="https://vamoh.cl">Vamoh</a></sub>
 ```
 
+## 📍 Cerca de ti
+
+Requiere activar **«Cerca de ti»** en las opciones (elige tu teléfono y la distancia). Las tarjetas muestran algo solo cuando estás cerca.
+
+Próxima función cuando pasas cerca de un Cinemark:
+
+![Tarjeta que muestra el Cinemark más cercano y sus próximas funciones](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/cerca-cinemark.png)
+
+```yaml
+type: markdown
+title: 🎬 Cerca de ti
+content: |
+  {% set e = 'binary_sensor.cerca_de_ti_cerca_de_un_cinemark' %}
+  {% if is_state(e, 'on') and state_attr(e, 'proximas_funciones') %}
+  **{{ state_attr(e, 'cine_mas_cercano') }}** · a {{ state_attr(e, 'distancia_m') }} m
+  {% for f in state_attr(e, 'proximas_funciones')[:4] %}
+  - **{{ f.hora }}** · {{ f.titulo }}{% if f.formato %} ({{ f.formato }}){% endif %}
+  {% endfor %}
+  {% elif is_state(e, 'on') %}
+  Estás cerca de **{{ state_attr(e, 'cine_mas_cercano') }}**, pero no hay funciones para mostrar ahora.
+  {% else %}
+  Cuando pases cerca de un Cinemark, aquí verás la próxima función.
+  {% endif %}
+```
+
+Estación con descuento hoy para tus tarjetas:
+
+![Tarjeta que muestra la estación cercana y el descuento de hoy](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/cerca-estacion.png)
+
+```yaml
+type: markdown
+title: ⛽ Cerca de ti
+content: |
+  {% set e = 'binary_sensor.cerca_de_ti_cerca_de_una_estacion_con_descuento' %}
+  {% if is_state(e, 'on') %}
+  **{{ state_attr(e, 'estacion_mas_cercana') }}** · {{ state_attr(e, 'direccion') }} · a {{ state_attr(e, 'distancia_m') }} m
+  {% for d in state_attr(e, 'descuentos') %}
+  - **{{ d.descuento }}** con {{ d.tarjeta }}{% if not d.confirmado %} (por confirmar){% endif %}
+  {% endfor %}
+  {% else %}
+  Hoy hay descuento en: {{ state_attr(e, 'marcas_con_descuento_hoy') | join(', ') or 'ninguna marca' }}. Te avisaré al pasar cerca.
+  {% endif %}
+```
+
+**Automatización: aviso al pasar cerca de un Cinemark** (como máximo una vez cada 3 horas y solo por la tarde):
+
+```yaml
+alias: Aviso al pasar cerca de un Cinemark
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.cerca_de_ti_cerca_de_un_cinemark
+    to: "on"
+conditions:
+  - condition: time
+    after: "12:00:00"
+    before: "22:30:00"
+  - condition: template
+    value_template: "{{ state_attr(trigger.entity_id, 'proxima_funcion') is not none }}"
+  - condition: template
+    value_template: >-
+      {{ this.attributes.last_triggered is none
+         or (now() - this.attributes.last_triggered).total_seconds() > 10800 }}
+actions:
+  - action: notify.notify          # cambia por tu servicio, p. ej. notify.mobile_app_mi_celular
+    data:
+      title: "🎬 {{ state_attr(trigger.entity_id, 'cine_mas_cercano') }}"
+      message: >-
+        {% set f = state_attr(trigger.entity_id, 'proxima_funcion') %}
+        Próxima función a las {{ f.hora }}: {{ f.titulo }}.
+```
+
+**Automatización: aviso al pasar cerca de una estación con descuento hoy:**
+
+```yaml
+alias: Descuento de bencina cerca
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.cerca_de_ti_cerca_de_una_estacion_con_descuento
+    to: "on"
+conditions:
+  - condition: template
+    value_template: >-
+      {{ this.attributes.last_triggered is none
+         or (now() - this.attributes.last_triggered).total_seconds() > 10800 }}
+actions:
+  - action: notify.notify
+    data:
+      title: "⛽ {{ state_attr(trigger.entity_id, 'estacion_mas_cercana') }} a {{ state_attr(trigger.entity_id, 'distancia_m') }} m"
+      message: >-
+        {% for d in state_attr(trigger.entity_id, 'descuentos') %}{{ d.descuento }} con {{ d.tarjeta }}{{ ' · ' if not loop.last }}{% endfor %}
+```
+
+**Automatización «con zona»** para un restaurante o tienda: crea una zona en *Ajustes → Áreas, etiquetas y zonas → Zonas* en ese local (radio de 50 a 100 m) y avisa al entrar si hoy tienes un descuento ahí
+(cambia `Abrasas`, la zona, tu persona y la categoría del sensor):
+
+```yaml
+alias: Descuento de hoy en mi restaurante favorito
+triggers:
+  - trigger: zone
+    entity_id: person.tu_persona
+    zone: zone.restaurante_abrasas
+    event: enter
+conditions:
+  - condition: template
+    value_template: >-
+      {{ (state_attr('sensor.descuentos_de_tarjetas_descuentos_de_hoy_comida', 'hoy') or [])
+         | selectattr('comercio', 'search', 'Abrasas') | list | count > 0 }}
+actions:
+  - action: notify.notify
+    data:
+      title: "🍽️ Hoy tienes descuento aquí"
+      message: >-
+        {% set d = (state_attr('sensor.descuentos_de_tarjetas_descuentos_de_hoy_comida', 'hoy')
+                    | selectattr('comercio', 'search', 'Abrasas') | list)[0] %}
+        {{ d.comercio }}: {{ d.descuento }} con {{ d.tarjeta }}.
+```
+
 ## 🚗 Mi vehículo
 
 Restricción de hoy, dígitos restringidos, próxima fecha y mes de revisión técnica:

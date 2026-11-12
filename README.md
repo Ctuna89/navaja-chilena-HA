@@ -31,6 +31,7 @@ feriados, efemérides y mucho más, en una sola integración que se instala en u
 | ⚽ **Fútbol** | Próximos partidos, resultados y posición de tu equipo de la Primera División, la tabla y las fechas de la liga, y los partidos de La Roja |
 | 📰 **Noticias por tema** | Titulares de La Tercera y Cooperativa separados por tema (nacional, política, mundo, economía, deportes, tecnología…), con enlace a cada nota |
 | 🎭 **Panoramas** | Los eventos culturales de hoy y el próximo en tu comuna (agenda oficial de Chile Cultura, con filtro de solo gratis) los conciertos y partidos del estadio Claro Arena y los **Panoramas por [Vamoh](https://vamoh.cl)**, su curaduría de planes |
+| 📍 **Cerca de ti** | Opcional: te avisa si pasas cerca de un Cinemark (con la próxima función) o de una estación de servicio con descuento hoy para tus tarjetas. Tu ubicación no sale de tu Home Assistant |
 | ⛽ **Combustibles** | Dónde está la bencina (93, 95, 97) o el diésel más barato cerca de tu casa, con precio, marca, dirección y distancia |
 | 💳 **Descuentos de tus tarjetas** | Eliges tus tarjetas (Banco de Chile, BCI, Santander, CMR…) y las categorías que te interesan (combustibles, comida, salud…) y ves los descuentos que aplican **hoy**, con un calendario mensual de descuentos en bencina |
 | 🚗 **Restricción vehicular y revisión técnica** | Con el último dígito de tu patente: si hoy tienes restricción, tu próximo día con restricción y el mes de tu revisión técnica |
@@ -67,6 +68,7 @@ El asistente te pregunta qué quieres activar:
 - tu **equipo** de la Primera División (o toda la liga) y **La Roja**, para ver partidos, resultados y tabla,
 - los **combustibles** que usas (93, 95, 97 o diésel), el **radio** de búsqueda alrededor de tu casa y la **antigüedad máxima** de los precios,
 - tu **comuna** para los panoramas culturales (puedes escribirla sin tildes), si quieres **solo los gratuitos** si quieres los eventos del **Claro Arena** y el enlace de tu calendario de **Panoramas por Vamoh**,
+- si quieres **«Cerca de ti»**, la persona o teléfono cuya ubicación se usa y la distancia de aviso,
 - los **temas de noticias** que quieres seguir y cuántos titulares por tema,
 - la **ciudad y los paraderos** de la Red Regional (si vives fuera de Santiago),
 - tus **tarjetas** (descuentos en bencina de hoy) y las **categorías** de descuentos que te interesan (combustibles, comida, salud y belleza, etc.),
@@ -215,6 +217,20 @@ Eventos para salir de casa, de dos fuentes abiertas. Cada una se activa por sepa
 - El valor es el próximo evento. Atributos: `fecha`, `hora`, `categoria`, `entradas` (enlace de compra en Puntoticket), `hay_evento_hoy`, `eventos` (los próximos con fecha y hora) y `proximamente` (los anunciados sin fecha). La imagen de la entidad es la del evento.
 - Se lee la cartelera pública de [claroarena.cl](https://claroarena.cl/cartelera/) cada 6 horas. Un partido sigue contando como «próximo» hasta 3 horas después de su inicio.
 - Es una página web sin API: si el sitio cambia de diseño, el sensor queda «no disponible» hasta que se actualice la integración, nunca con una lista vacía.
+
+### 📍 Cerca de ti
+Una opción **desactivada por defecto** que cada persona activa en su Home Assistant: te avisa cuando pasas cerca de un lugar donde Navaja Chilena tiene algo útil que decirte.
+
+- **Cómo activarla:** en las opciones de Navaja Chilena elige la **persona o dispositivo** (el de la app Companion de Home Assistant en tu teléfono) y la **distancia de aviso** (150, 300, 500 o 1.000 m). Sin eso, no se crea nada.
+- **`binary_sensor.cerca_de_ti_cerca_de_un_cinemark`**: se enciende a menos de la distancia elegida de **cualquiera de los 22 Cinemark**. Atributos: `cine_mas_cercano`, `direccion`, `distancia_m`,
+  `proxima_funcion` y `proximas_funciones` (título, hora, formato y póster). La cartelera de ese cine se pide al llegar y se guarda 3 horas; si Cinemark no responde, `cartelera_disponible` queda en `false` y no se inventa nada.
+- **`binary_sensor.cerca_de_ti_cerca_de_una_estacion_con_descuento`**: se enciende cerca de una estación de una marca (Copec, Shell, Aramco…) que **hoy** tiene un descuento para **tus tarjetas**. Atributos: `estacion_mas_cercana`, `direccion`,
+  `distancia_m` y `descuentos` (tarjeta, monto, condiciones, si está confirmado y su fuente). Requiere tener activados los **combustibles** y tus **tarjetas**, y queda no disponible si el calendario de descuentos no es del mes en curso.
+- **Tú decides qué hacer:** estas entidades solo cambian de estado; el aviso lo arma una automatización de Home Assistant (hay ejemplos en la [página de tarjetas](docs/tarjetas.md#-cerca-de-ti)), así que puedes elegir el horario, el servicio de notificación y cada cuánto.
+- **Restaurantes y otros locales:** los beneficios de tarjetas no traen la ubicación de cada local, así que no se pueden detectar solos. Para eso crea una **zona** de Home Assistant en el local que te interesa y usa la automatización «con zona» de los ejemplos: avisa cuando entras si hoy tienes un descuento ahí.
+- **Privacidad:** la ubicación se lee de la entidad que elegiste y **las distancias se calculan dentro de tu Home Assistant**. No se envía a ningún servicio, y las consultas a Cinemark o a Bencina en Línea no la incluyen.
+- **Precisión:** depende de la app Companion y del sistema operativo. Se ignoran ubicaciones imprecisas (más de 250 m de margen de error) y el sensor se apaga solo al alejarte un 30 % más que la distancia de aviso, para que no parpadee en el borde.
+  Para avisos críticos, las zonas de Home Assistant suelen ser más confiables que la ubicación continua, sobre todo en iPhone.
 
 ### ⛽ Combustibles
 `sensor.combustibles_gasolina_93_mas_barata`, `..._95_...`, `..._97_...` y `sensor.combustibles_diesel_mas_barato` · precio más bajo en CLP por

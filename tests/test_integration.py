@@ -1204,3 +1204,179 @@ async def test_vamoh_config_flow_validation(hass, aioclient_mock):
     assert (await submit("https://vamoh.cl/html.ics"))["errors"] == {"vamoh_url": "vamoh_not_calendar"}
     ok = await submit("https://vamoh.cl/caido.ics")                          # si Vamoh no responde ahora, no se bloquea
     assert ok["type"] == FlowResultType.CREATE_ENTRY and ok["data"]["vamoh_url"] == "https://vamoh.cl/caido.ics"
+
+
+# --------------------------------------------------------------------- Cerca de ti
+
+from custom_components.navaja_chilena.const import CINEMARK_THEATERS as _THEATERS, FUEL_DISCOUNTS_URL as _FD_URL  # noqa: E402
+
+TRACKER = "person.test"
+CINE_ID = "binary_sensor.cerca_de_ti_cerca_de_un_cinemark"
+ESTACION_ID = "binary_sensor.cerca_de_ti_cerca_de_una_estacion_con_descuento"
+ALTO = (_THEATERS["cinemark-alto-las-condes"][2], _THEATERS["cinemark-alto-las-condes"][3])
+NUNOA = (_THEATERS["cinemark-portal-nunoa"][2], _THEATERS["cinemark-portal-nunoa"][3])
+
+
+def _at(hass, lat, lon, accuracy=10):
+    hass.states.async_set(TRACKER, "not_home", {"latitude": lat, "longitude": lon, "gps_accuracy": accuracy})
+
+
+async def _setup_near(hass, aioclient_mock, extra=None, cinema=True):
+    import json as _json
+    mock_all(aioclient_mock)
+    aioclient_mock.get(CINEMARK_URL.format(slug="cinemark-alto-las-condes"), text=CINEMA_HTML)
+    aioclient_mock.get(CINEMARK_URL.format(slug="cinemark-portal-nunoa"), text=CINEMA_HTML)
+    aioclient_mock.get(FUEL_URL, json=_json.loads((FIX_DIR / "combustibles_estaciones.json").read_text()))
+    aioclient_mock.get(FUEL_BRANDS_URL, json=_json.loads((FIX_DIR / "combustibles_marcas.json").read_text()))
+    aioclient_mock.get(_FD_URL, json=_json.loads((Path(__file__).parents[1] / "data/bencina.json").read_text()))
+    data = {"indicators": ["uf"], "metro": False, "near_tracker": TRACKER, "near_radius": "300", **(extra or {})}
+    if cinema:
+        data["cinema"] = "cinemark-alto-las-condes"
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+def _calls(aioclient_mock, text):
+    return [c for c in aioclient_mock.mock_calls if text in str(c[1])]
+
+
+async def test_near_cinemark_configured_cinema_shows_next_screening(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 15:00:00-03:00")
+    _at(hass, ALTO[0] + 0.0008, ALTO[1])                             # a ~90 m del cine
+    await _setup_near(hass, aioclient_mock)
+    st = hass.states.get(CINE_ID)
+    assert st.state == "on" and st.attributes["cine_mas_cercano"] == "Cinemark Alto Las Condes"
+    assert st.attributes["cartelera_disponible"] is True and st.attributes["distancia_m"] < 150
+    nxt = st.attributes["proxima_funcion"]
+    assert nxt["hora"] >= "15:00" and nxt["poster"].startswith("https://cdn.cinemark.cl/")
+    assert st.attributes["proximas_funciones"][0] == nxt and st.attributes["resumen"].startswith(nxt["hora"])
+    assert len(_calls(aioclient_mock, "cinemark-alto-las-condes")) == 1   # reutiliza la cartelera ya descargada
+
+
+async def test_near_other_cinemark_fetches_on_demand_and_never_sends_the_location(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 15:00:00-03:00")
+    _at(hass, NUNOA[0], NUNOA[1])
+    await _setup_near(hass, aioclient_mock)
+    st = hass.states.get(CINE_ID)
+    assert st.state == "on" and st.attributes["cine_mas_cercano"].startswith("Cinemark") and "Alto" not in st.attributes["cine_mas_cercano"]
+    assert st.attributes["cartelera_disponible"] is True                 # se pidió al llegar cerca
+    assert len(_calls(aioclient_mock, "cinemark-portal-nunoa")) == 1
+    # Privacidad: ninguna consulta de red lleva la ubicación de la persona.
+    for call in aioclient_mock.mock_calls:
+        assert f"{NUNOA[0]}"[:7] not in str(call[1]) and f"{NUNOA[1]}"[:7] not in str(call[1])
+
+
+async def test_near_cinemark_hysteresis_and_leaving(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 15:00:00-03:00")
+    _at(hass, ALTO[0] + 0.0008, ALTO[1])
+    await _setup_near(hass, aioclient_mock)
+    assert hass.states.get(CINE_ID).state == "on"
+    deg = lambda m: m / 111_320
+    _at(hass, ALTO[0] + deg(350), ALTO[1])                              # 350 m: fuera del radio de 300 pero dentro del margen
+    await hass.async_block_till_done()
+    assert hass.states.get(CINE_ID).state == "on"
+    _at(hass, ALTO[0] + deg(450), ALTO[1])                              # 450 m: se apaga
+    await hass.async_block_till_done()
+    off = hass.states.get(CINE_ID)
+    assert off.state == "off" and "proxima_funcion" not in off.attributes
+    _at(hass, ALTO[0] + deg(350), ALTO[1])                              # 350 m viniendo de lejos: no se enciende
+    await hass.async_block_till_done()
+    assert hass.states.get(CINE_ID).state == "off"
+
+
+async def test_near_ignores_imprecise_or_missing_location(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 15:00:00-03:00")
+    _at(hass, ALTO[0], ALTO[1], accuracy=900)                          # GPS muy impreciso
+    await _setup_near(hass, aioclient_mock)
+    assert hass.states.get(CINE_ID).state == "unavailable"
+    _at(hass, ALTO[0], ALTO[1], accuracy=15)
+    await hass.async_block_till_done()
+    assert hass.states.get(CINE_ID).state == "on"
+    hass.states.async_remove(TRACKER)
+    await hass.async_block_till_done()
+    assert hass.states.get(CINE_ID).state == "unavailable"
+
+
+async def test_near_cinemark_down_still_alerts_without_inventing_the_schedule(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 15:00:00-03:00")
+    _at(hass, NUNOA[0], NUNOA[1])
+    mock_all(aioclient_mock)
+    aioclient_mock.get(CINEMARK_URL.format(slug="cinemark-portal-nunoa"), status=503)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False, "near_tracker": TRACKER, "near_radius": "300"})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    st = hass.states.get(CINE_ID)
+    assert st.state == "on" and st.attributes["cartelera_disponible"] is False and "proxima_funcion" not in st.attributes
+    _at(hass, NUNOA[0] + 0.0001, NUNOA[1])                              # se mueve un poco: no se insiste de inmediato
+    await hass.async_block_till_done()
+    assert len(_calls(aioclient_mock, "cinemark-portal-nunoa")) == 1
+
+
+def _station(brand):
+    import json as _json
+    marcas = {b["id"]: b["nombre"] for b in _json.loads((FIX_DIR / "combustibles_marcas.json").read_text())["data"]}
+    stations = _json.loads((FIX_DIR / "combustibles_estaciones.json").read_text())
+    stations = stations if isinstance(stations, list) else stations["data"]
+    s = next(x for x in stations if marcas.get(x["marca"]) == brand)
+    return float(s["latitud"]), float(s["longitud"])
+
+
+FUEL_NEAR = {"fuel_types": ["93"], "fuel_radius": "5", "fuel_max_age": "30", "benefit_cards": ["bancoestado"]}
+
+
+async def test_near_station_with_discount_today(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")                        # martes: Rutpay BancoEstado en Copec
+    lat, lon = _station("COPEC")
+    _at(hass, lat + 0.0005, lon)
+    await _setup_near(hass, aioclient_mock, extra=FUEL_NEAR)
+    st = hass.states.get(ESTACION_ID)
+    assert st.state == "on" and st.attributes["estacion_mas_cercana"] == "Copec"
+    assert st.attributes["marcas_con_descuento_hoy"] == ["Copec"] and st.attributes["distancia_m"] < 100
+    assert st.attributes["descuentos"][0]["tarjeta"] == "Rutpay BancoEstado" and st.attributes["descuentos"][0]["descuento"] == "$50/L"
+    assert "aviso" in st.attributes and st.attributes["direccion"]
+
+
+async def test_near_station_without_a_discount_for_that_brand_stays_off(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    lat, lon = _station("SHELL")                                         # hoy no hay descuento en Shell con esa tarjeta
+    _at(hass, lat, lon)
+    await _setup_near(hass, aioclient_mock, extra=FUEL_NEAR)
+    st = hass.states.get(ESTACION_ID)
+    assert st.state == "off" and "descuentos" not in st.attributes
+
+
+async def test_near_station_unavailable_when_the_calendar_is_from_another_month(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-12-02 12:00:00-03:00")
+    lat, lon = _station("COPEC")
+    _at(hass, lat, lon)
+    await _setup_near(hass, aioclient_mock, extra=FUEL_NEAR)
+    assert hass.states.get(ESTACION_ID).state == "unavailable"
+
+
+async def test_near_station_needs_fuel_and_cards_but_cinema_does_not(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    _at(hass, ALTO[0], ALTO[1])
+    await _setup_near(hass, aioclient_mock)
+    assert hass.states.get(ESTACION_ID) is None and hass.states.get(CINE_ID) is not None
+
+
+async def test_near_is_off_unless_a_tracker_is_chosen(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    mock_all(aioclient_mock)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get(CINE_ID) is None and entry.runtime_data.near_tracker == ""
+
+
+async def test_near_config_flow_saves_the_tracker(hass, aioclient_mock):
+    mock_all(aioclient_mock)
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    ok = await hass.config_entries.flow.async_configure(flow["flow_id"], {"indicators": ["uf"], "metro": False, "near_tracker": "person.jaime", "near_radius": "500"})
+    assert ok["type"] == FlowResultType.CREATE_ENTRY
+    assert ok["data"]["near_tracker"] == "person.jaime" and ok["data"]["near_radius"] == "500"

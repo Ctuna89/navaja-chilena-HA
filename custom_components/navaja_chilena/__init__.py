@@ -21,6 +21,9 @@ from .const import (
     BENEFIT_CATEGORIES,
     CONF_BENEFIT_CARDS,
     CONF_CLARO_ARENA,
+    CONF_NEAR_RADIUS,
+    CONF_NEAR_TRACKER,
+    NEAR_DEFAULT_RADIUS,
     CONF_VAMOH_URL,
     CONF_EVENTS_COMMUNE,
     CONF_EVENTS_FREE_ONLY,
@@ -116,6 +119,8 @@ class RuntimeData:
     culture: NavajaCoordinator | None = None
     arena: NavajaCoordinator | None = None
     vamoh: NavajaCoordinator | None = None
+    near_tracker: str = ""
+    near_radius: int = NEAR_DEFAULT_RADIUS
     events_commune: str = ""
     events_free_only: bool = False
     news_topics: list[str] = field(default_factory=list)
@@ -224,6 +229,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         data.events_commune = commune
         data.events_free_only = bool(opts.get(CONF_EVENTS_FREE_ONLY))
         data.culture = culture_coordinator(hass, commune)
+    tracker = str(opts.get(CONF_NEAR_TRACKER) or "").strip()
+    if tracker.split(".")[0] in ("person", "device_tracker") and "." in tracker:
+        data.near_tracker = tracker
+        try:
+            data.near_radius = int(opts.get(CONF_NEAR_RADIUS, NEAR_DEFAULT_RADIUS))
+        except (TypeError, ValueError):
+            data.near_radius = NEAR_DEFAULT_RADIUS
     vamoh_url = str(opts.get(CONF_VAMOH_URL) or "").strip()
     if vamoh_url and api.vamoh_url_ok(vamoh_url):
         data.vamoh = vamoh_coordinator(hass, vamoh_url)

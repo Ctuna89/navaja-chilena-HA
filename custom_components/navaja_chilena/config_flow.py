@@ -27,6 +27,10 @@ from .const import (
     BENEFIT_CATEGORIES,
     CONF_BENEFIT_CARDS,
     CONF_CLARO_ARENA,
+    CONF_NEAR_RADIUS,
+    CONF_NEAR_TRACKER,
+    NEAR_DEFAULT_RADIUS,
+    NEAR_RADII,
     CONF_VAMOH_URL,
     CONF_EVENTS_COMMUNE,
     CONF_EVENTS_FREE_ONLY,
@@ -195,6 +199,17 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
                 CONF_EVENTS_FREE_ONLY, default=defaults.get(CONF_EVENTS_FREE_ONLY, False)
             ): selector.BooleanSelector(),
             vol.Optional(
+                CONF_NEAR_TRACKER, description={"suggested_value": defaults.get(CONF_NEAR_TRACKER)}
+            ): selector.EntitySelector(selector.EntitySelectorConfig(domain=["person", "device_tracker"])),
+            vol.Required(
+                CONF_NEAR_RADIUS, default=str(defaults.get(CONF_NEAR_RADIUS, NEAR_DEFAULT_RADIUS))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[selector.SelectOptionDict(value=str(r), label=f"{r} m") for r in NEAR_RADII],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
                 CONF_VAMOH_URL, default=defaults.get(CONF_VAMOH_URL, "")
             ): selector.TextSelector(),
             vol.Required(
@@ -320,6 +335,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or bool(user_input.get(CONF_NEWS_TOPICS))
         or bool(str(user_input.get(CONF_EVENTS_COMMUNE) or "").strip())
         or bool(user_input.get(CONF_CLARO_ARENA))
+        or bool(user_input.get(CONF_NEAR_TRACKER))
         or bool(str(user_input.get(CONF_VAMOH_URL) or "").strip())
         or (zone != REGIONAL_NONE and bool(regional))
         or str(user_input.get(CONF_FOOTBALL_TEAM, FOOTBALL_NONE)) != FOOTBALL_NONE

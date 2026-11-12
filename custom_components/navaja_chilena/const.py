@@ -336,3 +336,11 @@ VAMOH_HOST_SUFFIX = "vamoh.cl"          # solo se leen enlaces https de vamoh.cl
 VAMOH_INTERVAL = timedelta(hours=6)     # Vamoh pide consultar «cada unas horas»
 VAMOH_MAX_BYTES = 2_000_000
 VAMOH_ATTRIBUTION = "Panoramas por Vamoh (vamoh.cl)"
+
+# «Cerca de ti» (opcional): avisos según la ubicación de un teléfono, calculados solo dentro de Home Assistant
+CONF_NEAR_TRACKER = "near_tracker"
+CONF_NEAR_RADIUS = "near_radius"
+NEAR_RADII = (150, 300, 500, 1000)       # metros
+NEAR_DEFAULT_RADIUS = 300
+NEAR_EXIT_FACTOR = 1.3                   # histéresis: se apaga al alejarse un 30 % más que el radio de aviso
+NEAR_MAX_ACCURACY = 250                  # m: una ubicación menos precisa que esto se ignora
