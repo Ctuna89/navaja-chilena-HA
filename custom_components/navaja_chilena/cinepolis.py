@@ -1,7 +1,7 @@
 """Cartelera de Cinépolis (Chile): consultas GraphQL y lectura de funciones.
 
-ESTADO: estructura preparada, SIN conectar a ninguna entidad ni opción. Falta la clave de aplicación (`x-apikey`) que usa el sitio
-de Cinépolis: no se obtiene de su código sin permiso, la tiene que entregar Cinépolis. Tampoco están escritos los textos de las
+ESTADO: estructura preparada, SIN conectar a ninguna entidad ni opción. La clave de aplicación (`x-apikey`) del sitio de Cinépolis ya
+está en const.py, con autorización escrita de Cinépolis. Todavía no están escritos los textos de las
 consultas GraphQL de `searchEntities`, `movies` y `billboard`: se agregan cuando se puedan probar contra el servicio real.
 
 Lo que sí está listo y probado es lo que Cinépolis describió por escrito:
@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo
 import aiohttp
 
 from .api import HEADERS, NavajaApiError, _plain
-from .const import REQUEST_TIMEOUT
+from .const import CINEPOLIS_API_KEY, REQUEST_TIMEOUT  # noqa: F401 - la clave se usará al conectar el módulo
 
 CINEPOLIS_BILLBOARD_URL = "https://api-g.cinepolis.com/v2/billboards/graphql"
 CINEPOLIS_SEARCH_URL = "https://api-g.cinepolis.com/shared-services/search/entities/graphql"

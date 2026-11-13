@@ -392,3 +392,7 @@ VAMOH_CATEGORIES: dict[str, str] = {
     "comedia_humor": "Comedia", "aprendizaje_educacion": "Aprendizaje", "familiar_infantil": "Familiar",
     "exposiciones_ferias": "Exhibiciones", "bienestar_salud": "Bienestar", "social_comunidad": "Social", "gastronomia": "Gastronomía",
 }
+
+# Cinépolis: clave de aplicación del propio sitio de Cinépolis (encabezado x-apikey). Cinépolis autorizó por escrito usar los
+# mismos servicios que su sitio, con esa clave. No es una credencial de ningún usuario. Si Cinépolis la cambia, se actualiza aquí.
+CINEPOLIS_API_KEY = "lQM6Mkvri1iHksKKCfpAiwGXq0YUZA7Nn6XAXRPr4i13LwXo"
