@@ -42,6 +42,7 @@ from .const import (
     CONF_NEAR_TRACKER,
     NEAR_DEFAULT_RADIUS,
     NEAR_RADII,
+    CONF_CINEPOLIS_CINEMA,
     CONF_VAMOH_CATEGORY,
     CONF_VAMOH_REGION,
     CONF_VAMOH_URL,
@@ -265,6 +266,9 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
+            vol.Optional(
+                CONF_CINEPOLIS_CINEMA, default=defaults.get(CONF_CINEPOLIS_CINEMA, "")
+            ): selector.TextSelector(),
             vol.Required(
                 CONF_VAMOH_REGION, default=defaults.get(CONF_VAMOH_REGION, VAMOH_NONE)
             ): selector.SelectSelector(
@@ -412,6 +416,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or bool(user_input.get(CONF_CLARO_ARENA))
         or bool(user_input.get(CONF_NEAR_TRACKER))
         or bool(str(user_input.get(CONF_VAMOH_URL) or "").strip())
+        or bool(str(user_input.get(CONF_CINEPOLIS_CINEMA) or "").strip())
         or str(user_input.get(CONF_VAMOH_REGION, VAMOH_NONE)) != VAMOH_NONE
         or (zone != REGIONAL_NONE and bool(regional))
         or str(user_input.get(CONF_FOOTBALL_TEAM, FOOTBALL_NONE)) != FOOTBALL_NONE
@@ -467,6 +472,23 @@ async def _resolve_commune(hass, commune: str) -> tuple[str, dict[str, str]]:
     return official, {}
 
 
+async def _resolve_cinepolis(hass, text: str) -> tuple[str, dict[str, str]]:
+    """Nombre oficial del cine de Cinépolis. Si el servicio no responde, se deja lo escrito y no se bloquea."""
+    from . import cinepolis
+
+    text = " ".join(text.split())
+    if not text:
+        return "", {}
+    try:
+        cinemas = await cinepolis.search_cinemas(async_get_clientsession(hass), text)
+    except api.NavajaApiError:
+        return text, {}
+    cinema = cinepolis.pick_cinema(cinemas, text)
+    if cinema is None:
+        return text, {CONF_CINEPOLIS_CINEMA: "cinepolis_cinema_not_found"}
+    return cinema.name, {}
+
+
 async def _check_vamoh(hass, url: str) -> dict[str, str]:
     """Que el enlace entregue un calendario .ics. Si Vamoh no responde en este momento, no se bloquea."""
     if not url:
@@ -515,6 +537,9 @@ class NavajaConfigFlow(ConfigFlow, domain=DOMAIN):
                 commune, errors = await _resolve_commune(self.hass, str(cleaned.get(CONF_EVENTS_COMMUNE) or ""))
                 cleaned = {**cleaned, CONF_EVENTS_COMMUNE: commune}
             if not errors:
+                cinema, errors = await _resolve_cinepolis(self.hass, str(cleaned.get(CONF_CINEPOLIS_CINEMA) or ""))
+                cleaned = {**cleaned, CONF_CINEPOLIS_CINEMA: cinema}
+            if not errors:
                 errors = await _check_vamoh(self.hass, str(cleaned.get(CONF_VAMOH_URL) or ""))
             if not errors:
                 return self.async_create_entry(title="Navaja Chilena", data=cleaned)
@@ -544,6 +569,9 @@ class NavajaOptionsFlow(OptionsFlow):
             if not errors:
                 commune, errors = await _resolve_commune(self.hass, str(cleaned.get(CONF_EVENTS_COMMUNE) or ""))
                 cleaned = {**cleaned, CONF_EVENTS_COMMUNE: commune}
+            if not errors:
+                cinema, errors = await _resolve_cinepolis(self.hass, str(cleaned.get(CONF_CINEPOLIS_CINEMA) or ""))
+                cleaned = {**cleaned, CONF_CINEPOLIS_CINEMA: cinema}
             if not errors:
                 errors = await _check_vamoh(self.hass, str(cleaned.get(CONF_VAMOH_URL) or ""))
             if not errors:

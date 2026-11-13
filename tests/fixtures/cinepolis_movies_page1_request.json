@@ -1,0 +1,10 @@
+{
+  "operationName": "Movies",
+  "variables": {
+    "countryId": "CL",
+    "cinemas": "cinepolis-la-reina-santiago-oriente",
+    "category": "now-playing",
+    "limit": 2
+  },
+  "query": "\n  query Movies(\n    $countryId: String!\n    $category: String\n    $cinemas: String\n    $after: String\n    $limit: Int\n  ) {\n    movies(\n      countryId: $countryId\n      category: $category\n      cinemas: $cinemas\n      after: $after\n      limit: $limit\n    ) {\n      pageInfo {\n        startCursor\n        endCursor\n        hasNextPage\n        hasPreviousPage\n      }\n      totalCount\n      edges {\n        cursor\n        node {\n          id\n          type\n          countryId\n          name\n          originalName\n          distributor\n          rating\n          ratingDescription\n          position\n          genre\n          synopsis\n          length\n          releaseDate\n          languages\n          formats\n          tags {\n            name\n            resource\n          }\n          media {\n            resource\n            type\n            code\n            sizes {\n              large\n              medium\n              small\n            }\n          }\n          cities\n          cinemas\n          categories\n          experiences {\n            icon\n            name\n          }\n          availableForSale\n          alerts {\n            title\n            message\n          }\n        }\n      }\n    }\n  }\n"
+}

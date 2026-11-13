@@ -18,6 +18,9 @@ from . import api
 from .const import (
     BENEFITS_INTERVAL,
     EVENTS_INTERVAL,
+    CINEPOLIS_INTERVAL,
+    CINEPOLIS_PAUSE,
+    CINEPOLIS_STALE_MAX,
     VAMOH_INTERVAL,
     VAMOH_PAGE_PAUSE,
     VAMOH_STALE_MAX,
@@ -384,6 +387,33 @@ def arena_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
         return await api.fetch_arena_events(session)
 
     return NavajaCoordinator(hass, "claro_arena", EVENTS_INTERVAL, fetch)
+
+
+def cinepolis_coordinator(hass: HomeAssistant, cinema_text: str) -> NavajaCoordinator:
+    """Cartelera de un cine de Cinépolis, cada 45 minutos. Si falla, se conserva el último resultado bueno hasta por un día."""
+    from . import cinepolis
+
+    state: dict[str, Any] = {"cinema": None, "cartelera": None}
+
+    async def fetch(session: Any) -> cinepolis.CinepolisCartelera:
+        now = dt_util.now()
+        try:
+            if state["cinema"] is None:
+                cinema = cinepolis.pick_cinema(await cinepolis.search_cinemas(session, cinema_text), cinema_text)
+                if cinema is None:
+                    raise api.NavajaApiError(f"Cinépolis no encontró un cine llamado «{cinema_text}»")
+                state["cinema"] = cinema
+            cartelera = await cinepolis.fetch_cartelera(session, state["cinema"], now, pause=CINEPOLIS_PAUSE)
+        except api.NavajaApiError as err:
+            previous = state["cartelera"]
+            if previous is not None and now - previous.updated <= CINEPOLIS_STALE_MAX:
+                _LOGGER.debug("Cinépolis no respondió; se conserva el resultado del %s: %s", previous.updated, err)
+                return replace(previous, error=str(err))
+            raise
+        state["cartelera"] = cartelera
+        return cartelera
+
+    return NavajaCoordinator(hass, "cinepolis", CINEPOLIS_INTERVAL, fetch)
 
 
 def vamoh_web_coordinator(hass: HomeAssistant, region: str, category: str | None) -> NavajaCoordinator:

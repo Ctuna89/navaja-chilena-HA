@@ -34,6 +34,7 @@
           "events_free_only": "Show only free events",
           "near_tracker": "“Near you”: person or phone whose location triggers alerts (cinemas and stations with a discount)",
           "near_radius": "“Near you” alert distance",
+          "cinepolis_cinema": "Cinépolis: cinema name for its listings (e.g. La Reina)",
           "vamoh_region": "Panoramas por Vamoh: region (public listing at vamoh.cl)",
           "vamoh_category": "Panoramas por Vamoh: category",
           "vamoh_url": "Panoramas por Vamoh: calendar link (.ics) for your commune or your personal link (only if you choose no region)",
@@ -61,6 +62,7 @@
       "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto. At most 8 trips (counting the reverse direction).",
       "invalid_vehicle": "Invalid vehicle. Use a digit from 0 to 9 with an optional type (e.g. 3, 5:moto, 7:sin_sello) and at most 5 vehicles in total.",
       "events_commune_not_found": "That commune was not found in Chile Cultura. Write it as on their site (e.g. Providencia, Ñuñoa, Viña del Mar).",
+      "cinepolis_cinema_not_found": "We could not find a Cinépolis cinema with that name. Type the name as it appears on cinepolis.cl, for example La Reina.",
       "invalid_vamoh_url": "The Vamoh link must start with https:// and be on vamoh.cl.",
       "vamoh_not_calendar": "That link did not return a calendar. Check that it is the .ics link Vamoh gave you."
     },
@@ -103,6 +105,7 @@
           "events_free_only": "Show only free events",
           "near_tracker": "“Near you”: person or phone whose location triggers alerts (cinemas and stations with a discount)",
           "near_radius": "“Near you” alert distance",
+          "cinepolis_cinema": "Cinépolis: cinema name for its listings (e.g. La Reina)",
           "vamoh_region": "Panoramas por Vamoh: region (public listing at vamoh.cl)",
           "vamoh_category": "Panoramas por Vamoh: category",
           "vamoh_url": "Panoramas por Vamoh: calendar link (.ics) for your commune or your personal link (only if you choose no region)",
@@ -130,6 +133,7 @@
       "invalid_trip": "Invalid train trip. Use «Origin > Destination» with stations of the Limache–Puerto line, e.g. Villa Alemana > Puerto. At most 8 trips (counting the reverse direction).",
       "invalid_vehicle": "Invalid vehicle. Use a digit from 0 to 9 with an optional type (e.g. 3, 5:moto, 7:sin_sello) and at most 5 vehicles in total.",
       "events_commune_not_found": "That commune was not found in Chile Cultura. Write it as on their site (e.g. Providencia, Ñuñoa, Viña del Mar).",
+      "cinepolis_cinema_not_found": "We could not find a Cinépolis cinema with that name. Type the name as it appears on cinepolis.cl, for example La Reina.",
       "invalid_vamoh_url": "The Vamoh link must start with https:// and be on vamoh.cl.",
       "vamoh_not_calendar": "That link did not return a calendar. Check that it is the .ics link Vamoh gave you."
     }

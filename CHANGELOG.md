@@ -5,6 +5,9 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+## 3.2.1
+
+- **Cinépolis**: la cartelera de hoy de tu cine de Cinépolis (escribes su nombre, p. ej. «La Reina») con afiche, películas, funciones, formato, idioma y sala, en la hora del cine. Cada 45 minutos, con el último resultado conservado si el servicio falla y sin confundir una falla con «sin funciones». Funciona con los servicios del propio sitio de Cinépolis, con su autorización.
 ## 3.2.0
 
 Una versión con tres módulos nuevos: cargadores eléctricos, «Cerca de ti» y Panoramas por Vamoh.
