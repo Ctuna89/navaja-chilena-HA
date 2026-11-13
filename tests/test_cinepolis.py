@@ -183,7 +183,7 @@ def test_real_movies_pages_are_read_with_edges_and_page_info():
     assert rose.name == "AMOR FESTIVAL 2026: ROSE" and rose.duration_min == 94 and rose.rating == "14" and rose.genres == ("DRAMA",)
     assert rose.formats == ("2D",) and rose.languages == ("es", "en") and rose.available_for_sale is True
     assert rose.poster_path == "/pimcore/25652/assets/Chile/Tickets/Movies/AMORFESTIVAL2026ROSE/Es/720_x_1022_2_/"
-    assert cp.poster_url(rose) is None                                                # ruta relativa, sin base de imágenes confirmada
+    assert cp.poster_url(rose) == "https://pimcore-content.cinepolis.com/assets/Chile/Tickets/Movies/AMORFESTIVAL2026ROSE/Es/720_x_1022_2_.jpg"
     assert p2.movies[0].rating == "TE"
 
 
@@ -341,6 +341,8 @@ async def test_cinepolis_sensor_shows_todays_movies_and_the_next_showtime(hass, 
     assert a["resumen"] == "AMOR FESTIVAL 2026: ROSE (94 min): 19:30"
     assert a["cartelera_completa"] is True and a["desactualizado"] is False and a["actualizado"] == "2026-11-28 12:00"
     assert (a["latitude"], a["longitude"]) == (-33.447406, -70.570929)
+    assert movie["afiche"] == "https://pimcore-content.cinepolis.com/assets/Chile/Tickets/Movies/AMORFESTIVAL2026ROSE/Es/720_x_1022_2_.jpg"
+    assert a["proxima_funcion"]["afiche"] == movie["afiche"] and a["entity_picture"] == movie["afiche"]
 
 
 async def test_cinepolis_sensor_without_showtimes_today_is_zero_not_unavailable(hass, aioclient_mock, monkeypatch, freezer):
@@ -421,3 +423,17 @@ async def test_cinepolis_documented_card_renders(hass, aioclient_mock, monkeypat
     card = Template(content, hass).async_render()
     assert "AMOR FESTIVAL 2026: ROSE" in card and "94 min" in card and "19:30 2D subtitulada" in card and "Cinépolis" in card
     assert "no responde" not in card and "desactualizado" not in card
+
+
+def test_poster_url_only_converts_the_known_path_shape():
+    def movie(path):
+        return cp.CinepolisMovie("m", "M", None, None, None, (), None, None, None, (), (), path, None)
+
+    ok = "/pimcore/25652/assets/Chile/Tickets/Movies/AMORFESTIVAL2026ROSE/Es/720_x_1022_2_/"
+    assert cp.poster_url(movie(ok)).endswith("/Es/720_x_1022_2_.jpg")
+    assert cp.poster_url(movie("https://otra.cl/a.jpg")) == "https://otra.cl/a.jpg"
+    for bad in (None, "", "/otra/ruta/", "/pimcore/1/assets/../../secreto/", "assets/sin-prefijo/", "/pimcore/x/assets/a/"):
+        assert cp.poster_url(movie(bad)) is None
+    for path in ("/pimcore/25732/assets/Chile/Tickets/Movies/FIESTAPAGANA/Es/720X1022_2__2/",
+                 "/pimcore/25496/assets/Chile/Tickets/Movies/BTSWORLDTOURARIRANGINJAKARTA/Es/720x1022px_Poster_WEB_Desktop_5/"):
+        assert cp.poster_url(movie(path)).startswith("https://pimcore-content.cinepolis.com/assets/Chile/Tickets/Movies/")

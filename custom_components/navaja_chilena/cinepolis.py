@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 import aiohttp
 
 from .api import HEADERS, NavajaApiError, _plain
-from .const import CINEPOLIS_API_KEY, REQUEST_TIMEOUT  # noqa: F401 - la clave se usará al conectar el módulo
+from .const import CINEPOLIS_API_KEY, CINEPOLIS_IMAGE_BASE, REQUEST_TIMEOUT
 
 CINEPOLIS_BILLBOARD_URL = "https://api-g.cinepolis.com/v2/billboards/graphql"
 CINEPOLIS_SEARCH_URL = "https://api-g.cinepolis.com/shared-services/search/entities/graphql"
@@ -484,12 +484,18 @@ def parse_movies_page(data: Any) -> CinepolisPage:
     return CinepolisPage(movies, info.get("hasNextPage") is True, str(cursor) if cursor not in (None, "") else None)
 
 
+_POSTER_PATH_RE = re.compile(r"^/pimcore/\d+(/assets/[A-Za-z0-9_./-]+?)/?$")
+
+
 def poster_url(movie: CinepolisMovie) -> str | None:
-    """URL del afiche. Cinépolis entrega rutas relativas y no hay una base de imágenes confirmada: sin ella no se inventa una URL."""
-    path = movie.poster_path
-    if path and path.startswith("https://"):
+    """URL del afiche. El servicio entrega «/pimcore/<id>/assets/…/720_x_1022_2_/»; la imagen está en
+    https://pimcore-content.cinepolis.com/assets/…/720_x_1022_2_.jpg (patrón confirmado con el afiche de AMOR FESTIVAL 2026: ROSE).
+    Una ruta que no tenga esa forma no se convierte: sin afiche es mejor que un enlace inventado."""
+    path = (movie.poster_path or "").strip()
+    if path.startswith("https://"):
         return path
-    return None
+    match = _POSTER_PATH_RE.match(path)
+    return f"{CINEPOLIS_IMAGE_BASE}{match.group(1)}.jpg" if match and ".." not in path else None
 
 
 async def search_cinemas(session: aiohttp.ClientSession, text: str, api_key: str = CINEPOLIS_API_KEY) -> list[CinepolisCinema]:

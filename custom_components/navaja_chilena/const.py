@@ -401,4 +401,5 @@ CINEPOLIS_API_KEY = "lQM6Mkvri1iHksKKCfpAiwGXq0YUZA7Nn6XAXRPr4i13LwXo"
 CONF_CINEPOLIS_CINEMA = "cinepolis_cinema"
 CINEPOLIS_INTERVAL = timedelta(minutes=45)        # Cinépolis sugiere entre 30 y 60 minutos
 CINEPOLIS_PAUSE = 0.3                             # segundos entre consultas de películas
+CINEPOLIS_IMAGE_BASE = "https://pimcore-content.cinepolis.com"   # imágenes de Cinépolis; la ruta del servicio pasa a ser BASE + /assets/…/nombre.jpg
 CINEPOLIS_STALE_MAX = timedelta(hours=24)         # sin poder actualizar, se conserva el último resultado hasta por un día

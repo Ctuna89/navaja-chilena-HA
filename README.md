@@ -172,7 +172,7 @@ Cines disponibles: los 22 de **Cinemark** en Chile.
 - Las horas son las del cine y se conserva la fecha completa de cada función, así que las de después de medianoche cuentan bien.
 - Se actualiza cada 45 minutos. Si Cinépolis no responde, se conserva el último resultado hasta por un día y los atributos `actualizado`, `desactualizado` y `ultimo_error` lo indican; pasado ese día, queda «no disponible». Una falla nunca se muestra como «sin funciones».
 - Cada película se consulta por separado (hasta 25 por cine); `cartelera_completa` indica si quedó alguna fuera.
-- **Afiche:** Cinépolis entrega la ruta del afiche sin una dirección completa de imágenes, así que por ahora `afiche` queda vacío en vez de inventar un enlace.
+- **Afiche:** `afiche` es la imagen vertical de la película en el sitio de imágenes de Cinépolis, y es la imagen de la entidad (la de la próxima función). Si la ruta que entrega el servicio no tiene la forma conocida, queda vacío en vez de inventar un enlace.
 - Son los servicios que usa el propio sitio de Cinépolis, que **autorizó su uso**; no son una API pública versionada, así que podrían cambiar.
 
 ### 🇨🇱 Efemérides
