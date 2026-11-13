@@ -1,0 +1,10 @@
+{
+  "operationName": "Billboard",
+  "variables": {
+    "countryId": "CL",
+    "movieId": "amor-festival-2026-rose",
+    "cinemas": "cinepolis-la-reina-santiago-oriente",
+    "timezone": "America/Santiago"
+  },
+  "query": "\n  query Billboard(\n    $countryId: String!\n    $movieId: String!\n    $cinemas: String!\n    $timezone: String\n  ) {\n    billboard(\n      countryId: $countryId\n      movieId: $movieId\n      cinemas: $cinemas\n      timezone: $timezone\n    ) {\n      dates\n      schedules {\n        cinemaId\n        cityId\n        movieId\n        dates {\n          date\n          languages {\n            language\n            displayLanguage\n            showtimes {\n              format {\n                icon\n                name\n              }\n              sessionId\n              datetime\n              screen\n              experience {\n                icon\n                name\n              }\n              movieVistaId\n              cinemaVistaId\n              alerts {\n                section\n                title\n                message\n              }\n              availability\n              isAllocatedSeating\n            }\n          }\n        }\n      }\n    }\n  }\n"
+}

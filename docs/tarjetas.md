@@ -483,6 +483,32 @@ content: |
   {% if n %}⏭️ Próxima función: **{{ n.titulo }}** a las {{ n.hora }}{% endif %}
 ```
 
+### 🎬 Cinépolis
+
+Cartelera de hoy de tu cine de Cinépolis (usa el nombre de tu cine en el nombre de la entidad; el ejemplo es *La Reina*):
+
+```yaml
+type: markdown
+title: 🎬 Cinépolis
+content: |
+  {% set e = 'sensor.cinepolis_la_reina_cartelera_de_hoy' %}
+  {% if states(e) == 'unavailable' %}
+  Cinépolis no responde en este momento.
+  {% else %}
+  {% for m in state_attr(e, 'peliculas') or [] %}
+  **{{ m.titulo }}**{% if m.duracion_min %} · {{ m.duracion_min }} min{% endif %}{% if m.clasificacion %} · {{ m.clasificacion }}{% endif %}
+  {% for f in m.funciones %}{{ f.hora }} {{ f.formato }}{% if f.idioma %} {{ f.idioma | lower }}{% endif %}{{ ' · ' if not loop.last }}{% endfor %}
+  {% else %}
+  Hoy no hay funciones.
+  {% endfor %}
+  {% if state_attr(e, 'desactualizado') %}
+  <sub>⚠️ Cinépolis no respondió; datos del {{ state_attr(e, 'actualizado') }}.</sub>
+  {% endif %}
+  {% endif %}
+
+  <sub>Cartelera de <a href="https://www.cinepolis.cl">Cinépolis</a></sub>
+```
+
 ## 🇨🇱 Efemérides
 
 Las de hoy, con su fuente:

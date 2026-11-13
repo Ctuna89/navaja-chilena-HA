@@ -24,6 +24,7 @@ from .const import (
     CONF_NEAR_RADIUS,
     CONF_NEAR_TRACKER,
     NEAR_DEFAULT_RADIUS,
+    CONF_CINEPOLIS_CINEMA,
     CONF_VAMOH_CATEGORY,
     CONF_VAMOH_REGION,
     CONF_VAMOH_URL,
@@ -85,6 +86,7 @@ from .coordinator import (
     benefits_coordinator,
     culture_coordinator,
     vamoh_coordinator,
+    cinepolis_coordinator,
     vamoh_web_coordinator,
     news_coordinator,
     regional_coordinator,
@@ -128,6 +130,8 @@ class RuntimeData:
     pharmacy_comuna: str = ""
     fuel: NavajaCoordinator | None = None
     ev: NavajaCoordinator | None = None
+    cinepolis: NavajaCoordinator | None = None
+    cinepolis_cinema: str = ""
     ev_connectors: list[str] = field(default_factory=list)
     ev_radius: float = EV_DEFAULT_RADIUS
     ev_min_power: float = 0
@@ -261,6 +265,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         if battery.split(".")[0] in ("sensor", "number") and "." in battery:
             data.ev_battery = battery
         data.ev = ev_coordinator(hass)
+    cinepolis_cinema = " ".join(str(opts.get(CONF_CINEPOLIS_CINEMA) or "").split())
+    if cinepolis_cinema:
+        data.cinepolis_cinema = cinepolis_cinema
+        data.cinepolis = cinepolis_coordinator(hass, cinepolis_cinema)
     commune = str(opts.get(CONF_EVENTS_COMMUNE) or "").strip()
     if commune:
         data.events_commune = commune
@@ -332,7 +340,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     coordinators = [
         c
         for c in (data.indicators, data.metro, data.stops, data.train, data.quakes,
-                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.ev, data.benefits, data.fuel_discounts, data.regional, data.news, data.culture, data.arena, data.vamoh, data.football, data.national)
+                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.ev, data.cinepolis, data.benefits, data.fuel_discounts, data.regional, data.news, data.culture, data.arena, data.vamoh, data.football, data.national)
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]

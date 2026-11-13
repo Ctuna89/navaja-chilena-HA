@@ -26,7 +26,7 @@ feriados, efemérides y mucho más, en una sola integración que se instala en u
 | 📅 **Feriados** | Próximo feriado, cuántos días faltan y si es irrenunciable |
 | 🌫️ **Calidad del aire y UV** | PM2.5, PM10, índice de calidad del aire e índice UV donde vives |
 | 💊 **Farmacias de turno** | Las farmacias de turno de tu comuna, con dirección, horario y teléfono |
-| 🎬 **Cartelera de cine** | La cartelera de hoy de tu cine Cinemark favorito, o **el más cercano a tu casa** |
+| 🎬 **Cartelera de cine** | La cartelera de hoy de tu cine Cinemark favorito (o **el más cercano a tu casa**) o de tu **Cinépolis** |
 | 🇨🇱 **Efemérides** | Los días significativos y las efemérides chilenas de hoy, y el próximo día significativo |
 | ⚽ **Fútbol** | Próximos partidos, resultados y posición de tu equipo de la Primera División, la tabla y las fechas de la liga, y los partidos de La Roja |
 | 📰 **Noticias por tema** | Titulares de La Tercera y Cooperativa separados por tema (nacional, política, mundo, economía, deportes, tecnología…), con enlace a cada nota |
@@ -75,7 +75,7 @@ El asistente te pregunta qué quieres activar:
 - la **ciudad y los paraderos** de la Red Regional (si vives fuera de Santiago),
 - tus **tarjetas** (descuentos en bencina de hoy) y las **categorías** de descuentos que te interesan (combustibles, comida, salud y belleza, etc.),
 - el **último dígito de tu patente** y el tipo de vehículo, para la restricción vehicular y la revisión técnica,
-- tu **cine** Cinemark: uno de los 22 cines del país, o *«El más cercano a mi casa»* según la ubicación de tu Home Assistant.
+- tu **cine** Cinemark: uno de los 22 cines del país, o *«El más cercano a mi casa»* según la ubicación de tu Home Assistant; o el nombre de tu **Cinépolis** (ej. *La Reina*).
 
 Todo se puede cambiar después en *Configurar*, sin reinstalar.
 
@@ -166,6 +166,14 @@ dirección, horario, teléfono y coordenadas) · datos del servicio Farmanet del
 Atributos: `peliculas` (título, duración, género, `poster` y las funciones con hora, formato y sala), `resumen` (texto listo para
 una tarjeta), `proxima_funcion` (con su `poster`) y `fecha`. La imagen de la entidad es el póster de la próxima función. Las funciones de trasnoche (antes de las 05:00) cuentan para el día anterior.
 Cines disponibles: los 22 de **Cinemark** en Chile.
+
+**Cinépolis** (`sensor.cinepolis_<cine>_cartelera_de_hoy`): escribe el nombre de tu cine de Cinépolis en las opciones (por ejemplo *La Reina*) y se resuelve con el servicio de búsqueda de Cinépolis; si no lo encuentra, te lo dice.
+- Mismos atributos que Cinemark: `peliculas` (título, duración, género, clasificación y las funciones con hora, fecha, formato, idioma —subtitulada o doblada—, experiencia de sala y sala), `resumen`, `proxima_funcion` y `fecha`, más la ubicación del cine.
+- Las horas son las del cine y se conserva la fecha completa de cada función, así que las de después de medianoche cuentan bien.
+- Se actualiza cada 45 minutos. Si Cinépolis no responde, se conserva el último resultado hasta por un día y los atributos `actualizado`, `desactualizado` y `ultimo_error` lo indican; pasado ese día, queda «no disponible». Una falla nunca se muestra como «sin funciones».
+- Cada película se consulta por separado (hasta 25 por cine); `cartelera_completa` indica si quedó alguna fuera.
+- **Afiche:** Cinépolis entrega la ruta del afiche sin una dirección completa de imágenes, así que por ahora `afiche` queda vacío en vez de inventar un enlace.
+- Son los servicios que usa el propio sitio de Cinépolis, que **autorizó su uso**; no son una API pública versionada, así que podrían cambiar.
 
 ### 🇨🇱 Efemérides
 - `sensor.efemerides_chilenas_efemerides_de_hoy`: la efeméride principal de hoy. Primero aparecen los días significativos de
@@ -400,7 +408,7 @@ necesidad de registrarte.
 | Feriados | [boostr.cl](https://api.boostr.cl) |
 | Calidad del aire y UV | [Open-Meteo](https://open-meteo.com) |
 | Farmacias de turno | Ministerio de Salud, [Farmanet](https://www.minsal.cl/farmanet/) |
-| Cartelera de cine | [Cinemark Chile](https://www.cinemark.cl) |
+| Cartelera de cine | [Cinemark Chile](https://www.cinemark.cl) y [Cinépolis](https://www.cinepolis.cl) (con su autorización) |
 | Efemérides | [efemerides.cl](https://www.efemerides.cl) y [Wikipedia en español](https://es.wikipedia.org) |
 | Fútbol | [ESPN](https://www.espn.cl/futbol/) (calendario, resultados y tabla; servicio público no documentado) |
 | Combustibles | [Bencina en Línea](https://www.bencinaenlinea.cl) (Comisión Nacional de Energía) |
@@ -430,6 +438,8 @@ El módulo del **tren Limache–Puerto** es un aporte de [claudiojara](https://g
 [ha-efe-valparaiso](https://github.com/claudiojara/ha-efe-valparaiso) (licencia MIT), que además ofrece una tarjeta propia con selección de cualquier par de estaciones. Gracias por sumarlo.
 
 Los **Panoramas por [Vamoh](https://vamoh.cl)** son posibles gracias a que Vamoh nos autorizó a leer sus páginas públicas de listado y nos explicó cómo hacerlo con cuidado: los panoramas son de su equipo y cada evento lleva a su ficha en Vamoh. Gracias por la confianza.
+
+La **cartelera de Cinépolis** funciona gracias a que Cinépolis nos autorizó a usar los mismos servicios de su sitio y nos explicó cómo hacerlo con cuidado. Gracias.
 
 Y gracias a quienes mantienen abiertos los servicios que hacen posible esta integración —[mindicador.cl](https://mindicador.cl), [findic.cl](https://findic.cl), [api.xor.cl](https://api.xor.cl),
 [Open-Meteo](https://open-meteo.com), [Bencina en Línea](https://www.bencinaenlinea.cl), el [mapa de cargadores públicos](https://cargadorespublicos.cl) del Ministerio de Energía y la SEC, [N Beneficios](https://www.nbeneficios.cl), [efemerides.cl](https://www.efemerides.cl), La Tercera y Cooperativa, entre otros—

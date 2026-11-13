@@ -1,0 +1,8 @@
+{
+  "operationName": "Search",
+  "variables": {
+    "countryId": "CL",
+    "search": "La Reina"
+  },
+  "query": "\n  query Search($countryId: String!, $search: String!) {\n    searchEntities(countryId: $countryId, search: $search) {\n      edges {\n        node {\n          cinemas {\n            id\n            lat\n            lng\n            name\n            type\n            cityId\n            vistaId\n            timeZone\n            cityName\n            cityRegion\n            businessType\n            experiences {\n              name\n            }\n            countryId\n          }\n          movies {\n            id\n            name\n            countryId\n            media {\n              platform\n              resources {\n                type\n                code\n                resource\n                sizes {\n                  large\n                  small\n                  medium\n                }\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n"
+}

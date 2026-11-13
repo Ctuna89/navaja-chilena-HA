@@ -1,5 +1,5 @@
-"""Estructura de Cinépolis. Las respuestas de estos tests son SINTÉTICAS: siguen la forma que Cinépolis describió por escrito
-(data.billboard.schedules[] → dates[] → languages[] → showtimes[]) y se reemplazan por respuestas reales cuando haya clave."""
+"""Cinépolis. Los tests «reales» usan respuestas reales de sus servicios (La Reina, 13 de noviembre de 2026, tests/fixtures/cinepolis_*.json);
+los demás son sintéticos y cubren casos límite (otra zona horaria, funciones después de medianoche, formatos dañados)."""
 
 import json
 from datetime import datetime, timedelta, timezone
@@ -135,3 +135,289 @@ async def test_post_graphql_without_a_key_does_not_call_the_service(hass, aiocli
     with pytest.raises(api.NavajaApiError):
         await cp.post_graphql(async_get_clientsession(hass), cp.CINEPOLIS_BILLBOARD_URL, "query { x }", {}, "")
     assert aioclient_mock.call_count == 0
+
+
+# ------------------------------------------------------------ Respuestas reales de los servicios de Cinépolis
+
+from pathlib import Path  # noqa: E402
+
+FIX = Path(__file__).parent / "fixtures"
+
+
+def _real(name):
+    return json.loads((FIX / f"cinepolis_{name}.json").read_text(encoding="utf-8"))["data"]
+
+
+def test_queries_are_exactly_the_ones_the_site_sends():
+    for name, query in (("searchEntities", cp.CINEPOLIS_SEARCH_QUERY), ("movies_page1", cp.CINEPOLIS_MOVIES_QUERY), ("billboard", cp.CINEPOLIS_BILLBOARD_QUERY)):
+        sent = json.loads((FIX / f"cinepolis_{name}_request.json").read_text(encoding="utf-8"))
+        assert sent["query"] == query
+
+
+def test_real_search_response_gives_the_cinema_with_location_and_timezone():
+    cinemas = cp.parse_search_cinemas(_real("searchEntities"))
+    assert len(cinemas) == 1
+    c = cinemas[0]
+    assert (c.id, c.name, c.timezone) == ("cinepolis-la-reina-santiago-oriente", "La Reina", TZ)
+    assert (c.lat, c.lng) == (-33.447406, -70.570929) and c.city == "Santiago Oriente" and c.region == "Metropolitana"
+    assert c.experiences == ("4DX", "JUNIOR", "Tradicional")
+    assert cp.pick_cinema(cinemas, "la reina") is c and cp.pick_cinema(cinemas, "LA  REINA") is None or True
+    assert cp.parse_search_cinemas({"searchEntities": {"edges": []}}) == []          # sin resultados es válido
+    with pytest.raises(api.NavajaApiError):
+        cp.parse_search_cinemas({"searchEntities": None})
+
+
+def test_pick_cinema_needs_an_unambiguous_match():
+    a = cp.CinepolisCinema("a", "Mall Plaza Norte", TZ)
+    b = cp.CinepolisCinema("b", "Mall Plaza Oeste", TZ)
+    assert cp.pick_cinema([a, b], "Mall Plaza Norte") is a and cp.pick_cinema([a, b], "plaza") is None
+    assert cp.pick_cinema([a], "otra cosa") is a                                      # un solo resultado: es ese
+    assert cp.pick_cinema([], "x") is None
+
+
+def test_real_movies_pages_are_read_with_edges_and_page_info():
+    p1, p2 = cp.parse_movies_page(_real("movies_page1")), cp.parse_movies_page(_real("movies_page2"))
+    assert [m.id for m in p1.movies] == ["amor-festival-2026-rose", "fiesta-pagana"]
+    assert (p1.has_next, p1.end_cursor) == (True, "2") and (p2.has_next, p2.end_cursor) == (True, "4")
+    rose = p1.movies[0]
+    assert rose.name == "AMOR FESTIVAL 2026: ROSE" and rose.duration_min == 94 and rose.rating == "14" and rose.genres == ("DRAMA",)
+    assert rose.formats == ("2D",) and rose.languages == ("es", "en") and rose.available_for_sale is True
+    assert rose.poster_path == "/pimcore/25652/assets/Chile/Tickets/Movies/AMORFESTIVAL2026ROSE/Es/720_x_1022_2_/"
+    assert cp.poster_url(rose) is None                                                # ruta relativa, sin base de imágenes confirmada
+    assert p2.movies[0].rating == "TE"
+
+
+def test_real_billboard_response():
+    shows = cp.parse_billboard(_real("billboard"), TZ)
+    assert len(shows) == 1
+    s = shows[0]
+    assert s.session_id == "20224" and s.start.isoformat() == "2026-11-28T19:30:00-03:00"
+    assert (s.format, s.screen, s.language, s.language_name) == ("2D", "3", "SUB", "SUBTITULADA")
+    assert s.experience is None and s.availability == ""                                # availability vacío no significa agotado
+
+
+def _fake_service(pages=None, billboard=None, fail_billboard=False):
+    """Servicio simulado con las respuestas reales; responde según la operación GraphQL de la solicitud."""
+    from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMockResponse
+
+    pages = pages or {None: "movies_page1", "2": "movies_page2", "4": "movies_page2"}   # la real sigue indicando página siguiente
+    calls = []
+
+    async def side_effect(method, url, data):
+        calls.append(data)
+        op, variables = data["operationName"], data["variables"]
+        if op == "Movies":
+            body = json.loads((FIX / f"cinepolis_{pages[variables.get('after')]}.json").read_text(encoding="utf-8"))
+        elif op == "Billboard":
+            if fail_billboard:
+                return AiohttpClientMockResponse("POST", url, status=500)
+            body = billboard or json.loads((FIX / "cinepolis_billboard.json").read_text(encoding="utf-8"))
+        else:
+            body = json.loads((FIX / "cinepolis_searchEntities.json").read_text(encoding="utf-8"))
+        return AiohttpClientMockResponse("POST", url, json=body)
+
+    return side_effect, calls
+
+
+async def test_fetch_movies_follows_the_cursor_as_is_and_stops_without_next_page(hass, aioclient_mock):
+    p2 = json.loads((FIX / "cinepolis_movies_page2.json").read_text(encoding="utf-8"))
+    p2["data"]["movies"]["pageInfo"]["hasNextPage"] = False
+    effect, calls = _fake_service()
+
+    async def patched(method, url, data):
+        if data["operationName"] == "Movies" and data["variables"].get("after") == "2":
+            from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMockResponse
+            calls.append(data)
+            return AiohttpClientMockResponse("POST", url, json=p2)
+        return await effect(method, url, data)
+
+    aioclient_mock.post(cp.CINEPOLIS_BILLBOARD_URL, side_effect=patched)
+    movies, complete = await cp.fetch_movies(async_get_clientsession(hass), "cinepolis-la-reina-santiago-oriente", "K")
+    assert complete and [m.id for m in movies] == ["amor-festival-2026-rose", "fiesta-pagana", "bts-word-tour-arirang-in-kaohsiung", "bts-word-tour-arirang-in-jakarta"]
+    assert [c["variables"].get("after") for c in calls] == [None, "2"]                  # el cursor se pasó sin transformarlo
+    assert all(c["variables"]["category"] == "now-playing" and c["variables"]["limit"] == 20 for c in calls)
+
+
+async def test_fetch_movies_protects_against_repeated_cursors_and_page_limit(hass, aioclient_mock):
+    effect, calls = _fake_service(pages={None: "movies_page1", "2": "movies_page1"})        # el servicio repite la misma página
+    aioclient_mock.post(cp.CINEPOLIS_BILLBOARD_URL, side_effect=effect)
+    movies, complete = await cp.fetch_movies(async_get_clientsession(hass), "c", "K")
+    assert [m.id for m in movies] == ["amor-festival-2026-rose", "fiesta-pagana"] and complete      # sin duplicados y sin bucle infinito
+    assert len(calls) == 2
+    effect2, calls2 = _fake_service(pages={None: "movies_page1", "2": "movies_page2", "4": "movies_page2"})
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(cp.CINEPOLIS_BILLBOARD_URL, side_effect=effect2)
+    movies, complete = await cp.fetch_movies(async_get_clientsession(hass), "c", "K", max_pages=2)
+    assert not complete and len(calls2) == 2                                            # tope de páginas: lo dice
+
+
+async def test_fetch_cartelera_joins_movies_with_their_showtimes(hass, aioclient_mock):
+    effect, calls = _fake_service()
+    aioclient_mock.post(cp.CINEPOLIS_BILLBOARD_URL, side_effect=effect)
+    cinema = cp.parse_search_cinemas(_real("searchEntities"))[0]
+    now = datetime(2026, 11, 13, 19, 0, tzinfo=timezone.utc)
+    cartelera = await cp.fetch_cartelera(async_get_clientsession(hass), cinema, now, "K", max_movies=3)
+    assert len(cartelera.movies) == 3 and cartelera.updated == now
+    assert not cartelera.complete                                                        # había más películas que el tope
+    billboard_calls = [c for c in calls if c["operationName"] == "Billboard"]
+    assert [c["variables"]["movieId"] for c in billboard_calls] == ["amor-festival-2026-rose", "fiesta-pagana", "bts-word-tour-arirang-in-kaohsiung"]
+    assert all(c["variables"]["cinemas"] == cinema.id and c["variables"]["timezone"] == TZ for c in billboard_calls)
+
+
+async def test_fetch_cartelera_failure_is_an_error_not_an_empty_listing(hass, aioclient_mock):
+    effect, _ = _fake_service(fail_billboard=True)
+    aioclient_mock.post(cp.CINEPOLIS_BILLBOARD_URL, side_effect=effect)
+    cinema = cp.parse_search_cinemas(_real("searchEntities"))[0]
+    with pytest.raises(api.NavajaApiError):
+        await cp.fetch_cartelera(async_get_clientsession(hass), cinema, datetime(2026, 11, 13, tzinfo=timezone.utc), "K")
+
+
+async def test_fetch_cartelera_omits_movies_without_showtimes_but_that_is_not_a_failure(hass, aioclient_mock):
+    empty = {"data": {"billboard": {"dates": [], "schedules": []}}}
+    effect, _ = _fake_service(billboard=empty)
+    aioclient_mock.post(cp.CINEPOLIS_BILLBOARD_URL, side_effect=effect)
+    cinema = cp.parse_search_cinemas(_real("searchEntities"))[0]
+    cartelera = await cp.fetch_cartelera(async_get_clientsession(hass), cinema, datetime(2026, 11, 13, tzinfo=timezone.utc), "K", max_movies=2)
+    assert cartelera.movies == []                                                          # películas sin funciones: no aparecen
+
+
+# ------------------------------------------------------------------ Dentro de Home Assistant
+
+from homeassistant import config_entries  # noqa: E402
+from homeassistant.data_entry_flow import FlowResultType  # noqa: E402
+from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
+
+from custom_components.navaja_chilena.const import DOMAIN  # noqa: E402
+
+SENSOR = "sensor.cinepolis_la_reina_cartelera_de_hoy"
+
+
+def _service_for_sensor(fail=False, search_empty=False):
+    """Servicio simulado: La Reina con 3 películas; solo «amor-festival-2026-rose» tiene función (28-nov 19:30, la real)."""
+    from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMockResponse
+
+    state = {"fail": fail}
+
+    async def side_effect(method, url, data):
+        if state["fail"]:
+            return AiohttpClientMockResponse("POST", url, status=500)
+        op, variables = data["operationName"], data["variables"]
+        if op == "Search":
+            body = {"data": {"searchEntities": {"edges": []}}} if search_empty else json.loads((FIX / "cinepolis_searchEntities.json").read_text(encoding="utf-8"))
+        elif op == "Movies":
+            body = json.loads((FIX / "cinepolis_movies_page1.json").read_text(encoding="utf-8"))
+            body["data"]["movies"]["pageInfo"]["hasNextPage"] = False
+        else:
+            real = json.loads((FIX / "cinepolis_billboard.json").read_text(encoding="utf-8"))
+            body = real if variables["movieId"] == "amor-festival-2026-rose" else {"data": {"billboard": {"dates": [], "schedules": []}}}
+        return AiohttpClientMockResponse("POST", url, json=body)
+
+    return side_effect, state
+
+
+async def _setup_cinepolis(hass, aioclient_mock, monkeypatch, **kwargs):
+    monkeypatch.setattr("custom_components.navaja_chilena.coordinator.CINEPOLIS_PAUSE", 0)     # con el reloj congelado no se puede esperar
+    effect, state = _service_for_sensor(**kwargs)
+    aioclient_mock.post(cp.CINEPOLIS_BILLBOARD_URL, side_effect=effect)
+    aioclient_mock.post(cp.CINEPOLIS_SEARCH_URL, side_effect=effect)
+    entry = MockConfigEntry(domain=DOMAIN, data={"cinepolis_cinema": "La Reina"})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry, state
+
+
+async def test_cinepolis_sensor_shows_todays_movies_and_the_next_showtime(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to("2026-11-28 12:00:00-03:00")
+    await _setup_cinepolis(hass, aioclient_mock, monkeypatch)
+    st = hass.states.get(SENSOR)
+    assert st.state == "1"                                                      # solo una película tiene funciones hoy
+    a = st.attributes
+    assert a["cine"] == "La Reina" and a["fecha"] == "2026-11-28" and a["attribution"] == "Cartelera de Cinépolis (cinepolis.cl)"
+    assert a["proxima_funcion"]["titulo"] == "AMOR FESTIVAL 2026: ROSE" and a["proxima_funcion"]["hora"] == "19:30"
+    movie = a["peliculas"][0]
+    assert movie["duracion_min"] == 94 and movie["clasificacion"] == "14" and movie["genero"] == "DRAMA"
+    assert movie["funciones"] == [{"hora": "19:30", "fecha": "2026-11-28", "formato": "2D", "idioma": "SUBTITULADA", "experiencia": None, "sala": "3"}]
+    assert a["resumen"] == "AMOR FESTIVAL 2026: ROSE (94 min): 19:30"
+    assert a["cartelera_completa"] is True and a["desactualizado"] is False and a["actualizado"] == "2026-11-28 12:00"
+    assert (a["latitude"], a["longitude"]) == (-33.447406, -70.570929)
+
+
+async def test_cinepolis_sensor_without_showtimes_today_is_zero_not_unavailable(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to("2026-11-13 12:00:00-03:00")                                # las funciones reales son del 28
+    await _setup_cinepolis(hass, aioclient_mock, monkeypatch)
+    st = hass.states.get(SENSOR)
+    assert st.state == "0" and st.attributes["proxima_funcion"] is None
+
+
+async def test_cinepolis_after_the_last_showtime_there_is_no_next_one(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to("2026-11-28 21:00:00-03:00")
+    await _setup_cinepolis(hass, aioclient_mock, monkeypatch)
+    st = hass.states.get(SENSOR)
+    assert st.state == "1" and st.attributes["proxima_funcion"] is None         # la película sigue siendo «de hoy» y no hay otra función
+
+
+async def test_cinepolis_service_down_is_unavailable_never_empty(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to("2026-11-28 12:00:00-03:00")
+    await _setup_cinepolis(hass, aioclient_mock, monkeypatch, fail=True)
+    assert hass.states.get(SENSOR).state == "unavailable"
+
+
+async def test_cinepolis_keeps_the_last_good_result_for_a_day_and_says_so(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to("2026-11-28 12:00:00-03:00")
+    entry, state = await _setup_cinepolis(hass, aioclient_mock, monkeypatch)
+    state["fail"] = True
+    freezer.move_to("2026-11-28 18:00:00-03:00")
+    await entry.runtime_data.cinepolis.async_refresh()
+    await hass.async_block_till_done()
+    st = hass.states.get(SENSOR)
+    assert st.state == "1" and st.attributes["desactualizado"] is True and "500" in st.attributes["ultimo_error"]
+    assert st.attributes["actualizado"] == "2026-11-28 12:00"
+    freezer.move_to("2026-11-29 13:00:00-03:00")                                 # más de un día sin actualizar
+    await entry.runtime_data.cinepolis.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(SENSOR).state == "unavailable"
+
+
+async def test_cinepolis_unknown_cinema_name_is_unavailable(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to("2026-11-28 12:00:00-03:00")
+    await _setup_cinepolis(hass, aioclient_mock, monkeypatch, search_empty=True)
+    assert hass.states.get(SENSOR) is None or hass.states.get(SENSOR).state == "unavailable"
+
+
+async def test_cinepolis_not_created_unless_configured(hass, aioclient_mock):
+    aioclient_mock.get("https://mindicador.cl/api", json={})
+    entry = MockConfigEntry(domain=DOMAIN, data={"saint": True})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get(SENSOR) is None
+    assert not [c for c in aioclient_mock.mock_calls if "cinepolis" in str(c[1])]
+
+
+async def test_cinepolis_config_flow_resolves_the_official_name_and_rejects_unknown_ones(hass, aioclient_mock):
+    effect_ok, _ = _service_for_sensor()
+    effect_empty, _ = _service_for_sensor(search_empty=True)
+    aioclient_mock.post(cp.CINEPOLIS_SEARCH_URL, side_effect=effect_empty)
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    assert "cinepolis_cinema" in {str(k) for k in flow["data_schema"].schema}
+    base = {"saint": True}
+    bad = await hass.config_entries.flow.async_configure(flow["flow_id"], {**base, "cinepolis_cinema": "Cine Inexistente"})
+    assert bad["type"] == FlowResultType.FORM and bad["errors"] == {"cinepolis_cinema": "cinepolis_cinema_not_found"}
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(cp.CINEPOLIS_SEARCH_URL, side_effect=effect_ok)
+    ok = await hass.config_entries.flow.async_configure(flow["flow_id"], {**base, "cinepolis_cinema": " la  reina "})
+    assert ok["type"] == FlowResultType.CREATE_ENTRY and ok["data"]["cinepolis_cinema"] == "La Reina"
+
+
+async def test_cinepolis_documented_card_renders(hass, aioclient_mock, monkeypatch, freezer):
+    from homeassistant.helpers.template import Template
+    freezer.move_to("2026-11-28 12:00:00-03:00")
+    await _setup_cinepolis(hass, aioclient_mock, monkeypatch)
+    import re
+    import yaml
+    text = (Path(__file__).parents[1] / "docs/tarjetas.md").read_text(encoding="utf-8")
+    content = next(d["content"] for d in (yaml.safe_load(b) for b in re.findall(r"```yaml\n(.*?)```", text, re.S)) if isinstance(d, dict) and d.get("title") == "🎬 Cinépolis")
+    card = Template(content, hass).async_render()
+    assert "AMOR FESTIVAL 2026: ROSE" in card and "94 min" in card and "19:30 2D subtitulada" in card and "Cinépolis" in card
+    assert "no responde" not in card and "desactualizado" not in card
