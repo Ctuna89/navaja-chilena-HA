@@ -56,6 +56,7 @@ from .const import (
     STOP_URL,
 )
 from .const import EV_CONNECTORS, EV_MAX_BYTES, EV_STATUS_MAX_AGE, EV_URL
+from .const import VAMOH_CATEGORIES, VAMOH_EVENTS_URL, VAMOH_PAGE_MAX_BYTES, VAMOH_PAGE_PAUSE, VAMOH_REGIONS
 
 HEADERS = {
     "User-Agent": "NavajaChilena/2.4 (https://github.com/Ctuna89/navaja-chilena-HA; integración de Home Assistant)"
@@ -2183,6 +2184,9 @@ class VamohEvent:
     place: str
     url: str | None            # ficha del evento en Vamoh
     categories: tuple[str, ...]
+    image: str | None = None   # afiche (solo desde las páginas de listado)
+    price_from: float | None = None   # CLP; None si Vamoh no informa precio
+    free: bool | None = None          # True solo si Vamoh lo indica; nunca se supone gratis por falta de precio
 
 
 def vamoh_url_ok(url: str) -> bool:
@@ -2590,3 +2594,216 @@ def ev_battery_low(state: str | None, threshold: float) -> bool | None:
     if not 0 <= level <= 100:
         return None
     return level <= threshold
+
+
+# ---------------------------------- Panoramas por Vamoh (páginas de listado, datos de hidratación de Next.js)
+# Esta lógica de extracción está separada de las entidades a propósito: depende de la estructura actual del sitio,
+# no de una API versionada, y puede necesitar ajustes si Vamoh cambia su página. Los scripts se procesan como datos.
+
+_HYDRATION_RE = re.compile(r'\{\s*"mutations"\s*:\s*\[\s*\]\s*,\s*"queries"\s*:\s*\[')
+_NEXT_PUSH_RE = re.compile(r"self\.__next_f\.push\((\[.*?\])\)</script>", re.S)
+
+
+@dataclass(frozen=True)
+class VamohPage:
+    events: list[VamohEvent]
+    page: int
+    total_pages: int
+    total: int
+    categories: dict[str, str]    # id -> nombre, tal como los entrega el sitio
+
+
+@dataclass(frozen=True)
+class VamohListing:
+    events: list[VamohEvent]
+    total: int | None            # eventos que Vamoh tiene para ese filtro
+    pages_read: int
+    pages_total: int
+    updated: datetime            # última descarga exitosa
+    region: str
+    category: str | None
+    error: str | None = None     # si la última actualización falló y se muestran datos anteriores
+
+    @property
+    def partial(self) -> bool:
+        return self.pages_read < self.pages_total
+
+
+def vamoh_listing_url(region: str, category: str | None, page: int = 1) -> str:
+    from urllib.parse import urlencode
+
+    if region not in VAMOH_REGIONS or (category is not None and category not in VAMOH_CATEGORIES):
+        raise ValueError("región o categoría desconocida")
+    params: list[tuple[str, str]] = []
+    if category:
+        params.append(("cats", category))
+    params.append(("sc", region))
+    if page > 1:
+        params.append(("page", str(page)))
+    return f"{VAMOH_EVENTS_URL}?{urlencode(params)}"
+
+
+def _next_flight_text(html: str) -> str:
+    """Une, en orden, los fragmentos de texto de los scripts self.__next_f.push([1, "..."]), decodificados como datos."""
+    parts: list[str] = []
+    for raw in _NEXT_PUSH_RE.findall(html):
+        try:
+            item = json.loads(raw)
+        except ValueError:
+            continue
+        if isinstance(item, list) and len(item) >= 2 and item[0] == 1 and isinstance(item[1], str):
+            parts.append(item[1])
+    return "".join(parts)
+
+
+def _hydrated_queries(text: str) -> list[dict[str, Any]]:
+    decoder = json.JSONDecoder()
+    queries: list[dict[str, Any]] = []
+    pos = 0
+    while (m := _HYDRATION_RE.search(text, pos)) is not None:
+        try:
+            state, end = decoder.raw_decode(text, m.start())
+        except ValueError:
+            pos = m.end()
+            continue
+        pos = end
+        if isinstance(state, dict) and isinstance(state.get("queries"), list):
+            queries += [q for q in state["queries"] if isinstance(q, dict)]
+    return queries
+
+
+def _vamoh_iso(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=ZoneInfo("UTC"))
+
+
+def _vamoh_web_event(raw: Any, category_names: dict[str, str]) -> VamohEvent | None:
+    if not isinstance(raw, dict) or raw.get("cancelled") or raw.get("active") is False:
+        return None
+    name, slug = _plain(str(raw.get("name") or "")), str(raw.get("slug") or "").strip()
+    if not name or not re.fullmatch(r"[A-Za-z0-9._~-]+", slug):
+        return None
+    try:
+        tz = ZoneInfo(str(raw.get("timezone") or METRO_TZ))
+    except Exception:  # noqa: BLE001 - zona desconocida: se usa la de Chile
+        tz = ZoneInfo(METRO_TZ)
+    begin = _vamoh_iso(raw.get("next_occurrence_at")) or _vamoh_iso(raw.get("start_date_time"))
+    finish = _vamoh_iso(raw.get("finish_date_time"))
+    if begin is None:
+        return None
+    begin = begin.astimezone(tz)
+    all_day = raw.get("has_explicit_time") is False        # sin hora explícita: se muestra solo la fecha
+    occurrences = raw.get("occurrences_count")
+    series = isinstance(occurrences, int) and occurrences > 1
+    if all_day:
+        start = datetime.combine(begin.date(), time.min, tzinfo=tz)
+        last = finish.astimezone(tz) if finish and not series else begin
+        end = datetime.combine((last - timedelta(milliseconds=1)).date() + timedelta(days=1), time.min, tzinfo=tz)
+        if end <= start:
+            end = start + timedelta(days=1)
+    else:
+        start = begin
+        if finish is not None and not series and finish > begin:
+            end = finish.astimezone(tz)
+        else:
+            end = begin + timedelta(hours=3)             # varias funciones: Vamoh no entrega cuándo termina cada una
+    location = raw.get("location") if isinstance(raw.get("location"), dict) else {}
+    place = ", ".join(x for x in (_plain(str(location.get("name") or "")), _plain(str(location.get("address") or ""))) if x)
+    images = [i for i in (raw.get("images") or []) if isinstance(i, dict) and str(i.get("url") or "").startswith("https://")]
+    image = str(sorted(images, key=lambda i: i.get("order_index") or 0)[0]["url"]) if images else None
+    price = _num(raw.get("min_price"))
+    free = True if (raw.get("ticket_status") == "free" or raw.get("has_free_ticket") is True) else None
+    ids = raw.get("category_ids") if isinstance(raw.get("category_ids"), list) else []
+    return VamohEvent(
+        uid=str(raw.get("id") or slug),
+        title=name,
+        start=start,
+        end=end,
+        all_day=all_day,
+        place=place,
+        url=f"https://vamoh.cl/events/{slug}/",
+        categories=tuple(category_names.get(str(c), str(c)) for c in ids),
+        image=image,
+        price_from=float(price) if price is not None and price > 0 else None,
+        free=free,
+    )
+
+
+def parse_vamoh_page(html: str) -> VamohPage:
+    """Eventos de una página de listado. Una búsqueda sin resultados es válida; un formato desconocido es un error."""
+    queries = _hydrated_queries(_next_flight_text(html))
+    listing: dict[str, Any] | None = None
+    categories: dict[str, str] = {}
+    for q in queries:
+        key = q.get("queryKey")
+        data = (q.get("state") or {}).get("data") if isinstance(q.get("state"), dict) else None
+        if not isinstance(key, list) or not key:
+            continue
+        if key[0] == "infiniteEvents" and isinstance(data, dict) and isinstance(data.get("pages"), list):
+            listing = data
+        elif key == ["categories", "events"] and isinstance(data, list):
+            categories = {str(c["id"]): str(c["name"]) for c in data if isinstance(c, dict) and c.get("id") and c.get("name")}
+    if listing is None:
+        raise NavajaApiError("La página de Vamoh no trae el listado de eventos (¿cambió su formato?)")
+    events: list[VamohEvent] = []
+    seen: set[str] = set()
+    page = total_pages = total = 0
+    for block in listing["pages"]:
+        if not isinstance(block, dict) or not isinstance(block.get("events"), list):
+            raise NavajaApiError("Formato inesperado en el listado de Vamoh")
+        page = int(block.get("page") or page or 1)
+        total_pages = int(block.get("total_pages") or total_pages or 1)
+        total = int(block.get("total") or total or 0)
+        for raw in block["events"]:
+            event = _vamoh_web_event(raw, categories)
+            if event is not None and event.uid not in seen:
+                seen.add(event.uid)
+                events.append(event)
+    return VamohPage(events, page or 1, max(total_pages, 1), total, categories)
+
+
+async def _get_vamoh_page(session: aiohttp.ClientSession, url: str) -> str:
+    try:
+        async with session.get(
+            url, headers=HEADERS | {"Accept": "text/html"}, timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+        ) as resp:
+            if resp.status in (403, 429, 503):
+                raise NavajaApiError(f"Vamoh no atendió la solicitud (HTTP {resp.status}); puede ser una protección anti-bots", resp.status)
+            resp.raise_for_status()
+            body = await resp.content.read(VAMOH_PAGE_MAX_BYTES + 1)
+    except aiohttp.ClientResponseError as err:
+        raise NavajaApiError(f"Vamoh respondió HTTP {err.status}", err.status) from err
+    except aiohttp.ClientError as err:
+        raise NavajaApiError(f"No fue posible conectar con Vamoh: {type(err).__name__}") from err
+    except TimeoutError as err:
+        raise NavajaApiError("Vamoh no respondió a tiempo") from err
+    if len(body) > VAMOH_PAGE_MAX_BYTES:
+        raise NavajaApiError("La página de Vamoh excede el tamaño admitido")
+    return body.decode("utf-8", "replace")
+
+
+async def fetch_vamoh_listing(
+    session: aiohttp.ClientSession, region: str, category: str | None, max_pages: int, now: datetime, pause: float = 0.0
+) -> VamohListing:
+    """Descarga hasta `max_pages` páginas del listado (ordenado por relevancia, no por fecha) y las une sin repetidos."""
+    import asyncio
+
+    first = parse_vamoh_page(await _get_vamoh_page(session, vamoh_listing_url(region, category)))
+    events = list(first.events)
+    read, total_pages = 1, first.total_pages
+    for number in range(2, min(total_pages, max_pages) + 1):
+        if pause:
+            await asyncio.sleep(pause)
+        try:
+            more = parse_vamoh_page(await _get_vamoh_page(session, vamoh_listing_url(region, category, number)))
+        except NavajaApiError:
+            break   # se conserva lo ya leído y el resultado queda marcado como parcial
+        known = {e.uid for e in events}
+        events += [e for e in more.events if e.uid not in known]
+        read += 1
+    return VamohListing(events, first.total, read, total_pages, now, region, category)

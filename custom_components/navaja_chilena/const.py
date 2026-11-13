@@ -370,3 +370,25 @@ EV_MIN_POWERS = (0, 7, 22, 50, 100)
 EV_LOW_BATTERIES = (20, 30, 40, 50)
 EV_DEFAULT_LOW_BATTERY = 30
 EV_ATTRIBUTION = "Cargadores: mapa de cargadores públicos del Ministerio de Energía (SEC)"
+
+# Panoramas por Vamoh desde sus páginas públicas de listado (datos de hidratación de Next.js), con filtro de región y categoría
+CONF_VAMOH_REGION = "vamoh_region"
+CONF_VAMOH_CATEGORY = "vamoh_category"
+VAMOH_NONE = "none"
+VAMOH_ALL_CATEGORIES = "all"
+VAMOH_EVENTS_URL = "https://vamoh.cl/events/"
+VAMOH_WEB_INTERVAL = timedelta(hours=1)        # una consulta por hora, con caché (lo que Vamoh recomienda)
+VAMOH_WEB_MAX_PAGES = 3                        # el listado viene por relevancia: se leen pocas páginas y se avisa que es parcial
+VAMOH_PAGE_PAUSE = 1.0                         # segundos entre páginas
+VAMOH_PAGE_MAX_BYTES = 4_000_000
+VAMOH_STALE_MAX = timedelta(hours=24)          # sin poder actualizar, se conserva el último resultado bueno hasta por un día
+VAMOH_REGIONS: dict[str, str] = {              # los mismos códigos y nombres que entrega el sitio
+    "15": "Arica y Parinacota", "1": "Tarapacá", "2": "Antofagasta", "3": "Atacama", "4": "Coquimbo", "5": "Valparaíso",
+    "13": "Metropolitana de Santiago", "6": "O'Higgins", "7": "Maule", "16": "Ñuble", "8": "Biobío", "9": "La Araucanía",
+    "14": "Los Ríos", "10": "Los Lagos", "11": "Aysén", "12": "Magallanes",
+}
+VAMOH_CATEGORIES: dict[str, str] = {
+    "musica": "Música", "vida_nocturna": "Vida nocturna", "deporte_fitness": "Deporte", "arte_cultura": "Arte y cultura",
+    "comedia_humor": "Comedia", "aprendizaje_educacion": "Aprendizaje", "familiar_infantil": "Familiar",
+    "exposiciones_ferias": "Exhibiciones", "bienestar_salud": "Bienestar", "social_comunidad": "Social", "gastronomia": "Gastronomía",
+}

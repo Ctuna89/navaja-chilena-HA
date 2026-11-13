@@ -25,7 +25,7 @@ from . import vehicle
 from .vehicle_entity import REASON_TEXT, VehicleMixin
 from .api import FUEL_LABELS
 from .const import FOOTBALL_TEAMS, NATIONAL_TEAM_ID
-from .const import VAMOH_ATTRIBUTION, VAMOH_SITE, NEWS_TOPICS, REGIONAL_ZONES, BENEFIT_CATEGORIES, BENEFITS_SITE, CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
+from .const import VAMOH_ATTRIBUTION, VAMOH_CATEGORIES, VAMOH_REGIONS, VAMOH_SITE, NEWS_TOPICS, REGIONAL_ZONES, BENEFIT_CATEGORIES, BENEFITS_SITE, CINEMARK_THEATERS, EPHEMERIDES_CL_URL, CRYPTO_MARKETS, DOMAIN, INDICATORS, UNIT_MAP
 
 
 def _device(key: str, name: str) -> DeviceInfo:
@@ -568,13 +568,35 @@ class _VamohBase(_EventsBase):
     def _now(self) -> datetime:
         return dt_util.now().astimezone(ZoneInfo(api.METRO_TZ))
 
+    def _events(self) -> list[api.VamohEvent]:
+        data = self.coordinator.data
+        return data.events if isinstance(data, api.VamohListing) else data
+
     def _upcoming(self) -> list[api.VamohEvent]:
-        return api.vamoh_events_between(self.coordinator.data, self._now())
+        return api.vamoh_events_between(self._events(), self._now())
+
+    def _source_attrs(self) -> dict[str, Any]:
+        """Del listado web: si es parcial, de cuándo es y si la última actualización falló. Del .ics no hay nada que agregar."""
+        data = self.coordinator.data
+        if not isinstance(data, api.VamohListing):
+            return {}
+        attrs: dict[str, Any] = {
+            "region": VAMOH_REGIONS.get(data.region),
+            "categoria": VAMOH_CATEGORIES.get(data.category) if data.category else "Todas",
+            "resultados_parciales": data.partial,
+            "paginas_leidas": f"{data.pages_read} de {data.pages_total}",
+            "total_en_vamoh": data.total,
+            "actualizado": data.updated.astimezone(ZoneInfo(api.METRO_TZ)).strftime("%Y-%m-%d %H:%M"),
+            "desactualizado": data.error is not None,
+        }
+        if data.error:
+            attrs["ultimo_error"] = data.error
+        return attrs
 
     @staticmethod
     def _brief(e: api.VamohEvent) -> dict[str, Any]:
         last = e.end - timedelta(days=1) if e.all_day else e.end   # el fin de un evento de día completo es exclusivo
-        return {
+        brief: dict[str, Any] = {
             "titulo": e.title,
             "fecha": e.start.strftime("%Y-%m-%d"),
             "hora": None if e.all_day else e.start.strftime("%H:%M"),
@@ -583,6 +605,12 @@ class _VamohBase(_EventsBase):
             "categorias": list(e.categories),
             "ficha": e.url,            # ficha del evento en Vamoh
         }
+        if e.image or e.price_from is not None or e.free:      # solo el listado web trae afiche y precio
+            brief["imagen"] = e.image
+            brief["precio_desde"] = int(e.price_from) if e.price_from is not None else None
+            brief["gratis"] = True if e.free else None            # sin precio informado no se dice «gratis»
+            brief["entrada"] = "Gratis" if e.free else (f"Desde ${int(e.price_from):,}".replace(",", ".") if e.price_from is not None else None)
+        return brief
 
 
 class VamohTodaySensor(_VamohBase):
@@ -612,7 +640,7 @@ class VamohTodaySensor(_VamohBase):
             "panoramas": [self._brief(e) for e in self._today_events()[: self.MAX_LISTED]],
             "atribucion": VAMOH_ATTRIBUTION,
             "sitio": VAMOH_SITE,
-        }
+        } | self._source_attrs()
 
 
 class VamohNextSensor(_VamohBase):
@@ -635,17 +663,22 @@ class VamohNextSensor(_VamohBase):
         return title if len(title) <= 255 else title[:254].rstrip() + "…"
 
     @property
+    def entity_picture(self) -> str | None:
+        upcoming = self._upcoming() if self.coordinator.data is not None else []
+        return upcoming[0].image if upcoming else None
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         upcoming = self._upcoming()
         attrs: dict[str, Any] = {
             "proximos": [self._brief(e) for e in upcoming[: self.MAX_LISTED]],
             "atribucion": VAMOH_ATTRIBUTION,
             "sitio": VAMOH_SITE,
-        }
+        } | self._source_attrs()
         if upcoming:
             attrs.update(self._brief(upcoming[0]))
         else:
-            attrs["motivo"] = "Vamoh no tiene panoramas destacados por ahora"
+            attrs["motivo"] = "Vamoh no tiene panoramas para ese filtro por ahora"
         return attrs
 
 

@@ -68,7 +68,7 @@ El asistente te pregunta qué quieres activar:
 - tu **comuna** para las farmacias de turno,
 - tu **equipo** de la Primera División (o toda la liga) y **La Roja**, para ver partidos, resultados y tabla,
 - los **combustibles** que usas (93, 95, 97 o diésel), el **radio** de búsqueda alrededor de tu casa y la **antigüedad máxima** de los precios,
-- tu **comuna** para los panoramas culturales (puedes escribirla sin tildes), si quieres **solo los gratuitos** si quieres los eventos del **Claro Arena** y el enlace de tu calendario de **Panoramas por Vamoh**,
+- tu **comuna** para los panoramas culturales (puedes escribirla sin tildes), si quieres **solo los gratuitos** si quieres los eventos del **Claro Arena** y tu región y categoría de **Panoramas por Vamoh**,
 - si tienes auto eléctrico, tus **conectores**, el radio de búsqueda y el sensor de batería de tu auto,
 - si quieres **«Cerca de ti»**, la persona o teléfono cuya ubicación se usa y la distancia de aviso,
 - los **temas de noticias** que quieres seguir y cuántos titulares por tema,
@@ -204,14 +204,16 @@ Eventos para salir de casa, de dos fuentes abiertas. Cada una se activa por sepa
   publicados por las propias instituciones. Se actualiza cada 6 horas. La agenda trae **fechas** (no horas ni precios): para eso, usa el enlace de cada evento.
 - Los eventos de varios días cuentan como «hoy» mientras estén en curso. Si tu comuna no tiene eventos publicados, el próximo evento queda sin valor y lo explica; si la fuente no responde, quedan «no disponibles».
 
-**Panoramas por Vamoh** (`sensor.panoramas_por_vamoh_hoy` y `sensor.panoramas_por_vamoh_proximo_panorama`) · los planes destacados que elige [Vamoh](https://vamoh.cl).
+**Panoramas por Vamoh** (`sensor.panoramas_por_vamoh_hoy` y `sensor.panoramas_por_vamoh_proximo_panorama`) · los panoramas de [Vamoh](https://vamoh.cl) para tu región y el tipo de plan que te interesa.
 
-- Pegas el **enlace del calendario (.ics)** que te entrega Vamoh: el público de tu comuna o, cuando esté disponible, **tu enlace personal** con los eventos que guardaste en tu cuenta.
-  Solo se aceptan enlaces `https` de `vamoh.cl`.
-- **Hoy**: cuántos panoramas hay hoy. **Próximo panorama**: el que viene (o el que está en curso). Atributos: `titulo`, `fecha`, `hora`, `lugar`, `categorias`, `ficha` (el enlace al evento **en Vamoh**) y `proximos`.
-- Cada evento abre su ficha en Vamoh, y los sensores muestran la atribución «Panoramas por Vamoh». La curaduría es de Vamoh: aquí solo se leen los eventos de su calendario.
-- Se consulta **cada 6 horas** (y solo se descarga de nuevo si el calendario cambió). Si Vamoh no responde, los sensores quedan «no disponibles».
-- Si usas tu enlace personal, **trátalo como una contraseña**: no lo compartas. La integración nunca lo muestra en atributos ni en el registro.
+- Eliges tu **región** y, si quieres, una **categoría** (música, comedia, vida nocturna, familiar, gastronomía…). Se leen las páginas públicas de listado de Vamoh, que traen los datos incluidos.
+- **Hoy**: cuántos panoramas hay hoy. **Próximo panorama**: el que viene (o el que está en curso), con su afiche como imagen de la entidad. Atributos: `titulo`, `fecha`, `hora`, `lugar`, `categorias`, `entrada` (por ejemplo «Desde $25.000» o «Gratis»), `imagen`, `ficha` (el enlace al evento **en Vamoh**) y `proximos`.
+- **Honestidad con los datos:** si el evento no tiene hora, se muestra solo la fecha; si Vamoh no informa precio, no se muestra como «Gratis»; se excluyen los eventos cancelados, inactivos y ya terminados; y en eventos con varias funciones se usa la próxima.
+- **Resultados parciales:** Vamoh ordena el listado por relevancia, no por fecha. Para no sobrecargar su sitio, la integración lee las **3 primeras páginas** (hasta 60 panoramas), los ordena por fecha y lo dice en los atributos `resultados_parciales`, `paginas_leidas` y `total_en_vamoh`.
+- Se consulta **una vez por hora**. Si falla, se conserva el último resultado bueno hasta por un día y los atributos `actualizado`, `desactualizado` y `ultimo_error` lo indican; pasado ese día, los sensores quedan «no disponibles» en vez de mostrar datos viejos.
+- Cada evento abre su ficha en Vamoh y los sensores muestran la atribución «Panoramas por Vamoh». La curaduría es de Vamoh: aquí solo se leen sus páginas.
+- Es una lectura de la estructura actual del sitio, no de una API con versiones: si Vamoh la cambia, los sensores quedan no disponibles hasta ajustar la integración.
+- Alternativa: en vez de la región puedes pegar el **enlace de un calendario (.ics)** de Vamoh (solo `https` de `vamoh.cl`); si eliges región, se usa el listado. Si usas un enlace personal, **trátalo como una contraseña**: no lo compartas. La integración nunca lo muestra en atributos ni en el registro.
 - Home Assistant también puede leer ese mismo enlace con su integración **Calendario remoto** para ver los panoramas en el calendario de tu panel.
 
 **Claro Arena** (`sensor.claro_arena_proximo_evento`) · el estadio de la UC en Las Condes: partidos y conciertos.
@@ -403,7 +405,7 @@ necesidad de registrarte.
 | Fútbol | [ESPN](https://www.espn.cl/futbol/) (calendario, resultados y tabla; servicio público no documentado) |
 | Combustibles | [Bencina en Línea](https://www.bencinaenlinea.cl) (Comisión Nacional de Energía) |
 | Panoramas culturales | [Chile Cultura](https://chilecultura.gob.cl), agenda oficial del Ministerio de las Culturas, las Artes y el Patrimonio (los eventos los publican las instituciones culturales) |
-| Panoramas por Vamoh | Calendario (.ics) de [Vamoh](https://vamoh.cl), con su curaduría de panoramas; cada evento enlaza a su ficha en Vamoh |
+| Panoramas por Vamoh | Páginas públicas de listado de [Vamoh](https://vamoh.cl) (o su calendario .ics); cada evento enlaza a su ficha en Vamoh |
 | Claro Arena | Cartelera pública de [claroarena.cl](https://claroarena.cl/cartelera/); las entradas se compran en Puntoticket |
 | Descuentos en bencina | Calendario mensual del repositorio ([`data/bencina.json`](data/bencina.json)); cada descuento cita su fuente (Copec, Shell, Aramco, bancos y prensa) |
 | Descuentos de tarjetas | [N Beneficios](https://www.nbeneficios.cl), un servicio de Infoacción (los beneficios, logos e imágenes pertenecen a sus emisores) |
@@ -427,7 +429,7 @@ solo esos paraderos, con mapa de buses en vivo, esa integración es una excelent
 El módulo del **tren Limache–Puerto** es un aporte de [claudiojara](https://github.com/claudiojara), autor de
 [ha-efe-valparaiso](https://github.com/claudiojara/ha-efe-valparaiso) (licencia MIT), que además ofrece una tarjeta propia con selección de cualquier par de estaciones. Gracias por sumarlo.
 
-Los **Panoramas por [Vamoh](https://vamoh.cl)** son posibles gracias a que Vamoh abrió un calendario público para que Home Assistant lo lea: la curaduría de panoramas es de su equipo, y cada evento lleva a su ficha en Vamoh. Gracias por la confianza.
+Los **Panoramas por [Vamoh](https://vamoh.cl)** son posibles gracias a que Vamoh nos autorizó a leer sus páginas públicas de listado y nos explicó cómo hacerlo con cuidado: los panoramas son de su equipo y cada evento lleva a su ficha en Vamoh. Gracias por la confianza.
 
 Y gracias a quienes mantienen abiertos los servicios que hacen posible esta integración —[mindicador.cl](https://mindicador.cl), [findic.cl](https://findic.cl), [api.xor.cl](https://api.xor.cl),
 [Open-Meteo](https://open-meteo.com), [Bencina en Línea](https://www.bencinaenlinea.cl), el [mapa de cargadores públicos](https://cargadorespublicos.cl) del Ministerio de Energía y la SEC, [N Beneficios](https://www.nbeneficios.cl), [efemerides.cl](https://www.efemerides.cl), La Tercera y Cooperativa, entre otros—

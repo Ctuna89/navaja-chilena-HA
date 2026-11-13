@@ -1615,3 +1615,233 @@ async def test_ev_documented_cards_when_the_source_is_down(hass, aioclient_mock,
     await _setup_ev(hass, aioclient_mock, status=500)
     assert "no responde" in Template(_doc_card("🔌 Cargador libre más cercano"), hass).async_render()
     assert "Sin tarifas" in Template(_doc_card("💸 Carga más barata cerca"), hass).async_render()
+
+
+# ----------------------------------- Panoramas por Vamoh: páginas de listado (datos de hidratación de Next.js)
+
+import copy as _vcopy  # noqa: E402
+from datetime import timedelta  # noqa: E402
+import json as _vjson  # noqa: E402
+
+VW_HTML = (FIX_DIR / "vamoh_musica_13.html").read_text(encoding="utf-8")
+VW_P1 = "https://vamoh.cl/events/?cats=musica&sc=13"
+VW_P2 = "https://vamoh.cl/events/?cats=musica&sc=13&page=2"
+VW_P3 = "https://vamoh.cl/events/?cats=musica&sc=13&page=3"
+VW_NOW = "2026-11-13 12:00:00-03:00"
+VW_TODAY = "sensor.panoramas_por_vamoh_hoy"
+VW_NEXT = "sensor.panoramas_por_vamoh_proximo_panorama"
+
+
+def _vw_raw_events():
+    queries = api._hydrated_queries(api._next_flight_text(VW_HTML))
+    return _vcopy.deepcopy(queries[0]["state"]["data"]["pages"][0]["events"])
+
+
+def _vw_html(events, page=1, total_pages=50, total=998):
+    """Página de listado con la misma estructura que la real (fixture), con otros eventos."""
+    state = {"mutations": [], "queries": [
+        {"state": {"data": {"pages": [{"events": events, "total": total, "page": page, "limit": 20, "total_pages": total_pages}], "pageParams": [page]}},
+         "queryKey": ["infiniteEvents", {"categories": ["musica"], "state_code": "13"}, 20]},
+        {"state": {"data": [{"id": "musica", "name": "Música", "slug": "musica"}]}, "queryKey": ["categories", "events"]},
+    ]}
+    text = "54:" + _vjson.dumps(["$", "$L67", None, {"state": state}], ensure_ascii=False) + "\n"
+    return f"<html><body><script>self.__next_f.push([1,{_vjson.dumps(text)}])</script></body></html>"
+
+
+def _vw_more(prefix, start_day):
+    events = _vw_raw_events()[:2]
+    for i, e in enumerate(events):
+        e["id"], e["name"], e["slug"] = f"{prefix}-{i}", f"{prefix} evento {i}", f"{prefix}-evento-{i}"
+        e["next_occurrence_at"] = e["start_date_time"] = f"2026-11-{start_day}T22:00:00.000Z"
+        e["finish_date_time"] = f"2026-11-{start_day + 1}T01:00:00.000Z"
+        e["occurrences_count"] = 1
+    return events
+
+
+def test_vamoh_web_parse_real_page():
+    page = api.parse_vamoh_page(VW_HTML)
+    assert (page.page, page.total_pages, page.total) == (1, 50, 998) and len(page.events) == 6
+    by = {e.title: e for e in page.events}
+    opera = by["Opera IX"]                                      # sin hora explícita: solo la fecha
+    assert opera.all_day and opera.start.isoformat() == "2026-11-13T00:00:00-03:00" and opera.end.isoformat() == "2026-11-14T00:00:00-03:00"
+    assert opera.place == "Bar Oxido, Purísima 282" and opera.url == "https://vamoh.cl/events/opera-ix-s8yo4/"
+    assert opera.price_from == 25000 and opera.free is None and opera.categories == ("Música",)
+    assert opera.image == "https://img.vamoh.cl/events/aad8955a-4737-4950-8181-ac2bbbbe82f4.webp"
+    la = by["La La Love You"]                                    # con hora: 00:00 UTC = 21:00 del día anterior en Chile
+    assert not la.all_day and la.start.isoformat() == "2026-11-13T21:00:00-03:00" and la.end.isoformat() == "2026-11-13T23:00:00-03:00"
+    assert by["Papanegro: El Encuentro Vol. 2"].free is True
+    orbita = by["ÓRBITA SONORA 1: RADIOHEAD - IN RAINBOWS"]      # varias funciones: usa la próxima, no la fecha de inicio original
+    assert orbita.start.isoformat() == "2026-11-14T17:00:00-03:00" and orbita.end == orbita.start + timedelta(hours=3)
+
+
+def test_vamoh_web_parse_joins_fragments_and_decodes_data_without_executing_it():
+    flight = api._next_flight_text(VW_HTML)
+    assert flight.count('{"mutations":[],"queries":[') == 1 and "&sc=13" in flight    # & decodificado; dos fragmentos unidos
+    hostile = VW_HTML.replace("Opera IX", "Opera </script><script>alert(1)</script> IX")
+    assert api.parse_vamoh_page(hostile).events                                       # el contenido es dato, no código
+
+
+def test_vamoh_web_parse_skips_cancelled_inactive_and_incomplete_events():
+    raw = _vw_raw_events()
+    raw[0]["cancelled"] = True
+    raw[1]["active"] = False
+    raw[2]["slug"] = ""
+    raw[3]["name"] = ""
+    page = api.parse_vamoh_page(_vw_html(raw))
+    assert [e.title for e in page.events] == ["Taki Ongoy en Liceo Manuel de Salas", "Daniel Guerrero llega a La Barrica Celta - 13 de Noviembre"]
+
+
+def test_vamoh_web_never_calls_it_free_without_saying_so():
+    raw = _vw_raw_events()
+    for e in raw:
+        e["min_price"], e["has_free_ticket"], e["ticket_status"] = None, False, "available"
+    events = api.parse_vamoh_page(_vw_html(raw)).events
+    assert all(e.price_from is None and e.free is None for e in events)
+    raw[0]["has_free_ticket"] = True
+    assert api.parse_vamoh_page(_vw_html(raw)).events[0].free is True
+
+
+def test_vamoh_web_empty_search_is_valid_and_unknown_format_is_an_error():
+    empty = api.parse_vamoh_page(_vw_html([], total=0, total_pages=1))
+    assert empty.events == [] and empty.total == 0
+    for bad in ("<html>nada</html>", "<script>self.__next_f.push([1,\"sin datos\"])</script>"):
+        with pytest.raises(api.NavajaApiError):
+            api.parse_vamoh_page(bad)
+
+
+def test_vamoh_web_listing_url():
+    assert api.vamoh_listing_url("13", "musica") == "https://vamoh.cl/events/?cats=musica&sc=13"
+    assert api.vamoh_listing_url("5", "comedia_humor", 2) == "https://vamoh.cl/events/?cats=comedia_humor&sc=5&page=2"
+    assert api.vamoh_listing_url("13", None) == "https://vamoh.cl/events/?sc=13"
+    for bad in (("99", "musica"), ("13", "otra")):
+        with pytest.raises(ValueError):
+            api.vamoh_listing_url(*bad)
+
+
+async def _setup_vamoh_web(hass, aioclient_mock, monkeypatch, p1=None, p2=None, p3=None, status=200, **extra):
+    monkeypatch.setattr("custom_components.navaja_chilena.coordinator.VAMOH_PAGE_PAUSE", 0)
+    mock_all(aioclient_mock)
+    # primero las URL más específicas: la de la página 1 coincide también con las demás
+    aioclient_mock.get(VW_P3, text=_vw_html(_vw_more("p3", 18), page=3) if p3 is None else p3)
+    aioclient_mock.get(VW_P2, text=_vw_html(_vw_more("p2", 16), page=2) if p2 is None else p2)
+    aioclient_mock.get(VW_P1, text=VW_HTML if p1 is None else p1, status=status)
+    data = {"indicators": ["uf"], "metro": False, "vamoh_region": "13", "vamoh_category": "musica", **extra}
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_vamoh_web_sensors_today_and_next(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch)
+    hoy = hass.states.get(VW_TODAY)
+    assert hoy.state == "4"                                         # Opera IX, La La Love You, Papanegro y Daniel Guerrero
+    nxt = hass.states.get(VW_NEXT)
+    assert nxt.state == "Opera IX" and nxt.attributes["ficha"] == "https://vamoh.cl/events/opera-ix-s8yo4/"
+    assert nxt.attributes["entrada"] == "Desde $25.000" and nxt.attributes["entity_picture"].startswith("https://img.vamoh.cl/")
+    for st in (hoy, nxt):                                           # condiciones de Vamoh: atribución visible y enlace a cada ficha
+        assert st.attributes["attribution"] == "Panoramas por Vamoh (vamoh.cl)" and st.attributes["sitio"] == "https://vamoh.cl/"
+    assert all(e["ficha"].startswith("https://vamoh.cl/events/") for e in nxt.attributes["proximos"])
+    free = [e for e in hoy.attributes["panoramas"] if e["titulo"].startswith("Papanegro")][0]
+    assert free["gratis"] is True and free["entrada"] == "Gratis"
+    starts = [(e["fecha"], e["hora"] or "") for e in nxt.attributes["proximos"]]
+    assert starts == sorted(starts)                                  # ordenados por fecha, no por relevancia
+    titles = [e["titulo"] for e in nxt.attributes["proximos"]]
+    assert "p2 evento 0" in titles and "p3 evento 0" in titles       # unió las páginas 2 y 3 con la 1
+    urls = [str(c[1]) for c in aioclient_mock.mock_calls if "vamoh.cl" in str(c[1])]
+    assert urls == [VW_P1, VW_P2, VW_P3]
+
+
+async def test_vamoh_web_says_when_results_are_partial(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch)
+    a = hass.states.get(VW_NEXT).attributes
+    assert a["resultados_parciales"] is True and a["paginas_leidas"] == "3 de 50" and a["total_en_vamoh"] == 998
+    assert a["region"] == "Metropolitana de Santiago" and a["categoria"] == "Música" and a["desactualizado"] is False
+    assert a["actualizado"] == "2026-11-13 12:00"
+    assert len([c for c in aioclient_mock.mock_calls if "vamoh.cl" in str(c[1])]) == 3        # solo 3 páginas por actualización
+    assert all("User-Agent" in c[3] and "NavajaChilena" in c[3]["User-Agent"] for c in aioclient_mock.mock_calls if "vamoh.cl" in str(c[1]))
+
+
+async def test_vamoh_web_complete_when_the_listing_fits_in_the_pages_read(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch, p1=_vw_html(_vw_raw_events(), total=6, total_pages=1))
+    a = hass.states.get(VW_NEXT).attributes
+    assert a["resultados_parciales"] is False and a["paginas_leidas"] == "1 de 1"
+    assert len([c for c in aioclient_mock.mock_calls if "vamoh.cl" in str(c[1])]) == 1
+
+
+async def test_vamoh_web_failed_extra_page_keeps_what_was_read(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    aioclient_mock.get(VW_P2, status=503)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch)
+    a = hass.states.get(VW_NEXT).attributes
+    assert a["paginas_leidas"] == "1 de 50" and a["resultados_parciales"] is True and hass.states.get(VW_TODAY).state == "4"
+
+
+async def test_vamoh_web_blocked_by_cloudflare_is_unavailable_never_empty(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch, p1="<html><title>Attention Required! | Cloudflare</title></html>", status=403)
+    for eid in (VW_TODAY, VW_NEXT):
+        assert hass.states.get(eid).state == "unavailable"          # un bloqueo no se confunde con «0 panoramas»
+
+
+async def test_vamoh_web_keeps_last_good_result_when_it_fails_then_gives_up_after_a_day(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    entry = await _setup_vamoh_web(hass, aioclient_mock, monkeypatch)
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(VW_P1, status=503)
+    freezer.move_to("2026-11-13 18:00:00-03:00")
+    await entry.runtime_data.vamoh.async_refresh()
+    await hass.async_block_till_done()
+    nxt = hass.states.get(VW_NEXT)
+    assert nxt.state != "unavailable" and nxt.attributes["desactualizado"] is True
+    assert "503" in nxt.attributes["ultimo_error"] and nxt.attributes["actualizado"] == "2026-11-13 12:00"
+    freezer.move_to("2026-11-14 13:00:00-03:00")                      # pasó más de un día sin poder actualizar
+    await entry.runtime_data.vamoh.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(VW_NEXT).state == "unavailable"
+
+
+async def test_vamoh_web_region_takes_precedence_over_the_ics_link(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    aioclient_mock.get(VAMOH_URL, text=VAMOH_ICS)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch, vamoh_url=VAMOH_URL)
+    assert not [c for c in aioclient_mock.mock_calls if "mi-enlace.ics" in str(c[1])]
+    assert hass.states.get(VW_NEXT).state == "Opera IX"
+
+
+async def test_vamoh_web_without_a_category_lists_every_category(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    monkeypatch.setattr("custom_components.navaja_chilena.coordinator.VAMOH_PAGE_PAUSE", 0)
+    mock_all(aioclient_mock)
+    aioclient_mock.get("https://vamoh.cl/events/?sc=5", text=_vw_html(_vw_raw_events(), total=6, total_pages=1))
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False, "vamoh_region": "5", "vamoh_category": "all"})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    a = hass.states.get(VW_NEXT).attributes
+    assert a["categoria"] == "Todas" and a["region"] == "Valparaíso"
+
+
+async def test_vamoh_web_options_flow_accepts_region_and_category(hass, aioclient_mock):
+    mock_all(aioclient_mock)
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    keys = {str(k): k for k in flow["data_schema"].schema}
+    assert "vamoh_region" in keys and "vamoh_category" in keys
+    base = {"indicators": ["uf"], "metro": False, "vamoh_region": "13", "vamoh_category": "comedia_humor"}
+    result = await hass.config_entries.flow.async_configure(flow["flow_id"], base)
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"]["vamoh_region"] == "13" and result["data"]["vamoh_category"] == "comedia_humor"
+
+
+async def test_vamoh_web_documented_card_renders(hass, aioclient_mock, monkeypatch, freezer):
+    from homeassistant.helpers.template import Template
+    freezer.move_to(VW_NOW)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch)
+    card = Template(_doc_card("✨ Panoramas por Vamoh"), hass).async_render()
+    assert "Opera IX" in card and "Desde $25.000" in card and "ver en Vamoh" in card
+    assert "https://vamoh.cl/events/opera-ix-s8yo4/" in card and "Panoramas por" in card
+    assert "3 de 50 páginas" in card and "Gratis" in card

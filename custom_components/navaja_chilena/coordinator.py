@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 from typing import Any, Awaitable, Callable
@@ -18,6 +19,10 @@ from .const import (
     BENEFITS_INTERVAL,
     EVENTS_INTERVAL,
     VAMOH_INTERVAL,
+    VAMOH_PAGE_PAUSE,
+    VAMOH_STALE_MAX,
+    VAMOH_WEB_INTERVAL,
+    VAMOH_WEB_MAX_PAGES,
     NEWS_COOP_MIN_AGE,
     NEWS_INTERVAL,
     REGIONAL_INTERVAL,
@@ -379,6 +384,26 @@ def arena_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
         return await api.fetch_arena_events(session)
 
     return NavajaCoordinator(hass, "claro_arena", EVENTS_INTERVAL, fetch)
+
+
+def vamoh_web_coordinator(hass: HomeAssistant, region: str, category: str | None) -> NavajaCoordinator:
+    """Panoramas por Vamoh desde sus páginas de listado: una consulta por hora. Si falla, se conserva el último resultado bueno."""
+    state: dict[str, Any] = {"listing": None}
+
+    async def fetch(session: Any) -> api.VamohListing:
+        now = dt_util.now()
+        try:
+            listing = await api.fetch_vamoh_listing(session, region, category, VAMOH_WEB_MAX_PAGES, now, VAMOH_PAGE_PAUSE)
+        except api.NavajaApiError as err:
+            previous = state["listing"]
+            if previous is not None and now - previous.updated <= VAMOH_STALE_MAX:
+                _LOGGER.debug("Vamoh no respondió; se conserva el resultado del %s: %s", previous.updated, err)
+                return replace(previous, error=str(err))
+            raise
+        state["listing"] = listing
+        return listing
+
+    return NavajaCoordinator(hass, "vamoh_web", VAMOH_WEB_INTERVAL, fetch)
 
 
 def vamoh_coordinator(hass: HomeAssistant, url: str) -> NavajaCoordinator:

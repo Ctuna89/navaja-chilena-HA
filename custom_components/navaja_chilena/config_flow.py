@@ -42,7 +42,13 @@ from .const import (
     CONF_NEAR_TRACKER,
     NEAR_DEFAULT_RADIUS,
     NEAR_RADII,
+    CONF_VAMOH_CATEGORY,
+    CONF_VAMOH_REGION,
     CONF_VAMOH_URL,
+    VAMOH_ALL_CATEGORIES,
+    VAMOH_CATEGORIES,
+    VAMOH_NONE,
+    VAMOH_REGIONS,
     CONF_EVENTS_COMMUNE,
     CONF_EVENTS_FREE_ONLY,
     CONF_NEWS_COUNT,
@@ -259,6 +265,24 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
+            vol.Required(
+                CONF_VAMOH_REGION, default=defaults.get(CONF_VAMOH_REGION, VAMOH_NONE)
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[selector.SelectOptionDict(value=VAMOH_NONE, label="No usar / None")]
+                    + [selector.SelectOptionDict(value=k, label=v) for k, v in VAMOH_REGIONS.items()],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(
+                CONF_VAMOH_CATEGORY, default=defaults.get(CONF_VAMOH_CATEGORY, VAMOH_ALL_CATEGORIES)
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[selector.SelectOptionDict(value=VAMOH_ALL_CATEGORIES, label="Todas / All")]
+                    + [selector.SelectOptionDict(value=k, label=v) for k, v in VAMOH_CATEGORIES.items()],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             vol.Optional(
                 CONF_VAMOH_URL, default=defaults.get(CONF_VAMOH_URL, "")
             ): selector.TextSelector(),
@@ -388,6 +412,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or bool(user_input.get(CONF_CLARO_ARENA))
         or bool(user_input.get(CONF_NEAR_TRACKER))
         or bool(str(user_input.get(CONF_VAMOH_URL) or "").strip())
+        or str(user_input.get(CONF_VAMOH_REGION, VAMOH_NONE)) != VAMOH_NONE
         or (zone != REGIONAL_NONE and bool(regional))
         or str(user_input.get(CONF_FOOTBALL_TEAM, FOOTBALL_NONE)) != FOOTBALL_NONE
         or bool(user_input.get(CONF_FOOTBALL_LEAGUE))

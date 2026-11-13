@@ -24,7 +24,12 @@ from .const import (
     CONF_NEAR_RADIUS,
     CONF_NEAR_TRACKER,
     NEAR_DEFAULT_RADIUS,
+    CONF_VAMOH_CATEGORY,
+    CONF_VAMOH_REGION,
     CONF_VAMOH_URL,
+    VAMOH_ALL_CATEGORIES,
+    VAMOH_CATEGORIES,
+    VAMOH_REGIONS,
     CONF_EVENTS_COMMUNE,
     CONF_EVENTS_FREE_ONLY,
     CONF_NEWS_COUNT,
@@ -80,6 +85,7 @@ from .coordinator import (
     benefits_coordinator,
     culture_coordinator,
     vamoh_coordinator,
+    vamoh_web_coordinator,
     news_coordinator,
     regional_coordinator,
     ev_coordinator,
@@ -268,7 +274,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         except (TypeError, ValueError):
             data.near_radius = NEAR_DEFAULT_RADIUS
     vamoh_url = str(opts.get(CONF_VAMOH_URL) or "").strip()
-    if vamoh_url and api.vamoh_url_ok(vamoh_url):
+    vamoh_region = str(opts.get(CONF_VAMOH_REGION) or "")
+    vamoh_category = str(opts.get(CONF_VAMOH_CATEGORY) or VAMOH_ALL_CATEGORIES)
+    if vamoh_region in VAMOH_REGIONS:        # el listado web de Vamoh tiene prioridad sobre el calendario .ics
+        data.vamoh = vamoh_web_coordinator(hass, vamoh_region, vamoh_category if vamoh_category in VAMOH_CATEGORIES else None)
+    elif vamoh_url and api.vamoh_url_ok(vamoh_url):
         data.vamoh = vamoh_coordinator(hass, vamoh_url)
     if opts.get(CONF_CLARO_ARENA):
         data.arena = arena_coordinator(hass)
