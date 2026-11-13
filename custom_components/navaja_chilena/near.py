@@ -25,6 +25,7 @@ from homeassistant.helpers.event import async_track_state_change_event, async_tr
 from homeassistant.util import dt as dt_util
 
 from . import api
+from . import ev as ev_module
 from .const import CINEMA_INTERVAL, CINEMARK_THEATERS, DOMAIN, NEAR_EXIT_FACTOR, NEAR_MAX_ACCURACY
 
 _LOGGER = logging.getLogger(__name__)
@@ -240,4 +241,46 @@ class NearDiscountStationBinarySensor(_NearBase):
                 for d in self._today_discounts.get(station.brand.casefold(), [])
             ]
             attrs["aviso"] = "Revisa condiciones, topes y activaciones antes de cargar."
+        return attrs
+
+
+class NearEvBinarySensor(_NearBase):
+    """Encendida cuando estás cerca de un cargador eléctrico libre y compatible con tu auto."""
+
+    _attr_name = "Cerca de un cargador eléctrico libre"
+    _attr_icon = "mdi:ev-station"
+
+    def __init__(self, entry: Any, runtime: Any) -> None:
+        super().__init__(entry, runtime, "cargador_electrico")
+        self._found: api.EvCandidate | None = None
+
+    def _extra_sources(self) -> list[Any]:
+        return [self._rt.ev]
+
+    @property
+    def available(self) -> bool:
+        return self._location() is not None and self._rt.ev is not None and self._rt.ev.data is not None
+
+    def _evaluate(self) -> None:
+        loc = self._location()
+        stations = self._rt.ev.data if self._rt.ev is not None else None
+        if loc is None or stations is None:
+            self._near, self._found = False, None
+            return
+        # se busca un poco más lejos que el radio para aplicar la histéresis de salida
+        found = api.ev_candidates(
+            stations, set(self._rt.ev_connectors), self._rt.ev_min_power, *loc,
+            self._rt.near_radius * NEAR_EXIT_FACTOR / 1000, self._now(),
+        )
+        self._found = found[0] if found else None
+        self._near = self._found is not None and self._within(self._found.distance_km * 1000)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        attrs: dict[str, Any] = {"radio_m": self._rt.near_radius, "conectores_buscados": self._rt.ev_connectors}
+        if self._found is None:
+            return attrs
+        attrs.update(ev_module.brief(self._found) | {"distancia_m": round(self._found.distance_km * 1000)})
+        attrs.update({"latitude": self._found.station.lat, "longitude": self._found.station.lon})
+        attrs.pop("distancia_km", None)
         return attrs

@@ -36,6 +36,14 @@ from .const import (
     REGIONAL_NONE,
     REGIONAL_ZONES,
     CONF_BENEFIT_CATEGORIES,
+    CONF_EV_BATTERY,
+    CONF_EV_CONNECTORS,
+    CONF_EV_LOW_BATTERY,
+    CONF_EV_MIN_POWER,
+    CONF_EV_RADIUS,
+    EV_CONNECTORS,
+    EV_DEFAULT_LOW_BATTERY,
+    EV_DEFAULT_RADIUS,
     CONF_FUEL_MAX_AGE,
     CONF_FUEL_RADIUS,
     CONF_FUEL_TYPES,
@@ -74,6 +82,7 @@ from .coordinator import (
     vamoh_coordinator,
     news_coordinator,
     regional_coordinator,
+    ev_coordinator,
     fuel_discounts_coordinator,
     fuel_coordinator,
     NavajaCoordinator,
@@ -112,6 +121,12 @@ class RuntimeData:
     ephemerides: NavajaCoordinator | None = None
     pharmacy_comuna: str = ""
     fuel: NavajaCoordinator | None = None
+    ev: NavajaCoordinator | None = None
+    ev_connectors: list[str] = field(default_factory=list)
+    ev_radius: float = EV_DEFAULT_RADIUS
+    ev_min_power: float = 0
+    ev_battery: str = ""
+    ev_low_battery: int = EV_DEFAULT_LOW_BATTERY
     benefits: NavajaCoordinator | None = None
     fuel_discounts: NavajaCoordinator | None = None
     regional: NavajaCoordinator | None = None
@@ -224,6 +239,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         except (TypeError, ValueError):
             data.fuel_max_age = FUEL_DEFAULT_MAX_AGE
         data.fuel = fuel_coordinator(hass)
+    ev_connectors = [c for c in (opts.get(CONF_EV_CONNECTORS) or []) if c in EV_CONNECTORS]
+    if ev_connectors:
+        data.ev_connectors = ev_connectors
+        for conf, attr, default in (
+            (CONF_EV_RADIUS, "ev_radius", EV_DEFAULT_RADIUS),
+            (CONF_EV_MIN_POWER, "ev_min_power", 0),
+            (CONF_EV_LOW_BATTERY, "ev_low_battery", EV_DEFAULT_LOW_BATTERY),
+        ):
+            try:
+                setattr(data, attr, type(default)(float(opts.get(conf, default))))
+            except (TypeError, ValueError):
+                setattr(data, attr, default)
+        battery = str(opts.get(CONF_EV_BATTERY) or "").strip()
+        if battery.split(".")[0] in ("sensor", "number") and "." in battery:
+            data.ev_battery = battery
+        data.ev = ev_coordinator(hass)
     commune = str(opts.get(CONF_EVENTS_COMMUNE) or "").strip()
     if commune:
         data.events_commune = commune
@@ -291,7 +322,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     coordinators = [
         c
         for c in (data.indicators, data.metro, data.stops, data.train, data.quakes,
-                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.benefits, data.fuel_discounts, data.regional, data.news, data.culture, data.arena, data.vamoh, data.football, data.national)
+                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.ev, data.benefits, data.fuel_discounts, data.regional, data.news, data.culture, data.arena, data.vamoh, data.football, data.national)
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]

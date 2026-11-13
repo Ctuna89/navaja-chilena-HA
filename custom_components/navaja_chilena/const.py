@@ -344,3 +344,29 @@ NEAR_RADII = (150, 300, 500, 1000)       # metros
 NEAR_DEFAULT_RADIUS = 300
 NEAR_EXIT_FACTOR = 1.3                   # histéresis: se apaga al alejarse un 30 % más que el radio de aviso
 NEAR_MAX_ACCURACY = 250                  # m: una ubicación menos precisa que esto se ignora
+
+# Cargadores de vehículos eléctricos (mapa público del Ministerio de Energía, cargadorespublicos.cl; datos de la SEC)
+CONF_EV_CONNECTORS = "ev_connectors"
+CONF_EV_RADIUS = "ev_radius"
+CONF_EV_MIN_POWER = "ev_min_power"
+CONF_EV_BATTERY = "ev_battery"
+CONF_EV_LOW_BATTERY = "ev_low_battery"
+EV_URL = "https://cargadorespublicos.cl/api/data"
+EV_INTERVAL = timedelta(minutes=15)
+EV_MAX_BYTES = 16 * 1024 * 1024
+EV_STATUS_MAX_AGE = timedelta(days=2)   # el estado «disponible» de un punto sin novedades hace más de 2 días no se da por vigente
+EV_CONNECTORS: dict[str, str] = {
+    "Tipo 2": "Tipo 2 (AC)",
+    "CCS 2": "CCS 2 (carga rápida DC)",
+    "CHAdeMO": "CHAdeMO (carga rápida DC)",
+    "GB/T DC": "GB/T (carga rápida DC)",
+    "Tipo 1": "Tipo 1 (AC)",
+    "CCS 1": "CCS 1 (carga rápida DC)",
+    "GB/T AC": "GB/T (AC)",
+}
+EV_RADII = (2, 5, 10, 20, 50)
+EV_DEFAULT_RADIUS = 5
+EV_MIN_POWERS = (0, 7, 22, 50, 100)
+EV_LOW_BATTERIES = (20, 30, 40, 50)
+EV_DEFAULT_LOW_BATTERY = 30
+EV_ATTRIBUTION = "Cargadores: mapa de cargadores públicos del Ministerio de Energía (SEC)"

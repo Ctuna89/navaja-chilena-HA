@@ -55,6 +55,7 @@ from .const import (
     REQUEST_TIMEOUT,
     STOP_URL,
 )
+from .const import EV_CONNECTORS, EV_MAX_BYTES, EV_STATUS_MAX_AGE, EV_URL
 
 HEADERS = {
     "User-Agent": "NavajaChilena/2.4 (https://github.com/Ctuna89/navaja-chilena-HA; integración de Home Assistant)"
@@ -2407,3 +2408,185 @@ def nearest_discount_station(
         if best is None or d < best[1]:
             best = (st, d)
     return best
+
+
+# ----------------------------------------------------- Cargadores de vehículos eléctricos
+
+EV_FREE = "DISPONIBLE"
+
+
+@dataclass(frozen=True)
+class EvConnector:
+    standard: str
+    power_type: str   # "AC" | "DC"
+    kw: float
+    free: bool        # el conector y su punto de carga están «DISPONIBLE»
+    price: float | None   # CLP por kWh, solo si la tarifa es por energía
+
+
+@dataclass(frozen=True)
+class EvPoint:
+    uid: str
+    updated: datetime | None
+    connectors: tuple[EvConnector, ...]
+
+
+@dataclass(frozen=True)
+class EvStation:
+    id: str
+    name: str
+    address: str
+    commune: str
+    region: str
+    lat: float
+    lon: float
+    points: tuple[EvPoint, ...]
+
+
+@dataclass(frozen=True)
+class EvCandidate:
+    station: EvStation
+    distance_km: float
+    free_points: int
+    compatible_points: int
+    max_kw: float
+    standards: tuple[str, ...]
+    price: float | None
+    updated: datetime | None
+
+
+def _ev_price(connector: dict[str, Any]) -> float | None:
+    prices: list[float] = []
+    for tariff in connector.get("tariffs") or []:
+        if not isinstance(tariff, dict):
+            continue
+        elements = tariff.get("elements") or {}
+        for comp in (elements.get("price_components") or []) if isinstance(elements, dict) else []:
+            if isinstance(comp, dict) and comp.get("tariff_dimension") == "ENERGIA":
+                price = _num(comp.get("price"))
+                if price is not None and price > 0:
+                    prices.append(price)
+    return min(prices) if prices else None
+
+
+def parse_ev_stations(data: Any) -> list[EvStation]:
+    """Valida y compacta la respuesta del mapa de cargadores públicos; descarta lo privado, de uso exclusivo o malformado."""
+    if not isinstance(data, list):
+        raise NavajaApiError("Respuesta inesperada del mapa de cargadores")
+    stations: list[EvStation] = []
+    for raw in data:
+        if not isinstance(raw, dict) or raw.get("institucion_privada"):
+            continue
+        coords = raw.get("coordinates") or {}
+        lat, lon = _coord(coords.get("latitude")), _coord(coords.get("longitude"))
+        if lat is None or lon is None or not (-57 <= lat <= -17 and -77 <= lon <= -65):
+            continue
+        points: list[EvPoint] = []
+        for evse in raw.get("evses") or []:
+            if not isinstance(evse, dict) or evse.get("uso_exclusivo"):
+                continue
+            evse_free = str(evse.get("status") or "").upper() == EV_FREE
+            connectors: list[EvConnector] = []
+            for c in evse.get("connectors") or []:
+                if not isinstance(c, dict):
+                    continue
+                standard, power_type = str(c.get("standard") or "").strip(), str(c.get("power_type") or "").upper()
+                kw = _num(c.get("max_electric_power"))
+                if standard not in EV_CONNECTORS or power_type not in ("AC", "DC") or kw is None or kw <= 0:
+                    continue   # «Favor actualizar valor» y datos incompletos no se usan
+                connectors.append(
+                    EvConnector(standard, power_type, float(kw), evse_free and str(c.get("status") or "").upper() == EV_FREE, _ev_price(c))
+                )
+            if not connectors:
+                continue
+            updated = None
+            try:
+                updated = datetime.fromisoformat(str(evse.get("last_updated")))
+                if updated.tzinfo is None:
+                    updated = updated.replace(tzinfo=ZoneInfo("UTC"))
+            except ValueError:
+                pass
+            points.append(EvPoint(str(evse.get("evse_uid") or evse.get("evse_id") or len(points)), updated, tuple(connectors)))
+        if not points:
+            continue
+        stations.append(
+            EvStation(
+                id=str(raw.get("location_id")),
+                name=str(raw.get("name") or "Cargador").strip(),
+                address=str(raw.get("address") or "").strip(),
+                commune=str(raw.get("commune") or "").strip(),
+                region=str(raw.get("region") or "").strip(),
+                lat=lat,
+                lon=lon,
+                points=tuple(points),
+            )
+        )
+    if not stations:
+        raise NavajaApiError("El mapa de cargadores no trajo estaciones válidas")
+    return stations
+
+
+async def fetch_ev_stations(session: aiohttp.ClientSession) -> list[EvStation]:
+    body = await _get_bytes(session, EV_URL)
+    if len(body) > EV_MAX_BYTES:
+        raise NavajaApiError("La respuesta del mapa de cargadores excede el tamaño admitido")
+    try:
+        data = json.loads(body)
+    except ValueError as err:
+        raise NavajaApiError(f"El mapa de cargadores no devolvió JSON: {err}") from err
+    return parse_ev_stations(data)
+
+
+def ev_candidates(
+    stations: list[EvStation],
+    standards: set[str],
+    min_kw: float,
+    lat: float,
+    lon: float,
+    radius_km: float,
+    now: datetime,
+    *,
+    only_free: bool = True,
+) -> list[EvCandidate]:
+    """Estaciones con puntos compatibles (conector y potencia) dentro del radio, de la más cercana a la más lejana.
+
+    Un punto cuenta como libre si su estado es «DISPONIBLE» y se actualizó en las últimas 48 horas."""
+    found: list[EvCandidate] = []
+    for st in stations:
+        distance = haversine_km(lat, lon, st.lat, st.lon)
+        if distance > radius_km:
+            continue
+        compatible = free = 0
+        max_kw = 0.0
+        kinds: set[str] = set()
+        prices: list[float] = []
+        updated: datetime | None = None
+        for point in st.points:
+            ok = [c for c in point.connectors if c.standard in standards and c.kw >= min_kw]
+            if not ok:
+                continue
+            compatible += 1
+            fresh = point.updated is not None and now - point.updated <= EV_STATUS_MAX_AGE
+            usable = [c for c in ok if c.free] if fresh else []
+            if usable:
+                free += 1
+                max_kw = max(max_kw, *(c.kw for c in usable))
+                kinds.update(c.standard for c in usable)
+                prices += [c.price for c in usable if c.price is not None]
+            if point.updated and (updated is None or point.updated > updated):
+                updated = point.updated
+        if compatible == 0 or (only_free and free == 0):
+            continue
+        found.append(EvCandidate(st, distance, free, compatible, max_kw, tuple(sorted(kinds)), min(prices) if prices else None, updated))
+    return sorted(found, key=lambda c: c.distance_km)
+
+
+def ev_battery_low(state: str | None, threshold: float) -> bool | None:
+    """True si la batería está en o bajo el umbral; None si no hay un porcentaje válido."""
+    try:
+        level = float(str(state))
+    except (TypeError, ValueError):
+        return None
+    if not 0 <= level <= 100:
+        return None
+    return level <= threshold

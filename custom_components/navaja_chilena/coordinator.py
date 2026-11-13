@@ -31,6 +31,7 @@ from .const import (
     NATIONAL_COMPETITIONS,
     NATIONAL_INTERVAL,
     NATIONAL_TEAM_ID,
+    EV_INTERVAL,
     FUEL_INTERVAL,
     CINEMA_INTERVAL,
     BOLSA_INTERVAL,
@@ -222,6 +223,13 @@ def ephemerides_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
         return {"day": today, "cl": cache["cl"], "wiki": cache["wiki"]}
 
     return NavajaCoordinator(hass, "efemerides", EPHEMERIDES_INTERVAL, fetch)
+
+
+def ev_coordinator(hass: HomeAssistant) -> NavajaCoordinator:
+    async def fetch(session: Any) -> list[api.EvStation]:
+        return await api.fetch_ev_stations(session)
+
+    return NavajaCoordinator(hass, "cargadores_electricos", EV_INTERVAL, fetch)
 
 
 def fuel_coordinator(hass: HomeAssistant) -> NavajaCoordinator:

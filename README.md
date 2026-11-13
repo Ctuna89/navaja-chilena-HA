@@ -31,7 +31,8 @@ feriados, efemérides y mucho más, en una sola integración que se instala en u
 | ⚽ **Fútbol** | Próximos partidos, resultados y posición de tu equipo de la Primera División, la tabla y las fechas de la liga, y los partidos de La Roja |
 | 📰 **Noticias por tema** | Titulares de La Tercera y Cooperativa separados por tema (nacional, política, mundo, economía, deportes, tecnología…), con enlace a cada nota |
 | 🎭 **Panoramas** | Los eventos culturales de hoy y el próximo en tu comuna (agenda oficial de Chile Cultura, con filtro de solo gratis) los conciertos y partidos del estadio Claro Arena y los **Panoramas por [Vamoh](https://vamoh.cl)**, su curaduría de planes |
-| 📍 **Cerca de ti** | Opcional: te avisa si pasas cerca de un Cinemark (con la próxima función) o de una estación de servicio con descuento hoy para tus tarjetas. Tu ubicación no sale de tu Home Assistant |
+| 🔌 **Cargadores eléctricos** | El cargador público libre más cercano a tu casa para tu tipo de conector, cuántos puntos hay libres, el más barato por kWh y un aviso de «conviene cargar» cuando la batería de tu auto está baja |
+| 📍 **Cerca de ti** | Opcional: te avisa si pasas cerca de un Cinemark (con la próxima función) de una estación de servicio con descuento hoy para tus tarjetas o de un cargador eléctrico libre. Tu ubicación no sale de tu Home Assistant |
 | ⛽ **Combustibles** | Dónde está la bencina (93, 95, 97) o el diésel más barato cerca de tu casa, con precio, marca, dirección y distancia |
 | 💳 **Descuentos de tus tarjetas** | Eliges tus tarjetas (Banco de Chile, BCI, Santander, CMR…) y las categorías que te interesan (combustibles, comida, salud…) y ves los descuentos que aplican **hoy**, con un calendario mensual de descuentos en bencina |
 | 🚗 **Restricción vehicular y revisión técnica** | Con el último dígito de tu patente: si hoy tienes restricción, tu próximo día con restricción y el mes de tu revisión técnica |
@@ -68,6 +69,7 @@ El asistente te pregunta qué quieres activar:
 - tu **equipo** de la Primera División (o toda la liga) y **La Roja**, para ver partidos, resultados y tabla,
 - los **combustibles** que usas (93, 95, 97 o diésel), el **radio** de búsqueda alrededor de tu casa y la **antigüedad máxima** de los precios,
 - tu **comuna** para los panoramas culturales (puedes escribirla sin tildes), si quieres **solo los gratuitos** si quieres los eventos del **Claro Arena** y el enlace de tu calendario de **Panoramas por Vamoh**,
+- si tienes auto eléctrico, tus **conectores**, el radio de búsqueda y el sensor de batería de tu auto,
 - si quieres **«Cerca de ti»**, la persona o teléfono cuya ubicación se usa y la distancia de aviso,
 - los **temas de noticias** que quieres seguir y cuántos titulares por tema,
 - la **ciudad y los paraderos** de la Red Regional (si vives fuera de Santiago),
@@ -217,6 +219,17 @@ Eventos para salir de casa, de dos fuentes abiertas. Cada una se activa por sepa
 - El valor es el próximo evento. Atributos: `fecha`, `hora`, `categoria`, `entradas` (enlace de compra en Puntoticket), `hay_evento_hoy`, `eventos` (los próximos con fecha y hora) y `proximamente` (los anunciados sin fecha). La imagen de la entidad es la del evento.
 - Se lee la cartelera pública de [claroarena.cl](https://claroarena.cl/cartelera/) cada 6 horas. Un partido sigue contando como «próximo» hasta 3 horas después de su inicio.
 - Es una página web sin API: si el sitio cambia de diseño, el sensor queda «no disponible» hasta que se actualice la integración, nunca con una lista vacía.
+
+### 🔌 Cargadores eléctricos
+Para quienes tienen (o piensan tener) un auto eléctrico: encuentra dónde cargar ahora, no solo dónde hay cargadores.
+
+- **Cómo activarlo:** en las opciones elige los **conectores de tu auto** (Tipo 2, CCS 2, CHAdeMO, GB/T…), el **radio** de búsqueda (2 a 50 km) y, si quieres, una **potencia mínima** (7, 22, 50 o 100 kW). Se mide desde la casa configurada en Home Assistant.
+- **`sensor.cargadores_electricos_cargador_libre_mas_cercano`**: la estación más cercana con un punto libre compatible. Atributos: dirección, comuna, distancia, puntos libres, potencia máxima, tarifa por kWh, hora de la última actualización y los cinco más cercanos.
+- **`sensor.cargadores_electricos_puntos_de_carga_libres_cerca`** y **`..._cargador_libre_mas_barato`** (CLP/kWh): cuántos puntos libres hay en tu radio y cuál es la tarifa por energía más baja entre ellos.
+- **Tu auto y Home Assistant conversan:** agrega el sensor de **batería (%)** de la integración de tu auto (Tesla, Kia/Hyundai, BMW, Volkswagen…) y elige el porcentaje de aviso. **`binary_sensor.cargadores_electricos_conviene_cargar`** se enciende cuando la batería está en o bajo ese nivel y hay un cargador libre compatible cerca. Si el auto no entrega un porcentaje válido, queda no disponible en vez de adivinar. Hay [ejemplos de avisos](docs/tarjetas.md#-cargadores-eléctricos) a tu celular, también cuando se libera un cargador.
+- **Con «Cerca de ti»:** si la activaste, `binary_sensor.cerca_de_ti_cerca_de_un_cargador_electrico_libre` se enciende al pasar cerca de un cargador libre y compatible con tu auto.
+- **Qué significa «libre»:** el punto y su conector informan «disponible» y se actualizaron en las últimas 48 horas. Los de institución privada o de uso exclusivo no se consideran.
+- **Fuente:** mapa de cargadores públicos del Ministerio de Energía, con el registro de la SEC (cargadorespublicos.cl). Se consulta cada 15 minutos; si no responde, los sensores quedan no disponibles. Es el servicio que usa el propio mapa, sin documentación para terceros, así que podría cambiar.
 
 ### 📍 Cerca de ti
 Una opción **desactivada por defecto** que cada persona activa en su Home Assistant: te avisa cuando pasas cerca de un lugar donde Navaja Chilena tiene algo útil que decirte.
@@ -417,7 +430,7 @@ El módulo del **tren Limache–Puerto** es un aporte de [claudiojara](https://g
 Los **Panoramas por [Vamoh](https://vamoh.cl)** son posibles gracias a que Vamoh abrió un calendario público para que Home Assistant lo lea: la curaduría de panoramas es de su equipo, y cada evento lleva a su ficha en Vamoh. Gracias por la confianza.
 
 Y gracias a quienes mantienen abiertos los servicios que hacen posible esta integración —[mindicador.cl](https://mindicador.cl), [findic.cl](https://findic.cl), [api.xor.cl](https://api.xor.cl),
-[Open-Meteo](https://open-meteo.com), [Bencina en Línea](https://www.bencinaenlinea.cl), [N Beneficios](https://www.nbeneficios.cl), [efemerides.cl](https://www.efemerides.cl), La Tercera y Cooperativa, entre otros—
+[Open-Meteo](https://open-meteo.com), [Bencina en Línea](https://www.bencinaenlinea.cl), el [mapa de cargadores públicos](https://cargadorespublicos.cl) del Ministerio de Energía y la SEC, [N Beneficios](https://www.nbeneficios.cl), [efemerides.cl](https://www.efemerides.cl), La Tercera y Cooperativa, entre otros—
 y a todas las personas que reportan problemas y proponen mejoras: cada módulo nuevo parte de una idea de alguien que usa esto en su casa.
 
 ## Si vienes de la versión 1.x

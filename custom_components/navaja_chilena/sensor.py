@@ -137,6 +137,10 @@ async def async_setup_entry(
         fixed += [BenefitsSensor(rt.benefits, entry, cat) for cat in rt.benefit_categories]
     if rt.fuel:
         fixed += [FuelSensor(rt.fuel, entry, fuel, rt.fuel_radius, rt.fuel_max_age) for fuel in rt.fuel_types]
+    if rt.ev:
+        from . import ev   # importación diferida: ev.py no depende de este módulo
+
+        fixed += ev.sensors(entry, rt)
     if rt.saint:
         fixed.append(SaintSensor(entry))
     for spec in rt.vehicles:

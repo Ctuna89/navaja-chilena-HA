@@ -5,6 +5,7 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+- **Cargadores eléctricos**: el cargador público libre más cercano a tu casa, cuántos puntos libres hay, el más barato por kWh y, si agregas el sensor de batería de tu auto, «Conviene cargar» cuando la batería está baja y hay un cargador libre compatible. Eliges los conectores de tu auto, el radio y la potencia mínima. Datos del mapa de cargadores públicos del Ministerio de Energía (registro SEC), consultados cada 15 minutos; un punto sin novedades hace más de 2 días no se cuenta como libre. Con «Cerca de ti» también avisa al pasar cerca de un cargador libre. Incluye tarjetas y automatizaciones de ejemplo.
 - **Cerca de ti** (opcional): eliges tu teléfono y una distancia, y dos sensores se encienden cuando pasas cerca de un Cinemark (con la próxima función) o de una estación de servicio con descuento hoy para tus tarjetas. La ubicación no sale de tu Home Assistant. Incluye tarjetas y automatizaciones de ejemplo, también «con zona» para restaurantes.
 - **Panoramas por Vamoh**: lee el calendario (.ics) público de Vamoh, o tu enlace personal, con sus planes destacados: nombre, fecha, lugar y la ficha del evento en Vamoh. Atribución visible, consulta cada 6 horas con caché, y el enlace nunca se muestra ni se registra.
 ## 3.1.0

@@ -27,6 +27,17 @@ from .const import (
     BENEFIT_CATEGORIES,
     CONF_BENEFIT_CARDS,
     CONF_CLARO_ARENA,
+    CONF_EV_BATTERY,
+    CONF_EV_CONNECTORS,
+    CONF_EV_LOW_BATTERY,
+    CONF_EV_MIN_POWER,
+    CONF_EV_RADIUS,
+    EV_CONNECTORS,
+    EV_DEFAULT_LOW_BATTERY,
+    EV_DEFAULT_RADIUS,
+    EV_LOW_BATTERIES,
+    EV_MIN_POWERS,
+    EV_RADII,
     CONF_NEAR_RADIUS,
     CONF_NEAR_TRACKER,
     NEAR_DEFAULT_RADIUS,
@@ -192,6 +203,45 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
+            vol.Required(
+                CONF_EV_CONNECTORS, default=defaults.get(CONF_EV_CONNECTORS, [])
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[selector.SelectOptionDict(value=k, label=v) for k, v in EV_CONNECTORS.items()],
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(
+                CONF_EV_RADIUS, default=str(defaults.get(CONF_EV_RADIUS, EV_DEFAULT_RADIUS))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[selector.SelectOptionDict(value=str(r), label=f"{r} km") for r in EV_RADII],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(
+                CONF_EV_MIN_POWER, default=str(defaults.get(CONF_EV_MIN_POWER, 0))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=str(p), label="Cualquiera / Any" if p == 0 else f"{p} kW o más")
+                        for p in EV_MIN_POWERS
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                CONF_EV_BATTERY, description={"suggested_value": defaults.get(CONF_EV_BATTERY)}
+            ): selector.EntitySelector(selector.EntitySelectorConfig(domain=["sensor", "number"])),
+            vol.Required(
+                CONF_EV_LOW_BATTERY, default=str(defaults.get(CONF_EV_LOW_BATTERY, EV_DEFAULT_LOW_BATTERY))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[selector.SelectOptionDict(value=str(b), label=f"{b} %") for b in EV_LOW_BATTERIES],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             vol.Optional(
                 CONF_EVENTS_COMMUNE, default=defaults.get(CONF_EVENTS_COMMUNE, "")
             ): selector.TextSelector(),
@@ -331,6 +381,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or any(user_input.get(k) for k in (CONF_METRO, CONF_QUAKES, CONF_HOLIDAYS, CONF_AIR, CONF_CRYPTO, CONF_BOLSA, CONF_SAINT, CONF_EPHEMERIDES))
         or user_input.get(CONF_PHARMACY_COMUNA, "").strip()
         or bool(user_input.get(CONF_FUEL_TYPES))
+        or bool(user_input.get(CONF_EV_CONNECTORS))
         or bool(user_input.get(CONF_BENEFIT_CARDS))
         or bool(user_input.get(CONF_NEWS_TOPICS))
         or bool(str(user_input.get(CONF_EVENTS_COMMUNE) or "").strip())

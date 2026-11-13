@@ -1380,3 +1380,238 @@ async def test_near_config_flow_saves_the_tracker(hass, aioclient_mock):
     ok = await hass.config_entries.flow.async_configure(flow["flow_id"], {"indicators": ["uf"], "metro": False, "near_tracker": "person.jaime", "near_radius": "500"})
     assert ok["type"] == FlowResultType.CREATE_ENTRY
     assert ok["data"]["near_tracker"] == "person.jaime" and ok["data"]["near_radius"] == "500"
+
+
+# ----------------------------------------------------- Cargadores de vehículos eléctricos
+
+import copy as _copy  # noqa: E402
+import json as _ev_json  # noqa: E402
+from datetime import datetime as _dt, timedelta as _td, timezone as _tz  # noqa: E402
+from custom_components.navaja_chilena.const import EV_URL  # noqa: E402
+
+EV_RAW = _ev_json.loads((FIX_DIR / "cargadores_publicos.json").read_text())
+EV_NOW = _dt(2026, 11, 13, 15, tzinfo=_tz.utc)          # 12:00 en Chile; los datos del fixture son del 11 y 13 de noviembre
+SANTIAGO = (-33.4489, -70.6693)
+EV_NEAREST = "sensor.cargadores_electricos_cargador_libre_mas_cercano"
+EV_FREE = "sensor.cargadores_electricos_puntos_de_carga_libres_cerca"
+EV_CHEAP = "sensor.cargadores_electricos_cargador_libre_mas_barato"
+EV_SHOULD = "binary_sensor.cargadores_electricos_conviene_cargar"
+EV_NEAR = "binary_sensor.cerca_de_ti_cerca_de_un_cargador_electrico_libre"
+
+
+def _ev_station(**over):
+    base = {
+        "location_id": 1, "name": "Cargador de prueba", "address": "Calle 1", "commune": "Santiago", "region": "Metropolitana",
+        "institucion_privada": False, "coordinates": {"latitude": "-33.45", "longitude": "-70.66"},
+        "evses": [{
+            "evse_uid": 1, "status": "DISPONIBLE", "uso_exclusivo": False, "last_updated": "2026-11-13T10:00:00+00:00",
+            "connectors": [{
+                "status": "DISPONIBLE", "standard": "CCS 2", "power_type": "DC", "max_electric_power": 60,
+                "tariffs": [{"elements": {"price_components": [{"tariff_dimension": "ENERGIA", "price": 400}]}}],
+            }],
+        }],
+    }
+    return base | over
+
+
+def test_ev_parse_drops_private_exclusive_and_broken_entries():
+    exclusive = _ev_station(location_id=2)
+    exclusive["evses"][0]["uso_exclusivo"] = True
+    unknown = _ev_station(location_id=3)
+    unknown["evses"][0]["connectors"][0]["standard"] = "Favor actualizar valor"
+    bad_coords = _ev_station(location_id=4, coordinates={"latitude": "0", "longitude": "0"})
+    private = _ev_station(location_id=5, institucion_privada=True)
+    parsed = api.parse_ev_stations([_ev_station(), exclusive, unknown, bad_coords, private, "basura", None])
+    assert [s.id for s in parsed] == ["1"]
+    assert parsed[0].points[0].connectors[0].price == 400
+    for bad in ({"a": 1}, [], [exclusive]):
+        with pytest.raises(api.NavajaApiError):
+            api.parse_ev_stations(bad)
+
+
+def test_ev_candidates_filters_by_connector_power_and_freshness():
+    st = api.parse_ev_stations([_ev_station()])
+    args = (-33.45, -70.66, 5, EV_NOW)
+    assert len(api.ev_candidates(st, {"CCS 2"}, 0, *args)) == 1
+    assert api.ev_candidates(st, {"Tipo 2"}, 0, *args) == []                       # otro conector
+    assert api.ev_candidates(st, {"CCS 2"}, 100, *args) == []                       # menos potencia que la pedida
+    stale = api.ev_candidates(st, {"CCS 2"}, 0, -33.45, -70.66, 5, EV_NOW + _td(days=3))
+    assert stale == []                                                              # sin novedades hace más de 2 días: no se da por libre
+    listed = api.ev_candidates(st, {"CCS 2"}, 0, -33.45, -70.66, 5, EV_NOW + _td(days=3), only_free=False)
+    assert listed[0].free_points == 0 and listed[0].compatible_points == 1
+    assert api.ev_candidates(st, {"CCS 2"}, 0, -33.0, -70.0, 5, EV_NOW) == []      # fuera del radio
+
+
+def test_ev_busy_connector_is_not_free():
+    raw = _ev_station()
+    raw["evses"][0]["connectors"][0]["status"] = "OCUPADO"
+    assert api.ev_candidates(api.parse_ev_stations([raw]), {"CCS 2"}, 0, -33.45, -70.66, 5, EV_NOW) == []
+
+
+def test_ev_battery_low_needs_a_valid_percentage():
+    assert api.ev_battery_low("25", 30) is True and api.ev_battery_low("30", 30) is True and api.ev_battery_low("80", 30) is False
+    for bad in ("unknown", "unavailable", None, "150", "-5"):
+        assert api.ev_battery_low(bad, 30) is None
+
+
+async def _setup_ev(hass, aioclient_mock, status=200, body=None, **extra):
+    hass.config.latitude, hass.config.longitude = SANTIAGO
+    mock_all(aioclient_mock)
+    aioclient_mock.get(EV_URL, json=EV_RAW if body is None else body, status=status)
+    data = {"indicators": ["uf"], "metro": False, "ev_connectors": ["CCS 2", "Tipo 2"], "ev_radius": "5", "ev_min_power": "0", **extra}
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_ev_nearest_free_charger_and_its_attributes(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    entry = await _setup_ev(hass, aioclient_mock)
+    expected = api.ev_candidates(entry.runtime_data.ev.data, {"CCS 2", "Tipo 2"}, 0, *SANTIAGO, 5, EV_NOW)
+    assert expected
+    near = hass.states.get(EV_NEAREST)
+    assert near.state == expected[0].station.name
+    a = near.attributes
+    assert a["distancia_km"] <= 5 and a["puntos_libres"] >= 1 and a["conectores"] and "latitude" in a
+    assert [x["distancia_km"] for x in a["mas_cercanos"]] == sorted(x["distancia_km"] for x in a["mas_cercanos"])
+    assert a["estaciones_con_libres"] == len(expected) and a["radio_km"] == 5.0
+    assert "Ministerio de Energía" in a["fuente"]
+    assert int(hass.states.get(EV_FREE).state) == sum(c.free_points for c in expected)
+
+
+async def test_ev_cheapest_free_charger_is_priced_per_kwh(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    entry = await _setup_ev(hass, aioclient_mock)
+    priced = [c for c in api.ev_candidates(entry.runtime_data.ev.data, {"CCS 2", "Tipo 2"}, 0, *SANTIAGO, 5, EV_NOW) if c.price]
+    cheap = hass.states.get(EV_CHEAP)
+    assert cheap.attributes["unit_of_measurement"] == "CLP/kWh" and float(cheap.state) == min(c.price for c in priced)
+    prices = [x["tarifa_clp_kwh"] for x in cheap.attributes["mas_baratos"]]
+    assert prices == sorted(prices)
+
+
+async def test_ev_connector_filter_changes_the_results(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    await _setup_ev(hass, aioclient_mock, ev_connectors=["CHAdeMO"], ev_radius="2")
+    st = hass.states.get(EV_NEAREST)
+    assert st.attributes["conectores_buscados"] == ["CHAdeMO"]
+    assert st.state == "unknown" or st.attributes["conectores"] == ["CHAdeMO"]
+
+
+async def test_ev_nothing_free_is_unknown_with_reason(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW + _td(days=4))                                    # todos los estados quedan viejos
+    await _setup_ev(hass, aioclient_mock)
+    st = hass.states.get(EV_NEAREST)
+    assert st.state == "unknown" and "No hay puntos libres" in st.attributes["motivo"]
+    assert st.attributes["estaciones_compatibles_en_radio"] >= 1
+    assert int(hass.states.get(EV_FREE).state) == 0
+
+
+async def test_ev_source_down_is_unavailable_not_invented(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    await _setup_ev(hass, aioclient_mock, status=500)
+    assert hass.states.get(EV_NEAREST).state == "unavailable"
+    assert hass.states.get(EV_FREE).state == "unavailable"
+
+
+async def test_ev_not_created_unless_enabled(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    mock_all(aioclient_mock)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get(EV_NEAREST) is None and hass.states.get(EV_SHOULD) is None
+    assert not any(c[1].host == "cargadorespublicos.cl" for c in aioclient_mock.mock_calls)
+
+
+async def test_ev_should_charge_follows_the_car_battery(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    hass.states.async_set("sensor.mi_auto_bateria", "62")
+    await _setup_ev(hass, aioclient_mock, ev_battery="sensor.mi_auto_bateria", ev_low_battery="30")
+    st = hass.states.get(EV_SHOULD)
+    assert st.state == "off" and st.attributes["bateria"] == 62.0 and st.attributes["umbral_bateria"] == 30
+    assert st.attributes["bateria_baja"] is False and st.attributes["cargador"]["nombre"]
+    hass.states.async_set("sensor.mi_auto_bateria", "18")
+    await hass.async_block_till_done()
+    st = hass.states.get(EV_SHOULD)
+    assert st.state == "on" and st.attributes["bateria_baja"] is True
+    assert st.attributes["cargador"]["nombre"] == hass.states.get(EV_NEAREST).state
+    hass.states.async_set("sensor.mi_auto_bateria", "unavailable")
+    await hass.async_block_till_done()
+    assert hass.states.get(EV_SHOULD).state == "unavailable"                 # sin batería válida no se adivina
+
+
+async def test_ev_should_charge_stays_off_when_no_charger_is_free(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW + _td(days=4))
+    hass.states.async_set("sensor.mi_auto_bateria", "10")
+    await _setup_ev(hass, aioclient_mock, ev_battery="sensor.mi_auto_bateria")
+    st = hass.states.get(EV_SHOULD)
+    assert st.state == "off" and st.attributes["bateria_baja"] is True and "No hay puntos libres" in st.attributes["motivo"]
+
+
+async def test_ev_without_battery_entity_has_no_should_charge_sensor(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    await _setup_ev(hass, aioclient_mock)
+    assert hass.states.get(EV_SHOULD) is None
+
+
+async def test_near_free_ev_charger_turns_on_and_off_with_hysteresis(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    hass.config.latitude, hass.config.longitude = SANTIAGO
+    mock_all(aioclient_mock)
+    aioclient_mock.get(EV_URL, json=EV_RAW)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False, "ev_connectors": ["CCS 2"], "near_tracker": TRACKER, "near_radius": "300"})
+    entry.add_to_hass(hass)
+    _at(hass, 0.0, 0.0)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    target = api.ev_candidates(entry.runtime_data.ev.data, {"CCS 2"}, 0, *SANTIAGO, 5, EV_NOW)[0].station
+    _at(hass, target.lat + 0.0015, target.lon)                                # ~165 m
+    await hass.async_block_till_done()
+    st = hass.states.get(EV_NEAR)
+    assert st.state == "on" and st.attributes["nombre"] == target.name and st.attributes["distancia_m"] < 300
+    _at(hass, target.lat + 0.0032, target.lon)                                # ~355 m: dentro del margen de salida (390 m)
+    await hass.async_block_till_done()
+    assert hass.states.get(EV_NEAR).state == "on"
+    _at(hass, target.lat + 0.006, target.lon)                                 # ~670 m
+    await hass.async_block_till_done()
+    assert hass.states.get(EV_NEAR).state == "off"
+    assert not any("lat" in str(c[1].query) for c in aioclient_mock.mock_calls if c[1].host == "cargadorespublicos.cl")
+
+
+def _doc_card(title):
+    import re
+    import yaml
+    text = (Path(__file__).parents[1] / "docs/tarjetas.md").read_text(encoding="utf-8")
+    for block in re.findall(r"```yaml\n(.*?)```", text, re.S):
+        data = yaml.safe_load(block)
+        if isinstance(data, dict) and data.get("title") == title:
+            return data["content"]
+    raise AssertionError(f"no hay tarjeta «{title}» en docs/tarjetas.md")
+
+
+async def test_ev_documented_cards_render(hass, aioclient_mock, freezer):
+    from homeassistant.helpers.template import Template
+    freezer.move_to(EV_NOW)
+    hass.states.async_set("sensor.mi_auto_bateria", "18")
+    await _setup_ev(hass, aioclient_mock, ev_battery="sensor.mi_auto_bateria")
+    nearest = hass.states.get(EV_NEAREST)
+    card = Template(_doc_card("🔌 Cargador libre más cercano"), hass).async_render()
+    assert nearest.state in card and f"{nearest.attributes['distancia_km']} km" in card and "/kWh" in card and "- " in card
+    cheap = Template(_doc_card("💸 Carga más barata cerca"), hass).async_render()
+    assert f"${int(float(hass.states.get(EV_CHEAP).state))}/kWh" in cheap
+    car = Template(_doc_card("🔋 Mi auto"), hass).async_render()
+    assert "18 %" in car and "Conviene cargar" in car and nearest.state in car
+    hass.states.async_set("sensor.mi_auto_bateria", "80")
+    await hass.async_block_till_done()
+    assert "Todavía no hace falta cargar" in Template(_doc_card("🔋 Mi auto"), hass).async_render()
+
+
+async def test_ev_documented_cards_when_the_source_is_down(hass, aioclient_mock, freezer):
+    from homeassistant.helpers.template import Template
+    freezer.move_to(EV_NOW)
+    await _setup_ev(hass, aioclient_mock, status=500)
+    assert "no responde" in Template(_doc_card("🔌 Cargador libre más cercano"), hass).async_render()
+    assert "Sin tarifas" in Template(_doc_card("💸 Carga más barata cerca"), hass).async_render()
