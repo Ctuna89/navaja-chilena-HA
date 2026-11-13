@@ -816,6 +816,287 @@ content: |
   {% endfor %}
 ```
 
+### Panoramas por Vamoh
+
+Los panoramas de Vamoh de tu región, con afiche, precio y enlace a la ficha de cada uno en Vamoh. Requiere elegir una **región** (y, si quieres, una categoría) en las opciones de Navaja Chilena.
+
+```yaml
+type: markdown
+title: ✨ Panoramas por Vamoh
+content: |
+  {% set e = 'sensor.panoramas_por_vamoh_proximo_panorama' %}
+  {% for p in (state_attr(e, 'proximos') or [])[:5] %}
+  {% if p.imagen %}<img src="{{ p.imagen }}" width="64" align="left" hspace="8">{% endif %}**{{ p.fecha[8:10] }}/{{ p.fecha[5:7] }}{% if p.hora %} {{ p.hora }}{% endif %}** · {{ p.titulo }}
+  {% if p.lugar %}{{ p.lugar }}{% endif %}{% if p.entrada %} · {{ p.entrada }}{% endif %} · [ver en Vamoh]({{ p.ficha }})
+  <br clear="left">
+  {% else %}
+  {{ state_attr(e, 'motivo') or 'Sin datos de Vamoh por ahora.' }}
+  {% endfor %}
+  {% if state_attr(e, 'resultados_parciales') %}
+  <sub>Muestra de los primeros resultados de Vamoh ({{ state_attr(e, 'paginas_leidas') }} páginas).</sub>
+  {% endif %}
+  {% if state_attr(e, 'desactualizado') %}
+  <sub>⚠️ Vamoh no respondió; datos del {{ state_attr(e, 'actualizado') }}.</sub>
+  {% endif %}
+
+  <sub>Panoramas por <a href="https://vamoh.cl">Vamoh</a></sub>
+```
+
+## 📍 Cerca de ti
+
+Requiere activar **«Cerca de ti»** en las opciones (elige tu teléfono y la distancia). Las tarjetas muestran algo solo cuando estás cerca.
+
+Próxima función cuando pasas cerca de un Cinemark:
+
+![Tarjeta que muestra el Cinemark más cercano y sus próximas funciones](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/cerca-cinemark.png)
+
+```yaml
+type: markdown
+title: 🎬 Cerca de ti
+content: |
+  {% set e = 'binary_sensor.cerca_de_ti_cerca_de_un_cinemark' %}
+  {% if is_state(e, 'on') and state_attr(e, 'proximas_funciones') %}
+  **{{ state_attr(e, 'cine_mas_cercano') }}** · a {{ state_attr(e, 'distancia_m') }} m
+  {% for f in state_attr(e, 'proximas_funciones')[:4] %}
+  - **{{ f.hora }}** · {{ f.titulo }}{% if f.formato %} ({{ f.formato }}){% endif %}
+  {% endfor %}
+  {% elif is_state(e, 'on') %}
+  Estás cerca de **{{ state_attr(e, 'cine_mas_cercano') }}**, pero no hay funciones para mostrar ahora.
+  {% else %}
+  Cuando pases cerca de un Cinemark, aquí verás la próxima función.
+  {% endif %}
+```
+
+Estación con descuento hoy para tus tarjetas:
+
+![Tarjeta que muestra la estación cercana y el descuento de hoy](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/cerca-estacion.png)
+
+```yaml
+type: markdown
+title: ⛽ Cerca de ti
+content: |
+  {% set e = 'binary_sensor.cerca_de_ti_cerca_de_una_estacion_con_descuento' %}
+  {% if is_state(e, 'on') %}
+  **{{ state_attr(e, 'estacion_mas_cercana') }}** · {{ state_attr(e, 'direccion') }} · a {{ state_attr(e, 'distancia_m') }} m
+  {% for d in state_attr(e, 'descuentos') %}
+  - **{{ d.descuento }}** con {{ d.tarjeta }}{% if not d.confirmado %} (por confirmar){% endif %}
+  {% endfor %}
+  {% else %}
+  Hoy hay descuento en: {{ state_attr(e, 'marcas_con_descuento_hoy') | join(', ') or 'ninguna marca' }}. Te avisaré al pasar cerca.
+  {% endif %}
+```
+
+**Automatización: aviso al pasar cerca de un Cinemark** (como máximo una vez cada 3 horas y solo por la tarde):
+
+```yaml
+alias: Aviso al pasar cerca de un Cinemark
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.cerca_de_ti_cerca_de_un_cinemark
+    to: "on"
+conditions:
+  - condition: time
+    after: "12:00:00"
+    before: "22:30:00"
+  - condition: template
+    value_template: "{{ state_attr(trigger.entity_id, 'proxima_funcion') is not none }}"
+  - condition: template
+    value_template: >-
+      {{ this.attributes.last_triggered is none
+         or (now() - this.attributes.last_triggered).total_seconds() > 10800 }}
+actions:
+  - action: notify.notify          # cambia por tu servicio, p. ej. notify.mobile_app_mi_celular
+    data:
+      title: "🎬 {{ state_attr(trigger.entity_id, 'cine_mas_cercano') }}"
+      message: >-
+        {% set f = state_attr(trigger.entity_id, 'proxima_funcion') %}
+        Próxima función a las {{ f.hora }}: {{ f.titulo }}.
+```
+
+**Automatización: aviso al pasar cerca de una estación con descuento hoy:**
+
+```yaml
+alias: Descuento de bencina cerca
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.cerca_de_ti_cerca_de_una_estacion_con_descuento
+    to: "on"
+conditions:
+  - condition: template
+    value_template: >-
+      {{ this.attributes.last_triggered is none
+         or (now() - this.attributes.last_triggered).total_seconds() > 10800 }}
+actions:
+  - action: notify.notify
+    data:
+      title: "⛽ {{ state_attr(trigger.entity_id, 'estacion_mas_cercana') }} a {{ state_attr(trigger.entity_id, 'distancia_m') }} m"
+      message: >-
+        {% for d in state_attr(trigger.entity_id, 'descuentos') %}{{ d.descuento }} con {{ d.tarjeta }}{{ ' · ' if not loop.last }}{% endfor %}
+```
+
+**Automatización «con zona»** para un restaurante o tienda: crea una zona en *Ajustes → Áreas, etiquetas y zonas → Zonas* en ese local (radio de 50 a 100 m) y avisa al entrar si hoy tienes un descuento ahí
+(cambia `Abrasas`, la zona, tu persona y la categoría del sensor):
+
+```yaml
+alias: Descuento de hoy en mi restaurante favorito
+triggers:
+  - trigger: zone
+    entity_id: person.tu_persona
+    zone: zone.restaurante_abrasas
+    event: enter
+conditions:
+  - condition: template
+    value_template: >-
+      {{ (state_attr('sensor.descuentos_de_tarjetas_descuentos_de_hoy_comida', 'hoy') or [])
+         | selectattr('comercio', 'search', 'Abrasas') | list | count > 0 }}
+actions:
+  - action: notify.notify
+    data:
+      title: "🍽️ Hoy tienes descuento aquí"
+      message: >-
+        {% set d = (state_attr('sensor.descuentos_de_tarjetas_descuentos_de_hoy_comida', 'hoy')
+                    | selectattr('comercio', 'search', 'Abrasas') | list)[0] %}
+        {{ d.comercio }}: {{ d.descuento }} con {{ d.tarjeta }}.
+```
+
+## 🔌 Cargadores eléctricos
+
+Requiere activar **«Cargadores eléctricos»** en las opciones: eliges los conectores de tu auto (Tipo 2, CCS 2, CHAdeMO…), el radio de búsqueda y, si quieres, una potencia mínima. Para que tu auto y Home Assistant «conversen», agrega además el **sensor de batería** (% de carga) de la integración de tu auto.
+
+Cargador libre más cercano a tu casa:
+
+![Tarjeta con el cargador libre más cercano, su distancia, potencia y tarifa](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/cargadores-cercano.png)
+
+```yaml
+type: markdown
+title: 🔌 Cargador libre más cercano
+content: |
+  {% set e = 'sensor.cargadores_electricos_cargador_libre_mas_cercano' %}
+  {% if states(e) == 'unavailable' %}
+  El mapa de cargadores no responde en este momento.
+  {% elif states(e) == 'unknown' %}
+  {{ state_attr(e, 'motivo') }}
+  {% else %}
+  **{{ states(e) }}** · {{ state_attr(e, 'direccion') }}, {{ state_attr(e, 'comuna') }}
+  a {{ state_attr(e, 'distancia_km') }} km · {{ state_attr(e, 'puntos_libres') }} de {{ state_attr(e, 'puntos_compatibles') }} puntos libres · hasta {{ state_attr(e, 'potencia_max_kw') }} kW{% if state_attr(e, 'tarifa_clp_kwh') %} · ${{ state_attr(e, 'tarifa_clp_kwh') }}/kWh{% endif %}
+  {% for c in state_attr(e, 'mas_cercanos')[1:4] %}
+  - {{ c.nombre }} · {{ c.distancia_km }} km · {{ c.puntos_libres }} libres
+  {% endfor %}
+  {% endif %}
+```
+
+Los puntos «libres» son los que el mapa informa como disponibles y actualizó en las últimas 48 horas. Si un cargador no reporta hace más tiempo, no se cuenta como libre.
+
+Mapa con el cargador libre más cercano (usa la ubicación que trae el sensor):
+
+```yaml
+type: map
+entities:
+  - entity: sensor.cargadores_electricos_cargador_libre_mas_cercano
+  - zone.home
+default_zoom: 14
+```
+
+El más barato por energía (CLP/kWh) entre los libres compatibles:
+
+```yaml
+type: markdown
+title: 💸 Carga más barata cerca
+content: |
+  {% set e = 'sensor.cargadores_electricos_cargador_libre_mas_barato' %}
+  {% if is_number(states(e)) %}
+  **${{ states(e) | int }}/kWh** · {{ state_attr(e, 'nombre') }} ({{ state_attr(e, 'distancia_km') }} km, {{ state_attr(e, 'potencia_max_kw') }} kW)
+  {% for c in state_attr(e, 'mas_baratos')[1:4] %}
+  - ${{ c.tarifa_clp_kwh }}/kWh · {{ c.nombre }} · {{ c.distancia_km }} km
+  {% endfor %}
+  {% else %}
+  Sin tarifas informadas para los cargadores libres de tu zona.
+  {% endif %}
+```
+
+**Tu auto y Home Assistant conversan.** Con el sensor de batería de tu auto (de la integración de tu marca: Tesla, Kia/Hyundai, BMW, Volkswagen, etc.), «Conviene cargar» se enciende cuando la batería está en o bajo el umbral y hay un punto libre compatible cerca:
+
+![Tarjeta que avisa que conviene cargar según la batería del auto](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/cargadores-conviene.png)
+
+```yaml
+type: markdown
+title: 🔋 Mi auto
+content: |
+  {% set e = 'binary_sensor.cargadores_electricos_conviene_cargar' %}
+  {% if states(e) == 'unavailable' %}
+  Sin dato de batería o del mapa de cargadores.
+  {% else %}
+  Batería: **{{ state_attr(e, 'bateria') | int }} %** (aviso bajo {{ state_attr(e, 'umbral_bateria') }} %)
+  {% if is_state(e, 'on') %}
+  ⚡ **Conviene cargar:** {{ state_attr(e, 'cargador').nombre }}, a {{ state_attr(e, 'cargador').distancia_km }} km, {% set n = state_attr(e, 'cargador').puntos_libres %}{{ n }} {{ 'punto libre' if n == 1 else 'puntos libres' }}.
+  {% elif state_attr(e, 'bateria_baja') %}
+  Batería baja, pero {{ state_attr(e, 'motivo') | lower }}.
+  {% else %}
+  Todavía no hace falta cargar.
+  {% endif %}
+  {% endif %}
+```
+
+**Automatización: avisar cuando conviene cargar** (a tu celular, una vez al día como máximo):
+
+```yaml
+alias: Aviso de carga del auto
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.cargadores_electricos_conviene_cargar
+    to: "on"
+conditions:
+  - condition: template
+    value_template: >-
+      {{ this.attributes.last_triggered is none
+         or (now() - this.attributes.last_triggered).total_seconds() > 86400 }}
+actions:
+  - action: notify.notify          # cambia por tu servicio, p. ej. notify.mobile_app_mi_celular
+    data:
+      title: "🔋 Batería al {{ state_attr(trigger.entity_id, 'bateria') | int }} %"
+      message: >-
+        {% set c = state_attr(trigger.entity_id, 'cargador') %}
+        Cargador libre: {{ c.nombre }} ({{ c.direccion }}), a {{ c.distancia_km }} km, hasta {{ c.potencia_max_kw }} kW{% if c.tarifa_clp_kwh %}, ${{ c.tarifa_clp_kwh }}/kWh{% endif %}.
+```
+
+**Automatización: avisar cuando queda un cargador libre.** Si tu batería está baja y no había ninguno libre cerca, avisa en cuanto aparece uno:
+
+```yaml
+alias: Se liberó un cargador cerca
+triggers:
+  - trigger: numeric_state
+    entity_id: sensor.cargadores_electricos_puntos_de_carga_libres_cerca
+    above: 0
+conditions:
+  - condition: numeric_state
+    entity_id: sensor.mi_auto_bateria      # el sensor de batería de tu auto
+    below: 30
+actions:
+  - action: notify.notify
+    data:
+      title: "🔌 Hay un cargador libre"
+      message: "{{ states('sensor.cargadores_electricos_cargador_libre_mas_cercano') }}, a {{ state_attr('sensor.cargadores_electricos_cargador_libre_mas_cercano', 'distancia_km') }} km."
+```
+
+**Automatización con «Cerca de ti»:** si activaste esa opción, `binary_sensor.cerca_de_ti_cerca_de_un_cargador_electrico_libre` se enciende cuando pasas cerca de un cargador libre y compatible con tu auto, esté donde esté:
+
+```yaml
+alias: Pasaste cerca de un cargador libre
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.cerca_de_ti_cerca_de_un_cargador_electrico_libre
+    to: "on"
+conditions:
+  - condition: numeric_state
+    entity_id: sensor.mi_auto_bateria
+    below: 50
+actions:
+  - action: notify.notify
+    data:
+      title: "⚡ Cargador libre a {{ state_attr(trigger.entity_id, 'distancia_m') }} m"
+      message: "{{ state_attr(trigger.entity_id, 'nombre') }} · hasta {{ state_attr(trigger.entity_id, 'potencia_max_kw') }} kW"
+```
+
 ## 🚗 Mi vehículo
 
 Restricción de hoy, dígitos restringidos, próxima fecha y mes de revisión técnica:

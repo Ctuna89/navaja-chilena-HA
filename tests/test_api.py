@@ -787,3 +787,124 @@ def test_arena_events_parse_real_page():
     assert [e.category for e in events if e.title == "Fede Vigevani"] == ["Conciertos"]
     with pytest.raises(api.NavajaApiError):
         api.parse_arena_events("<html><body>sitio rediseñado</body></html>")
+
+
+# --------------------------------------------------------- Panoramas por Vamoh
+
+def _vamoh_text():
+    return (Path(__file__).parent / "fixtures/vamoh_ejemplo_sintetico.ics").read_text(encoding="utf-8")
+
+
+def test_vamoh_url_validation_only_https_vamoh():
+    ok = api.vamoh_url_ok
+    assert ok("https://vamoh.cl/calendario/providencia.ics") and ok("https://calendario.vamoh.cl/x.ics?token=abc")
+    for bad in ("http://vamoh.cl/x.ics", "https://evil.cl/vamoh.cl", "https://vamoh.cl.evil.com/x", "https://user:pw@vamoh.cl/x",
+                "ftp://vamoh.cl/x", "", "vamoh.cl/x.ics", "https://notvamoh.cl/x.ics"):
+        assert not ok(bad), bad
+
+
+def test_vamoh_calendar_parse_cases():
+    events = api.parse_vamoh_calendar(_vamoh_text())
+    by = {e.uid: e for e in events}
+    assert "ejemplo-4@vamoh.cl" not in by                                  # cancelado
+    assert len(events) == 5
+    feria = by["ejemplo-1@vamoh.cl"]
+    assert feria.all_day and feria.start.strftime("%Y-%m-%d %H:%M") == "2026-11-14 00:00" and feria.end.strftime("%Y-%m-%d") == "2026-11-15"
+    assert feria.place == "Parque Bustamante, Providencia" and feria.url == "https://vamoh.cl/events/feria-de-diseno-local"
+    assert feria.categories == ("Feria", "Gratis")
+    concierto = by["ejemplo-2@vamoh.cl"]
+    assert not concierto.all_day and concierto.start.strftime("%H:%M") == "20:00" and concierto.title == "Concierto en el Cerro"   # la alarma no pisa el título
+    cine = by["ejemplo-3@vamoh.cl"]
+    assert cine.start.strftime("%Y-%m-%d %H:%M") == "2026-11-20 20:00"     # 23:00 UTC = 20:00 en Chile (verano)
+    assert cine.title == "Cine bajo las estrellas: una noche con películas chilenas y música en vivo; entrada liberada"   # línea plegada y ';' escapado
+    assert cine.url == "https://vamoh.cl/events/cine-bajo-las-estrellas" and cine.place == "Plaza Ñuñoa"   # enlace tomado de la descripción
+
+
+def test_vamoh_not_a_calendar_is_an_error():
+    for bad in ("", "<html>Just a moment...</html>", "BEGIN:VEVENT\nEND:VEVENT"):
+        with pytest.raises(api.NavajaApiError):
+            api.parse_vamoh_calendar(bad)
+    # un calendario válido pero vacío no es un error: simplemente no hay panoramas
+    assert api.parse_vamoh_calendar("BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR") == []
+
+
+def test_vamoh_events_between_orders_and_drops_the_past():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    events = api.parse_vamoh_calendar(_vamoh_text())
+    now = datetime(2026, 11, 14, 12, 0, tzinfo=ZoneInfo("America/Santiago"))
+    upcoming = api.vamoh_events_between(events, now)
+    assert [e.uid for e in upcoming] == ["ejemplo-6@vamoh.cl", "ejemplo-1@vamoh.cl", "ejemplo-2@vamoh.cl", "ejemplo-3@vamoh.cl"]
+    # el de varios días sigue en curso hasta que termina
+    later = datetime(2026, 11, 17, 0, 0, 1, tzinfo=ZoneInfo("America/Santiago"))
+    assert "ejemplo-6@vamoh.cl" not in [e.uid for e in api.vamoh_events_between(events, later)]
+
+
+def test_vamoh_fetch_uses_etag_never_redirects_and_hides_the_url_in_errors():
+    import asyncio
+    seen = {}
+
+    class Resp:
+        def __init__(self, status, body=b"", headers=None):
+            self.status, self._b, self.headers = status, body, headers or {}
+            self.content = self
+        async def read(self, n=-1):
+            return self._b
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+
+    class Session:
+        def __init__(self, resp):
+            self.resp = resp
+        def get(self, url, **kw):
+            seen["kw"] = kw
+            return self.resp
+
+    url = "https://vamoh.cl/mi-calendario.ics?token=SECRETO123"
+    body = _vamoh_text().encode()
+    events, etag, mod = asyncio.run(api.fetch_vamoh_calendar(Session(Resp(200, body, {"ETag": '"v1"', "Last-Modified": "Tue, 10 Nov 2026 10:00:00 GMT"})), url))
+    assert len(events) == 5 and etag == '"v1"' and seen["kw"]["allow_redirects"] is False
+    events2, etag2, _ = asyncio.run(api.fetch_vamoh_calendar(Session(Resp(304)), url, etag, mod))
+    assert events2 is None and etag2 == '"v1"' and seen["kw"]["headers"]["If-None-Match"] == '"v1"'
+    for status in (403, 302, 500):
+        with pytest.raises(api.NavajaApiError) as err:
+            asyncio.run(api.fetch_vamoh_calendar(Session(Resp(status)), url))
+        assert "SECRETO123" not in str(err.value) and "token" not in str(err.value)
+    with pytest.raises(api.NavajaApiError) as err:
+        asyncio.run(api.fetch_vamoh_calendar(Session(Resp(200, b"<html>Just a moment</html>")), url))
+    assert "SECRETO123" not in str(err.value)
+    with pytest.raises(api.NavajaApiError):
+        asyncio.run(api.fetch_vamoh_calendar(Session(Resp(200, body)), "https://otro.cl/x.ics"))
+
+
+# ------------------------------------------------------------- «Cerca de ti» (lógica pura)
+
+def test_theaters_by_distance_and_cinema_upcoming():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    # Frente al Cinemark Alto Las Condes
+    ordered = api.theaters_by_distance(-33.3912, -70.5475)
+    assert ordered[0][0] == "cinemark-alto-las-condes" and ordered[0][1] < 5
+    assert [d for _s, d in ordered] == sorted(d for _s, d in ordered)
+    tz = ZoneInfo("America/Santiago")
+    mk = lambda title, h, m=0: api.Screening(title, datetime(2026, 11, 10, h, m, tzinfo=tz), "Sala 1", "2D", 100, "Drama", None, None)
+    cinema = api.Cinema("Cine", [mk("Tarde", 18), mk("Mañana", 11), mk("Noche", 21, 30), mk("Trasnoche", 0, 30)])
+    now = datetime(2026, 11, 10, 17, 0, tzinfo=tz)
+    assert [s.title for s in api.cinema_upcoming(cinema, now)] == ["Tarde", "Noche"]
+    assert [s.title for s in api.cinema_upcoming(cinema, now, limit=1)] == ["Tarde"]
+
+
+def test_nearest_discount_station_only_considers_brands_with_a_discount():
+    mk = lambda i, brand, lat, lon: api.Station(i, brand, "Dir", "Comuna", "RM", lat, lon, None, {})
+    stations = [mk(1, "Copec", -33.4500, -70.6600), mk(2, "Shell", -33.4490, -70.6600), mk(3, "Aramco", -33.4600, -70.6600), mk(4, "Copec", -33.4700, -70.6600)]
+    # El usuario está pegado a la Shell, pero hoy solo hay descuento en Copec y Aramco.
+    st, dist = api.nearest_discount_station(stations, {"copec", "aramco"}, -33.4490, -70.6600)
+    assert st.id == 1 and 100 < dist < 130
+    assert api.nearest_discount_station(stations, {"petrobras"}, -33.4490, -70.6600) is None
+    discounts = api.parse_fuel_discounts({"vigencia": "2026-11", "descuentos": [
+        {"dias": [2], "estaciones": ["Copec"], "tarjeta": "itau", "monto": "$100/L"},
+        {"dias": [2], "estaciones": ["Copec", "SHELL"], "tarjeta": "tenpo", "monto": "$50/L"}]}).items
+    grouped = api.discount_brands(list(discounts))
+    assert set(grouped) == {"copec", "shell"} and len(grouped["copec"]) == 2

@@ -21,6 +21,15 @@ from .const import (
     BENEFIT_CATEGORIES,
     CONF_BENEFIT_CARDS,
     CONF_CLARO_ARENA,
+    CONF_NEAR_RADIUS,
+    CONF_NEAR_TRACKER,
+    NEAR_DEFAULT_RADIUS,
+    CONF_VAMOH_CATEGORY,
+    CONF_VAMOH_REGION,
+    CONF_VAMOH_URL,
+    VAMOH_ALL_CATEGORIES,
+    VAMOH_CATEGORIES,
+    VAMOH_REGIONS,
     CONF_EVENTS_COMMUNE,
     CONF_EVENTS_FREE_ONLY,
     CONF_NEWS_COUNT,
@@ -32,6 +41,14 @@ from .const import (
     REGIONAL_NONE,
     REGIONAL_ZONES,
     CONF_BENEFIT_CATEGORIES,
+    CONF_EV_BATTERY,
+    CONF_EV_CONNECTORS,
+    CONF_EV_LOW_BATTERY,
+    CONF_EV_MIN_POWER,
+    CONF_EV_RADIUS,
+    EV_CONNECTORS,
+    EV_DEFAULT_LOW_BATTERY,
+    EV_DEFAULT_RADIUS,
     CONF_FUEL_MAX_AGE,
     CONF_FUEL_RADIUS,
     CONF_FUEL_TYPES,
@@ -67,8 +84,11 @@ from .coordinator import (
     arena_coordinator,
     benefits_coordinator,
     culture_coordinator,
+    vamoh_coordinator,
+    vamoh_web_coordinator,
     news_coordinator,
     regional_coordinator,
+    ev_coordinator,
     fuel_discounts_coordinator,
     fuel_coordinator,
     NavajaCoordinator,
@@ -107,12 +127,21 @@ class RuntimeData:
     ephemerides: NavajaCoordinator | None = None
     pharmacy_comuna: str = ""
     fuel: NavajaCoordinator | None = None
+    ev: NavajaCoordinator | None = None
+    ev_connectors: list[str] = field(default_factory=list)
+    ev_radius: float = EV_DEFAULT_RADIUS
+    ev_min_power: float = 0
+    ev_battery: str = ""
+    ev_low_battery: int = EV_DEFAULT_LOW_BATTERY
     benefits: NavajaCoordinator | None = None
     fuel_discounts: NavajaCoordinator | None = None
     regional: NavajaCoordinator | None = None
     news: NavajaCoordinator | None = None
     culture: NavajaCoordinator | None = None
     arena: NavajaCoordinator | None = None
+    vamoh: NavajaCoordinator | None = None
+    near_tracker: str = ""
+    near_radius: int = NEAR_DEFAULT_RADIUS
     events_commune: str = ""
     events_free_only: bool = False
     news_topics: list[str] = field(default_factory=list)
@@ -216,11 +245,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
         except (TypeError, ValueError):
             data.fuel_max_age = FUEL_DEFAULT_MAX_AGE
         data.fuel = fuel_coordinator(hass)
+    ev_connectors = [c for c in (opts.get(CONF_EV_CONNECTORS) or []) if c in EV_CONNECTORS]
+    if ev_connectors:
+        data.ev_connectors = ev_connectors
+        for conf, attr, default in (
+            (CONF_EV_RADIUS, "ev_radius", EV_DEFAULT_RADIUS),
+            (CONF_EV_MIN_POWER, "ev_min_power", 0),
+            (CONF_EV_LOW_BATTERY, "ev_low_battery", EV_DEFAULT_LOW_BATTERY),
+        ):
+            try:
+                setattr(data, attr, type(default)(float(opts.get(conf, default))))
+            except (TypeError, ValueError):
+                setattr(data, attr, default)
+        battery = str(opts.get(CONF_EV_BATTERY) or "").strip()
+        if battery.split(".")[0] in ("sensor", "number") and "." in battery:
+            data.ev_battery = battery
+        data.ev = ev_coordinator(hass)
     commune = str(opts.get(CONF_EVENTS_COMMUNE) or "").strip()
     if commune:
         data.events_commune = commune
         data.events_free_only = bool(opts.get(CONF_EVENTS_FREE_ONLY))
         data.culture = culture_coordinator(hass, commune)
+    tracker = str(opts.get(CONF_NEAR_TRACKER) or "").strip()
+    if tracker.split(".")[0] in ("person", "device_tracker") and "." in tracker:
+        data.near_tracker = tracker
+        try:
+            data.near_radius = int(opts.get(CONF_NEAR_RADIUS, NEAR_DEFAULT_RADIUS))
+        except (TypeError, ValueError):
+            data.near_radius = NEAR_DEFAULT_RADIUS
+    vamoh_url = str(opts.get(CONF_VAMOH_URL) or "").strip()
+    vamoh_region = str(opts.get(CONF_VAMOH_REGION) or "")
+    vamoh_category = str(opts.get(CONF_VAMOH_CATEGORY) or VAMOH_ALL_CATEGORIES)
+    if vamoh_region in VAMOH_REGIONS:        # el listado web de Vamoh tiene prioridad sobre el calendario .ics
+        data.vamoh = vamoh_web_coordinator(hass, vamoh_region, vamoh_category if vamoh_category in VAMOH_CATEGORIES else None)
+    elif vamoh_url and api.vamoh_url_ok(vamoh_url):
+        data.vamoh = vamoh_coordinator(hass, vamoh_url)
     if opts.get(CONF_CLARO_ARENA):
         data.arena = arena_coordinator(hass)
     topics = [t for t in (opts.get(CONF_NEWS_TOPICS) or []) if t in NEWS_TOPICS]
@@ -273,7 +332,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     coordinators = [
         c
         for c in (data.indicators, data.metro, data.stops, data.train, data.quakes,
-                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.benefits, data.fuel_discounts, data.regional, data.news, data.culture, data.arena, data.football, data.national)
+                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.ev, data.benefits, data.fuel_discounts, data.regional, data.news, data.culture, data.arena, data.vamoh, data.football, data.national)
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]

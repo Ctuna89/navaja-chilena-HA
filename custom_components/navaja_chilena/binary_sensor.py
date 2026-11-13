@@ -9,7 +9,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import NavajaConfigEntry, vehicle
+from . import NavajaConfigEntry, ev, vehicle
+from .near import NearCinemaBinarySensor, NearDiscountStationBinarySensor, NearEvBinarySensor
 from .const import REGIONAL_ZONES
 from .sensor import _device, _digits_text
 from .vehicle_entity import REASON_TEXT, VehicleMixin
@@ -19,6 +20,15 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: NavajaConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     rt = entry.runtime_data
+    if rt.near_tracker:
+        near_entities = [NearCinemaBinarySensor(entry, rt)]
+        if rt.fuel is not None and rt.fuel_discounts is not None:   # necesita las estaciones y el calendario de descuentos
+            near_entities.append(NearDiscountStationBinarySensor(entry, rt))
+        if rt.ev is not None:
+            near_entities.append(NearEvBinarySensor(entry, rt))
+        async_add_entities(near_entities)
+    if rt.ev is not None:
+        async_add_entities(ev.binary_sensors(entry, rt))
     if rt.regional:
         known = rt.regional.data
 

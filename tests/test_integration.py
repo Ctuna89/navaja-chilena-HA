@@ -1119,3 +1119,729 @@ async def test_events_config_flow_does_not_block_if_the_commune_list_is_down(has
     flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
     ok = await hass.config_entries.flow.async_configure(flow["flow_id"], {"indicators": ["uf"], "metro": False, "events_commune": "Providencia"})
     assert ok["type"] == FlowResultType.CREATE_ENTRY and ok["data"]["events_commune"] == "Providencia"
+
+
+# ------------------------------------------------------------ Panoramas por Vamoh
+
+VAMOH_URL = "https://vamoh.cl/calendario/mi-enlace.ics?token=SECRETO123"
+VAMOH_ICS = (FIX_DIR / "vamoh_ejemplo_sintetico.ics").read_text(encoding="utf-8")
+
+
+async def _setup_vamoh(hass, aioclient_mock, url=VAMOH_URL, body=VAMOH_ICS, status=200, headers=None):
+    mock_all(aioclient_mock)
+    aioclient_mock.get(url, text=body, status=status, headers=headers or {"ETag": '"v1"'})
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False, "vamoh_url": url})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_vamoh_sensors_today_and_next_with_attribution(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    await _setup_vamoh(hass, aioclient_mock)
+    hoy = hass.states.get("sensor.panoramas_por_vamoh_hoy")
+    assert hoy.state == "3"                                                   # festival en curso, feria y concierto
+    assert {p["titulo"] for p in hoy.attributes["panoramas"]} == {"Festival de Teatro Callejero", "Feria de Diseño Local", "Concierto en el Cerro"}
+    nxt = hass.states.get("sensor.panoramas_por_vamoh_proximo_panorama")
+    assert nxt.state == "Festival de Teatro Callejero" and nxt.attributes["ficha"] == "https://vamoh.cl/events/festival-teatro-callejero"
+    assert nxt.attributes["lugar"] == "Barrio Yungay" and nxt.attributes["hasta"] == "2026-11-16"
+    # Condiciones de Vamoh: atribución visible y ficha de cada evento en vamoh.cl
+    for st in (hoy, nxt):
+        assert st.attributes["attribution"] == "Panoramas por Vamoh (vamoh.cl)" and st.attributes["sitio"] == "https://vamoh.cl/"
+    assert all(e["ficha"].startswith("https://vamoh.cl/") for e in nxt.attributes["proximos"])
+    concierto = next(e for e in nxt.attributes["proximos"] if e["titulo"] == "Concierto en el Cerro")
+    assert concierto["hora"] == "20:00" and concierto["fecha"] == "2026-11-14"
+    # El enlace (que puede ser personal) no se expone en ningún atributo.
+    assert "SECRETO123" not in str(hoy.attributes) + str(nxt.attributes)
+
+
+async def test_vamoh_uses_etag_and_keeps_data_on_304(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    entry = await _setup_vamoh(hass, aioclient_mock)
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(VAMOH_URL, status=304)
+    await entry.runtime_data.vamoh.async_refresh()
+    await hass.async_block_till_done()
+    call = [c for c in aioclient_mock.mock_calls if "vamoh.cl" in str(c[1])][-1]
+    assert call[3]["If-None-Match"] == '"v1"'
+    assert hass.states.get("sensor.panoramas_por_vamoh_hoy").state == "3"      # los datos anteriores se conservan
+
+
+async def test_vamoh_down_or_cloudflare_challenge_is_unavailable_never_empty(hass, aioclient_mock, freezer, caplog):
+    import logging
+    caplog.set_level(logging.DEBUG)
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    await _setup_vamoh(hass, aioclient_mock, body="<html><title>Just a moment...</title></html>")
+    assert hass.states.get("sensor.indicadores_economicos_uf") is not None
+    for eid in ("sensor.panoramas_por_vamoh_hoy", "sensor.panoramas_por_vamoh_proximo_panorama"):
+        st = hass.states.get(eid)
+        assert st is None or st.state == "unavailable"
+    assert "SECRETO123" not in caplog.text                                     # el token nunca llega al log
+
+
+async def test_vamoh_empty_calendar_has_zero_not_an_error(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-14 12:00:00-03:00")
+    await _setup_vamoh(hass, aioclient_mock, body="BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n")
+    assert hass.states.get("sensor.panoramas_por_vamoh_hoy").state == "0"
+    nxt = hass.states.get("sensor.panoramas_por_vamoh_proximo_panorama")
+    assert nxt.state in ("unknown", "unavailable") and "motivo" in nxt.attributes
+
+
+async def test_vamoh_config_flow_validation(hass, aioclient_mock):
+    mock_all(aioclient_mock)
+    aioclient_mock.get("https://vamoh.cl/ok.ics", text=VAMOH_ICS)
+    aioclient_mock.get("https://vamoh.cl/html.ics", text="<html>no soy un calendario</html>")
+    aioclient_mock.get("https://vamoh.cl/caido.ics", status=503)
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    base = {"indicators": ["uf"], "metro": False}
+
+    async def submit(url):
+        return await hass.config_entries.flow.async_configure(flow["flow_id"], {**base, "vamoh_url": url})
+
+    assert (await submit("http://vamoh.cl/ok.ics"))["errors"] == {"vamoh_url": "invalid_vamoh_url"}
+    assert (await submit("https://otra-web.cl/ok.ics"))["errors"] == {"vamoh_url": "invalid_vamoh_url"}
+    assert (await submit("https://vamoh.cl/html.ics"))["errors"] == {"vamoh_url": "vamoh_not_calendar"}
+    ok = await submit("https://vamoh.cl/caido.ics")                          # si Vamoh no responde ahora, no se bloquea
+    assert ok["type"] == FlowResultType.CREATE_ENTRY and ok["data"]["vamoh_url"] == "https://vamoh.cl/caido.ics"
+
+
+# --------------------------------------------------------------------- Cerca de ti
+
+from custom_components.navaja_chilena.const import CINEMARK_THEATERS as _THEATERS, FUEL_DISCOUNTS_URL as _FD_URL  # noqa: E402
+
+TRACKER = "person.test"
+CINE_ID = "binary_sensor.cerca_de_ti_cerca_de_un_cinemark"
+ESTACION_ID = "binary_sensor.cerca_de_ti_cerca_de_una_estacion_con_descuento"
+ALTO = (_THEATERS["cinemark-alto-las-condes"][2], _THEATERS["cinemark-alto-las-condes"][3])
+NUNOA = (_THEATERS["cinemark-portal-nunoa"][2], _THEATERS["cinemark-portal-nunoa"][3])
+
+
+def _at(hass, lat, lon, accuracy=10):
+    hass.states.async_set(TRACKER, "not_home", {"latitude": lat, "longitude": lon, "gps_accuracy": accuracy})
+
+
+async def _setup_near(hass, aioclient_mock, extra=None, cinema=True):
+    import json as _json
+    mock_all(aioclient_mock)
+    aioclient_mock.get(CINEMARK_URL.format(slug="cinemark-alto-las-condes"), text=CINEMA_HTML)
+    aioclient_mock.get(CINEMARK_URL.format(slug="cinemark-portal-nunoa"), text=CINEMA_HTML)
+    aioclient_mock.get(FUEL_URL, json=_json.loads((FIX_DIR / "combustibles_estaciones.json").read_text()))
+    aioclient_mock.get(FUEL_BRANDS_URL, json=_json.loads((FIX_DIR / "combustibles_marcas.json").read_text()))
+    aioclient_mock.get(_FD_URL, json=_json.loads((Path(__file__).parents[1] / "data/bencina.json").read_text()))
+    data = {"indicators": ["uf"], "metro": False, "near_tracker": TRACKER, "near_radius": "300", **(extra or {})}
+    if cinema:
+        data["cinema"] = "cinemark-alto-las-condes"
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+def _calls(aioclient_mock, text):
+    return [c for c in aioclient_mock.mock_calls if text in str(c[1])]
+
+
+async def test_near_cinemark_configured_cinema_shows_next_screening(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 15:00:00-03:00")
+    _at(hass, ALTO[0] + 0.0008, ALTO[1])                             # a ~90 m del cine
+    await _setup_near(hass, aioclient_mock)
+    st = hass.states.get(CINE_ID)
+    assert st.state == "on" and st.attributes["cine_mas_cercano"] == "Cinemark Alto Las Condes"
+    assert st.attributes["cartelera_disponible"] is True and st.attributes["distancia_m"] < 150
+    nxt = st.attributes["proxima_funcion"]
+    assert nxt["hora"] >= "15:00" and nxt["poster"].startswith("https://cdn.cinemark.cl/")
+    assert st.attributes["proximas_funciones"][0] == nxt and st.attributes["resumen"].startswith(nxt["hora"])
+    assert len(_calls(aioclient_mock, "cinemark-alto-las-condes")) == 1   # reutiliza la cartelera ya descargada
+
+
+async def test_near_other_cinemark_fetches_on_demand_and_never_sends_the_location(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 15:00:00-03:00")
+    _at(hass, NUNOA[0], NUNOA[1])
+    await _setup_near(hass, aioclient_mock)
+    st = hass.states.get(CINE_ID)
+    assert st.state == "on" and st.attributes["cine_mas_cercano"].startswith("Cinemark") and "Alto" not in st.attributes["cine_mas_cercano"]
+    assert st.attributes["cartelera_disponible"] is True                 # se pidió al llegar cerca
+    assert len(_calls(aioclient_mock, "cinemark-portal-nunoa")) == 1
+    # Privacidad: ninguna consulta de red lleva la ubicación de la persona.
+    for call in aioclient_mock.mock_calls:
+        assert f"{NUNOA[0]}"[:7] not in str(call[1]) and f"{NUNOA[1]}"[:7] not in str(call[1])
+
+
+async def test_near_cinemark_hysteresis_and_leaving(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 15:00:00-03:00")
+    _at(hass, ALTO[0] + 0.0008, ALTO[1])
+    await _setup_near(hass, aioclient_mock)
+    assert hass.states.get(CINE_ID).state == "on"
+    deg = lambda m: m / 111_320
+    _at(hass, ALTO[0] + deg(350), ALTO[1])                              # 350 m: fuera del radio de 300 pero dentro del margen
+    await hass.async_block_till_done()
+    assert hass.states.get(CINE_ID).state == "on"
+    _at(hass, ALTO[0] + deg(450), ALTO[1])                              # 450 m: se apaga
+    await hass.async_block_till_done()
+    off = hass.states.get(CINE_ID)
+    assert off.state == "off" and "proxima_funcion" not in off.attributes
+    _at(hass, ALTO[0] + deg(350), ALTO[1])                              # 350 m viniendo de lejos: no se enciende
+    await hass.async_block_till_done()
+    assert hass.states.get(CINE_ID).state == "off"
+
+
+async def test_near_ignores_imprecise_or_missing_location(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 15:00:00-03:00")
+    _at(hass, ALTO[0], ALTO[1], accuracy=900)                          # GPS muy impreciso
+    await _setup_near(hass, aioclient_mock)
+    assert hass.states.get(CINE_ID).state == "unavailable"
+    _at(hass, ALTO[0], ALTO[1], accuracy=15)
+    await hass.async_block_till_done()
+    assert hass.states.get(CINE_ID).state == "on"
+    hass.states.async_remove(TRACKER)
+    await hass.async_block_till_done()
+    assert hass.states.get(CINE_ID).state == "unavailable"
+
+
+async def test_near_cinemark_down_still_alerts_without_inventing_the_schedule(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 15:00:00-03:00")
+    _at(hass, NUNOA[0], NUNOA[1])
+    mock_all(aioclient_mock)
+    aioclient_mock.get(CINEMARK_URL.format(slug="cinemark-portal-nunoa"), status=503)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False, "near_tracker": TRACKER, "near_radius": "300"})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    st = hass.states.get(CINE_ID)
+    assert st.state == "on" and st.attributes["cartelera_disponible"] is False and "proxima_funcion" not in st.attributes
+    _at(hass, NUNOA[0] + 0.0001, NUNOA[1])                              # se mueve un poco: no se insiste de inmediato
+    await hass.async_block_till_done()
+    assert len(_calls(aioclient_mock, "cinemark-portal-nunoa")) == 1
+
+
+def _station(brand):
+    import json as _json
+    marcas = {b["id"]: b["nombre"] for b in _json.loads((FIX_DIR / "combustibles_marcas.json").read_text())["data"]}
+    stations = _json.loads((FIX_DIR / "combustibles_estaciones.json").read_text())
+    stations = stations if isinstance(stations, list) else stations["data"]
+    s = next(x for x in stations if marcas.get(x["marca"]) == brand)
+    return float(s["latitud"]), float(s["longitud"])
+
+
+FUEL_NEAR = {"fuel_types": ["93"], "fuel_radius": "5", "fuel_max_age": "30", "benefit_cards": ["bancoestado"]}
+
+
+async def test_near_station_with_discount_today(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")                        # martes: Rutpay BancoEstado en Copec
+    lat, lon = _station("COPEC")
+    _at(hass, lat + 0.0005, lon)
+    await _setup_near(hass, aioclient_mock, extra=FUEL_NEAR)
+    st = hass.states.get(ESTACION_ID)
+    assert st.state == "on" and st.attributes["estacion_mas_cercana"] == "Copec"
+    assert st.attributes["marcas_con_descuento_hoy"] == ["Copec"] and st.attributes["distancia_m"] < 100
+    assert st.attributes["descuentos"][0]["tarjeta"] == "Rutpay BancoEstado" and st.attributes["descuentos"][0]["descuento"] == "$50/L"
+    assert "aviso" in st.attributes and st.attributes["direccion"]
+
+
+async def test_near_station_without_a_discount_for_that_brand_stays_off(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    lat, lon = _station("SHELL")                                         # hoy no hay descuento en Shell con esa tarjeta
+    _at(hass, lat, lon)
+    await _setup_near(hass, aioclient_mock, extra=FUEL_NEAR)
+    st = hass.states.get(ESTACION_ID)
+    assert st.state == "off" and "descuentos" not in st.attributes
+
+
+async def test_near_station_unavailable_when_the_calendar_is_from_another_month(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-12-02 12:00:00-03:00")
+    lat, lon = _station("COPEC")
+    _at(hass, lat, lon)
+    await _setup_near(hass, aioclient_mock, extra=FUEL_NEAR)
+    assert hass.states.get(ESTACION_ID).state == "unavailable"
+
+
+async def test_near_station_needs_fuel_and_cards_but_cinema_does_not(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    _at(hass, ALTO[0], ALTO[1])
+    await _setup_near(hass, aioclient_mock)
+    assert hass.states.get(ESTACION_ID) is None and hass.states.get(CINE_ID) is not None
+
+
+async def test_near_is_off_unless_a_tracker_is_chosen(hass, aioclient_mock, freezer):
+    freezer.move_to("2026-11-10 12:00:00-03:00")
+    mock_all(aioclient_mock)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get(CINE_ID) is None and entry.runtime_data.near_tracker == ""
+
+
+async def test_near_config_flow_saves_the_tracker(hass, aioclient_mock):
+    mock_all(aioclient_mock)
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    ok = await hass.config_entries.flow.async_configure(flow["flow_id"], {"indicators": ["uf"], "metro": False, "near_tracker": "person.jaime", "near_radius": "500"})
+    assert ok["type"] == FlowResultType.CREATE_ENTRY
+    assert ok["data"]["near_tracker"] == "person.jaime" and ok["data"]["near_radius"] == "500"
+
+
+# ----------------------------------------------------- Cargadores de vehículos eléctricos
+
+import copy as _copy  # noqa: E402
+import json as _ev_json  # noqa: E402
+from datetime import datetime as _dt, timedelta as _td, timezone as _tz  # noqa: E402
+from custom_components.navaja_chilena.const import EV_URL  # noqa: E402
+
+EV_RAW = _ev_json.loads((FIX_DIR / "cargadores_publicos.json").read_text())
+EV_NOW = _dt(2026, 11, 13, 15, tzinfo=_tz.utc)          # 12:00 en Chile; los datos del fixture son del 11 y 13 de noviembre
+SANTIAGO = (-33.4489, -70.6693)
+EV_NEAREST = "sensor.cargadores_electricos_cargador_libre_mas_cercano"
+EV_FREE = "sensor.cargadores_electricos_puntos_de_carga_libres_cerca"
+EV_CHEAP = "sensor.cargadores_electricos_cargador_libre_mas_barato"
+EV_SHOULD = "binary_sensor.cargadores_electricos_conviene_cargar"
+EV_NEAR = "binary_sensor.cerca_de_ti_cerca_de_un_cargador_electrico_libre"
+
+
+def _ev_station(**over):
+    base = {
+        "location_id": 1, "name": "Cargador de prueba", "address": "Calle 1", "commune": "Santiago", "region": "Metropolitana",
+        "institucion_privada": False, "coordinates": {"latitude": "-33.45", "longitude": "-70.66"},
+        "evses": [{
+            "evse_uid": 1, "status": "DISPONIBLE", "uso_exclusivo": False, "last_updated": "2026-11-13T10:00:00+00:00",
+            "connectors": [{
+                "status": "DISPONIBLE", "standard": "CCS 2", "power_type": "DC", "max_electric_power": 60,
+                "tariffs": [{"elements": {"price_components": [{"tariff_dimension": "ENERGIA", "price": 400}]}}],
+            }],
+        }],
+    }
+    return base | over
+
+
+def test_ev_parse_drops_private_exclusive_and_broken_entries():
+    exclusive = _ev_station(location_id=2)
+    exclusive["evses"][0]["uso_exclusivo"] = True
+    unknown = _ev_station(location_id=3)
+    unknown["evses"][0]["connectors"][0]["standard"] = "Favor actualizar valor"
+    bad_coords = _ev_station(location_id=4, coordinates={"latitude": "0", "longitude": "0"})
+    private = _ev_station(location_id=5, institucion_privada=True)
+    parsed = api.parse_ev_stations([_ev_station(), exclusive, unknown, bad_coords, private, "basura", None])
+    assert [s.id for s in parsed] == ["1"]
+    assert parsed[0].points[0].connectors[0].price == 400
+    for bad in ({"a": 1}, [], [exclusive]):
+        with pytest.raises(api.NavajaApiError):
+            api.parse_ev_stations(bad)
+
+
+def test_ev_candidates_filters_by_connector_power_and_freshness():
+    st = api.parse_ev_stations([_ev_station()])
+    args = (-33.45, -70.66, 5, EV_NOW)
+    assert len(api.ev_candidates(st, {"CCS 2"}, 0, *args)) == 1
+    assert api.ev_candidates(st, {"Tipo 2"}, 0, *args) == []                       # otro conector
+    assert api.ev_candidates(st, {"CCS 2"}, 100, *args) == []                       # menos potencia que la pedida
+    stale = api.ev_candidates(st, {"CCS 2"}, 0, -33.45, -70.66, 5, EV_NOW + _td(days=3))
+    assert stale == []                                                              # sin novedades hace más de 2 días: no se da por libre
+    listed = api.ev_candidates(st, {"CCS 2"}, 0, -33.45, -70.66, 5, EV_NOW + _td(days=3), only_free=False)
+    assert listed[0].free_points == 0 and listed[0].compatible_points == 1
+    assert api.ev_candidates(st, {"CCS 2"}, 0, -33.0, -70.0, 5, EV_NOW) == []      # fuera del radio
+
+
+def test_ev_busy_connector_is_not_free():
+    raw = _ev_station()
+    raw["evses"][0]["connectors"][0]["status"] = "OCUPADO"
+    assert api.ev_candidates(api.parse_ev_stations([raw]), {"CCS 2"}, 0, -33.45, -70.66, 5, EV_NOW) == []
+
+
+def test_ev_battery_low_needs_a_valid_percentage():
+    assert api.ev_battery_low("25", 30) is True and api.ev_battery_low("30", 30) is True and api.ev_battery_low("80", 30) is False
+    for bad in ("unknown", "unavailable", None, "150", "-5"):
+        assert api.ev_battery_low(bad, 30) is None
+
+
+async def _setup_ev(hass, aioclient_mock, status=200, body=None, **extra):
+    hass.config.latitude, hass.config.longitude = SANTIAGO
+    mock_all(aioclient_mock)
+    aioclient_mock.get(EV_URL, json=EV_RAW if body is None else body, status=status)
+    data = {"indicators": ["uf"], "metro": False, "ev_connectors": ["CCS 2", "Tipo 2"], "ev_radius": "5", "ev_min_power": "0", **extra}
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_ev_nearest_free_charger_and_its_attributes(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    entry = await _setup_ev(hass, aioclient_mock)
+    expected = api.ev_candidates(entry.runtime_data.ev.data, {"CCS 2", "Tipo 2"}, 0, *SANTIAGO, 5, EV_NOW)
+    assert expected
+    near = hass.states.get(EV_NEAREST)
+    assert near.state == expected[0].station.name
+    a = near.attributes
+    assert a["distancia_km"] <= 5 and a["puntos_libres"] >= 1 and a["conectores"] and "latitude" in a
+    assert [x["distancia_km"] for x in a["mas_cercanos"]] == sorted(x["distancia_km"] for x in a["mas_cercanos"])
+    assert a["estaciones_con_libres"] == len(expected) and a["radio_km"] == 5.0
+    assert "Ministerio de Energía" in a["fuente"]
+    assert int(hass.states.get(EV_FREE).state) == sum(c.free_points for c in expected)
+
+
+async def test_ev_cheapest_free_charger_is_priced_per_kwh(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    entry = await _setup_ev(hass, aioclient_mock)
+    priced = [c for c in api.ev_candidates(entry.runtime_data.ev.data, {"CCS 2", "Tipo 2"}, 0, *SANTIAGO, 5, EV_NOW) if c.price]
+    cheap = hass.states.get(EV_CHEAP)
+    assert cheap.attributes["unit_of_measurement"] == "CLP/kWh" and float(cheap.state) == min(c.price for c in priced)
+    prices = [x["tarifa_clp_kwh"] for x in cheap.attributes["mas_baratos"]]
+    assert prices == sorted(prices)
+
+
+async def test_ev_connector_filter_changes_the_results(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    await _setup_ev(hass, aioclient_mock, ev_connectors=["CHAdeMO"], ev_radius="2")
+    st = hass.states.get(EV_NEAREST)
+    assert st.attributes["conectores_buscados"] == ["CHAdeMO"]
+    assert st.state == "unknown" or st.attributes["conectores"] == ["CHAdeMO"]
+
+
+async def test_ev_nothing_free_is_unknown_with_reason(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW + _td(days=4))                                    # todos los estados quedan viejos
+    await _setup_ev(hass, aioclient_mock)
+    st = hass.states.get(EV_NEAREST)
+    assert st.state == "unknown" and "No hay puntos libres" in st.attributes["motivo"]
+    assert st.attributes["estaciones_compatibles_en_radio"] >= 1
+    assert int(hass.states.get(EV_FREE).state) == 0
+
+
+async def test_ev_source_down_is_unavailable_not_invented(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    await _setup_ev(hass, aioclient_mock, status=500)
+    assert hass.states.get(EV_NEAREST).state == "unavailable"
+    assert hass.states.get(EV_FREE).state == "unavailable"
+
+
+async def test_ev_not_created_unless_enabled(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    mock_all(aioclient_mock)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get(EV_NEAREST) is None and hass.states.get(EV_SHOULD) is None
+    assert not any(c[1].host == "cargadorespublicos.cl" for c in aioclient_mock.mock_calls)
+
+
+async def test_ev_should_charge_follows_the_car_battery(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    hass.states.async_set("sensor.mi_auto_bateria", "62")
+    await _setup_ev(hass, aioclient_mock, ev_battery="sensor.mi_auto_bateria", ev_low_battery="30")
+    st = hass.states.get(EV_SHOULD)
+    assert st.state == "off" and st.attributes["bateria"] == 62.0 and st.attributes["umbral_bateria"] == 30
+    assert st.attributes["bateria_baja"] is False and st.attributes["cargador"]["nombre"]
+    hass.states.async_set("sensor.mi_auto_bateria", "18")
+    await hass.async_block_till_done()
+    st = hass.states.get(EV_SHOULD)
+    assert st.state == "on" and st.attributes["bateria_baja"] is True
+    assert st.attributes["cargador"]["nombre"] == hass.states.get(EV_NEAREST).state
+    hass.states.async_set("sensor.mi_auto_bateria", "unavailable")
+    await hass.async_block_till_done()
+    assert hass.states.get(EV_SHOULD).state == "unavailable"                 # sin batería válida no se adivina
+
+
+async def test_ev_should_charge_stays_off_when_no_charger_is_free(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW + _td(days=4))
+    hass.states.async_set("sensor.mi_auto_bateria", "10")
+    await _setup_ev(hass, aioclient_mock, ev_battery="sensor.mi_auto_bateria")
+    st = hass.states.get(EV_SHOULD)
+    assert st.state == "off" and st.attributes["bateria_baja"] is True and "No hay puntos libres" in st.attributes["motivo"]
+
+
+async def test_ev_without_battery_entity_has_no_should_charge_sensor(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    await _setup_ev(hass, aioclient_mock)
+    assert hass.states.get(EV_SHOULD) is None
+
+
+async def test_near_free_ev_charger_turns_on_and_off_with_hysteresis(hass, aioclient_mock, freezer):
+    freezer.move_to(EV_NOW)
+    hass.config.latitude, hass.config.longitude = SANTIAGO
+    mock_all(aioclient_mock)
+    aioclient_mock.get(EV_URL, json=EV_RAW)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False, "ev_connectors": ["CCS 2"], "near_tracker": TRACKER, "near_radius": "300"})
+    entry.add_to_hass(hass)
+    _at(hass, 0.0, 0.0)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    target = api.ev_candidates(entry.runtime_data.ev.data, {"CCS 2"}, 0, *SANTIAGO, 5, EV_NOW)[0].station
+    _at(hass, target.lat + 0.0015, target.lon)                                # ~165 m
+    await hass.async_block_till_done()
+    st = hass.states.get(EV_NEAR)
+    assert st.state == "on" and st.attributes["nombre"] == target.name and st.attributes["distancia_m"] < 300
+    _at(hass, target.lat + 0.0032, target.lon)                                # ~355 m: dentro del margen de salida (390 m)
+    await hass.async_block_till_done()
+    assert hass.states.get(EV_NEAR).state == "on"
+    _at(hass, target.lat + 0.006, target.lon)                                 # ~670 m
+    await hass.async_block_till_done()
+    assert hass.states.get(EV_NEAR).state == "off"
+    assert not any("lat" in str(c[1].query) for c in aioclient_mock.mock_calls if c[1].host == "cargadorespublicos.cl")
+
+
+def _doc_card(title):
+    import re
+    import yaml
+    text = (Path(__file__).parents[1] / "docs/tarjetas.md").read_text(encoding="utf-8")
+    for block in re.findall(r"```yaml\n(.*?)```", text, re.S):
+        data = yaml.safe_load(block)
+        if isinstance(data, dict) and data.get("title") == title:
+            return data["content"]
+    raise AssertionError(f"no hay tarjeta «{title}» en docs/tarjetas.md")
+
+
+async def test_ev_documented_cards_render(hass, aioclient_mock, freezer):
+    from homeassistant.helpers.template import Template
+    freezer.move_to(EV_NOW)
+    hass.states.async_set("sensor.mi_auto_bateria", "18")
+    await _setup_ev(hass, aioclient_mock, ev_battery="sensor.mi_auto_bateria")
+    nearest = hass.states.get(EV_NEAREST)
+    card = Template(_doc_card("🔌 Cargador libre más cercano"), hass).async_render()
+    assert nearest.state in card and f"{nearest.attributes['distancia_km']} km" in card and "/kWh" in card and "- " in card
+    cheap = Template(_doc_card("💸 Carga más barata cerca"), hass).async_render()
+    assert f"${int(float(hass.states.get(EV_CHEAP).state))}/kWh" in cheap
+    car = Template(_doc_card("🔋 Mi auto"), hass).async_render()
+    assert "18 %" in car and "Conviene cargar" in car and nearest.state in car
+    hass.states.async_set("sensor.mi_auto_bateria", "80")
+    await hass.async_block_till_done()
+    assert "Todavía no hace falta cargar" in Template(_doc_card("🔋 Mi auto"), hass).async_render()
+
+
+async def test_ev_documented_cards_when_the_source_is_down(hass, aioclient_mock, freezer):
+    from homeassistant.helpers.template import Template
+    freezer.move_to(EV_NOW)
+    await _setup_ev(hass, aioclient_mock, status=500)
+    assert "no responde" in Template(_doc_card("🔌 Cargador libre más cercano"), hass).async_render()
+    assert "Sin tarifas" in Template(_doc_card("💸 Carga más barata cerca"), hass).async_render()
+
+
+# ----------------------------------- Panoramas por Vamoh: páginas de listado (datos de hidratación de Next.js)
+
+import copy as _vcopy  # noqa: E402
+from datetime import timedelta  # noqa: E402
+import json as _vjson  # noqa: E402
+
+VW_HTML = (FIX_DIR / "vamoh_musica_13.html").read_text(encoding="utf-8")
+VW_P1 = "https://vamoh.cl/events/?cats=musica&sc=13"
+VW_P2 = "https://vamoh.cl/events/?cats=musica&sc=13&page=2"
+VW_P3 = "https://vamoh.cl/events/?cats=musica&sc=13&page=3"
+VW_NOW = "2026-11-13 12:00:00-03:00"
+VW_TODAY = "sensor.panoramas_por_vamoh_hoy"
+VW_NEXT = "sensor.panoramas_por_vamoh_proximo_panorama"
+
+
+def _vw_raw_events():
+    queries = api._hydrated_queries(api._next_flight_text(VW_HTML))
+    return _vcopy.deepcopy(queries[0]["state"]["data"]["pages"][0]["events"])
+
+
+def _vw_html(events, page=1, total_pages=50, total=998):
+    """Página de listado con la misma estructura que la real (fixture), con otros eventos."""
+    state = {"mutations": [], "queries": [
+        {"state": {"data": {"pages": [{"events": events, "total": total, "page": page, "limit": 20, "total_pages": total_pages}], "pageParams": [page]}},
+         "queryKey": ["infiniteEvents", {"categories": ["musica"], "state_code": "13"}, 20]},
+        {"state": {"data": [{"id": "musica", "name": "Música", "slug": "musica"}]}, "queryKey": ["categories", "events"]},
+    ]}
+    text = "54:" + _vjson.dumps(["$", "$L67", None, {"state": state}], ensure_ascii=False) + "\n"
+    return f"<html><body><script>self.__next_f.push([1,{_vjson.dumps(text)}])</script></body></html>"
+
+
+def _vw_more(prefix, start_day):
+    events = _vw_raw_events()[:2]
+    for i, e in enumerate(events):
+        e["id"], e["name"], e["slug"] = f"{prefix}-{i}", f"{prefix} evento {i}", f"{prefix}-evento-{i}"
+        e["next_occurrence_at"] = e["start_date_time"] = f"2026-11-{start_day}T22:00:00.000Z"
+        e["finish_date_time"] = f"2026-11-{start_day + 1}T01:00:00.000Z"
+        e["occurrences_count"] = 1
+    return events
+
+
+def test_vamoh_web_parse_real_page():
+    page = api.parse_vamoh_page(VW_HTML)
+    assert (page.page, page.total_pages, page.total) == (1, 50, 998) and len(page.events) == 6
+    by = {e.title: e for e in page.events}
+    opera = by["Opera IX"]                                      # sin hora explícita: solo la fecha
+    assert opera.all_day and opera.start.isoformat() == "2026-11-13T00:00:00-03:00" and opera.end.isoformat() == "2026-11-14T00:00:00-03:00"
+    assert opera.place == "Bar Oxido, Purísima 282" and opera.url == "https://vamoh.cl/events/opera-ix-s8yo4/"
+    assert opera.price_from == 25000 and opera.free is None and opera.categories == ("Música",)
+    assert opera.image == "https://img.vamoh.cl/events/aad8955a-4737-4950-8181-ac2bbbbe82f4.webp"
+    la = by["La La Love You"]                                    # con hora: 00:00 UTC = 21:00 del día anterior en Chile
+    assert not la.all_day and la.start.isoformat() == "2026-11-13T21:00:00-03:00" and la.end.isoformat() == "2026-11-13T23:00:00-03:00"
+    assert by["Papanegro: El Encuentro Vol. 2"].free is True
+    orbita = by["ÓRBITA SONORA 1: RADIOHEAD - IN RAINBOWS"]      # varias funciones: usa la próxima, no la fecha de inicio original
+    assert orbita.start.isoformat() == "2026-11-14T17:00:00-03:00" and orbita.end == orbita.start + timedelta(hours=3)
+
+
+def test_vamoh_web_parse_joins_fragments_and_decodes_data_without_executing_it():
+    flight = api._next_flight_text(VW_HTML)
+    assert flight.count('{"mutations":[],"queries":[') == 1 and "&sc=13" in flight    # & decodificado; dos fragmentos unidos
+    hostile = VW_HTML.replace("Opera IX", "Opera </script><script>alert(1)</script> IX")
+    assert api.parse_vamoh_page(hostile).events                                       # el contenido es dato, no código
+
+
+def test_vamoh_web_parse_skips_cancelled_inactive_and_incomplete_events():
+    raw = _vw_raw_events()
+    raw[0]["cancelled"] = True
+    raw[1]["active"] = False
+    raw[2]["slug"] = ""
+    raw[3]["name"] = ""
+    page = api.parse_vamoh_page(_vw_html(raw))
+    assert [e.title for e in page.events] == ["Taki Ongoy en Liceo Manuel de Salas", "Daniel Guerrero llega a La Barrica Celta - 13 de Noviembre"]
+
+
+def test_vamoh_web_never_calls_it_free_without_saying_so():
+    raw = _vw_raw_events()
+    for e in raw:
+        e["min_price"], e["has_free_ticket"], e["ticket_status"] = None, False, "available"
+    events = api.parse_vamoh_page(_vw_html(raw)).events
+    assert all(e.price_from is None and e.free is None for e in events)
+    raw[0]["has_free_ticket"] = True
+    assert api.parse_vamoh_page(_vw_html(raw)).events[0].free is True
+
+
+def test_vamoh_web_empty_search_is_valid_and_unknown_format_is_an_error():
+    empty = api.parse_vamoh_page(_vw_html([], total=0, total_pages=1))
+    assert empty.events == [] and empty.total == 0
+    for bad in ("<html>nada</html>", "<script>self.__next_f.push([1,\"sin datos\"])</script>"):
+        with pytest.raises(api.NavajaApiError):
+            api.parse_vamoh_page(bad)
+
+
+def test_vamoh_web_listing_url():
+    assert api.vamoh_listing_url("13", "musica") == "https://vamoh.cl/events/?cats=musica&sc=13"
+    assert api.vamoh_listing_url("5", "comedia_humor", 2) == "https://vamoh.cl/events/?cats=comedia_humor&sc=5&page=2"
+    assert api.vamoh_listing_url("13", None) == "https://vamoh.cl/events/?sc=13"
+    for bad in (("99", "musica"), ("13", "otra")):
+        with pytest.raises(ValueError):
+            api.vamoh_listing_url(*bad)
+
+
+async def _setup_vamoh_web(hass, aioclient_mock, monkeypatch, p1=None, p2=None, p3=None, status=200, **extra):
+    monkeypatch.setattr("custom_components.navaja_chilena.coordinator.VAMOH_PAGE_PAUSE", 0)
+    mock_all(aioclient_mock)
+    # primero las URL más específicas: la de la página 1 coincide también con las demás
+    aioclient_mock.get(VW_P3, text=_vw_html(_vw_more("p3", 18), page=3) if p3 is None else p3)
+    aioclient_mock.get(VW_P2, text=_vw_html(_vw_more("p2", 16), page=2) if p2 is None else p2)
+    aioclient_mock.get(VW_P1, text=VW_HTML if p1 is None else p1, status=status)
+    data = {"indicators": ["uf"], "metro": False, "vamoh_region": "13", "vamoh_category": "musica", **extra}
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_vamoh_web_sensors_today_and_next(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch)
+    hoy = hass.states.get(VW_TODAY)
+    assert hoy.state == "4"                                         # Opera IX, La La Love You, Papanegro y Daniel Guerrero
+    nxt = hass.states.get(VW_NEXT)
+    assert nxt.state == "Opera IX" and nxt.attributes["ficha"] == "https://vamoh.cl/events/opera-ix-s8yo4/"
+    assert nxt.attributes["entrada"] == "Desde $25.000" and nxt.attributes["entity_picture"].startswith("https://img.vamoh.cl/")
+    for st in (hoy, nxt):                                           # condiciones de Vamoh: atribución visible y enlace a cada ficha
+        assert st.attributes["attribution"] == "Panoramas por Vamoh (vamoh.cl)" and st.attributes["sitio"] == "https://vamoh.cl/"
+    assert all(e["ficha"].startswith("https://vamoh.cl/events/") for e in nxt.attributes["proximos"])
+    free = [e for e in hoy.attributes["panoramas"] if e["titulo"].startswith("Papanegro")][0]
+    assert free["gratis"] is True and free["entrada"] == "Gratis"
+    starts = [(e["fecha"], e["hora"] or "") for e in nxt.attributes["proximos"]]
+    assert starts == sorted(starts)                                  # ordenados por fecha, no por relevancia
+    titles = [e["titulo"] for e in nxt.attributes["proximos"]]
+    assert "p2 evento 0" in titles and "p3 evento 0" in titles       # unió las páginas 2 y 3 con la 1
+    urls = [str(c[1]) for c in aioclient_mock.mock_calls if "vamoh.cl" in str(c[1])]
+    assert urls == [VW_P1, VW_P2, VW_P3]
+
+
+async def test_vamoh_web_says_when_results_are_partial(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch)
+    a = hass.states.get(VW_NEXT).attributes
+    assert a["resultados_parciales"] is True and a["paginas_leidas"] == "3 de 50" and a["total_en_vamoh"] == 998
+    assert a["region"] == "Metropolitana de Santiago" and a["categoria"] == "Música" and a["desactualizado"] is False
+    assert a["actualizado"] == "2026-11-13 12:00"
+    assert len([c for c in aioclient_mock.mock_calls if "vamoh.cl" in str(c[1])]) == 3        # solo 3 páginas por actualización
+    assert all("User-Agent" in c[3] and "NavajaChilena" in c[3]["User-Agent"] for c in aioclient_mock.mock_calls if "vamoh.cl" in str(c[1]))
+
+
+async def test_vamoh_web_complete_when_the_listing_fits_in_the_pages_read(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch, p1=_vw_html(_vw_raw_events(), total=6, total_pages=1))
+    a = hass.states.get(VW_NEXT).attributes
+    assert a["resultados_parciales"] is False and a["paginas_leidas"] == "1 de 1"
+    assert len([c for c in aioclient_mock.mock_calls if "vamoh.cl" in str(c[1])]) == 1
+
+
+async def test_vamoh_web_failed_extra_page_keeps_what_was_read(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    aioclient_mock.get(VW_P2, status=503)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch)
+    a = hass.states.get(VW_NEXT).attributes
+    assert a["paginas_leidas"] == "1 de 50" and a["resultados_parciales"] is True and hass.states.get(VW_TODAY).state == "4"
+
+
+async def test_vamoh_web_blocked_by_cloudflare_is_unavailable_never_empty(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch, p1="<html><title>Attention Required! | Cloudflare</title></html>", status=403)
+    for eid in (VW_TODAY, VW_NEXT):
+        assert hass.states.get(eid).state == "unavailable"          # un bloqueo no se confunde con «0 panoramas»
+
+
+async def test_vamoh_web_keeps_last_good_result_when_it_fails_then_gives_up_after_a_day(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    entry = await _setup_vamoh_web(hass, aioclient_mock, monkeypatch)
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(VW_P1, status=503)
+    freezer.move_to("2026-11-13 18:00:00-03:00")
+    await entry.runtime_data.vamoh.async_refresh()
+    await hass.async_block_till_done()
+    nxt = hass.states.get(VW_NEXT)
+    assert nxt.state != "unavailable" and nxt.attributes["desactualizado"] is True
+    assert "503" in nxt.attributes["ultimo_error"] and nxt.attributes["actualizado"] == "2026-11-13 12:00"
+    freezer.move_to("2026-11-14 13:00:00-03:00")                      # pasó más de un día sin poder actualizar
+    await entry.runtime_data.vamoh.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(VW_NEXT).state == "unavailable"
+
+
+async def test_vamoh_web_region_takes_precedence_over_the_ics_link(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    aioclient_mock.get(VAMOH_URL, text=VAMOH_ICS)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch, vamoh_url=VAMOH_URL)
+    assert not [c for c in aioclient_mock.mock_calls if "mi-enlace.ics" in str(c[1])]
+    assert hass.states.get(VW_NEXT).state == "Opera IX"
+
+
+async def test_vamoh_web_without_a_category_lists_every_category(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to(VW_NOW)
+    monkeypatch.setattr("custom_components.navaja_chilena.coordinator.VAMOH_PAGE_PAUSE", 0)
+    mock_all(aioclient_mock)
+    aioclient_mock.get("https://vamoh.cl/events/?sc=5", text=_vw_html(_vw_raw_events(), total=6, total_pages=1))
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False, "vamoh_region": "5", "vamoh_category": "all"})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    a = hass.states.get(VW_NEXT).attributes
+    assert a["categoria"] == "Todas" and a["region"] == "Valparaíso"
+
+
+async def test_vamoh_web_options_flow_accepts_region_and_category(hass, aioclient_mock):
+    mock_all(aioclient_mock)
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    keys = {str(k): k for k in flow["data_schema"].schema}
+    assert "vamoh_region" in keys and "vamoh_category" in keys
+    base = {"indicators": ["uf"], "metro": False, "vamoh_region": "13", "vamoh_category": "comedia_humor"}
+    result = await hass.config_entries.flow.async_configure(flow["flow_id"], base)
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"]["vamoh_region"] == "13" and result["data"]["vamoh_category"] == "comedia_humor"
+
+
+async def test_vamoh_web_documented_card_renders(hass, aioclient_mock, monkeypatch, freezer):
+    from homeassistant.helpers.template import Template
+    freezer.move_to(VW_NOW)
+    await _setup_vamoh_web(hass, aioclient_mock, monkeypatch)
+    card = Template(_doc_card("✨ Panoramas por Vamoh"), hass).async_render()
+    assert "Opera IX" in card and "Desde $25.000" in card and "ver en Vamoh" in card
+    assert "https://vamoh.cl/events/opera-ix-s8yo4/" in card and "Panoramas por" in card
+    assert "3 de 50 páginas" in card and "Gratis" in card
