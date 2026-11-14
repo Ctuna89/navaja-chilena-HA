@@ -56,8 +56,9 @@ class CinepolisSensor(CoordinatorEntity, SensorEntity):
         return len(self._today())
 
     def _next(self):
+        """La próxima función desde ahora, de hoy o de los días siguientes (el servicio solo entrega las que aún no empiezan)."""
         now = self._now()
-        coming = [(s, m) for m, shows in self._today() for s in shows if s.start >= now]
+        coming = [(s, m) for m, shows in self.coordinator.data.movies for s in shows if s.start >= now]
         return min(coming, key=lambda item: item[0].start) if coming else None
 
     @property
@@ -101,7 +102,14 @@ class CinepolisSensor(CoordinatorEntity, SensorEntity):
             "peliculas": movies,
             "resumen": summary,
             "proxima_funcion": (
-                {"titulo": nxt[1].name, "hora": nxt[0].start.strftime("%H:%M"), "afiche": cinepolis.poster_url(nxt[1])} if nxt else None
+                {
+                    "titulo": nxt[1].name,
+                    "hora": nxt[0].start.strftime("%H:%M"),
+                    "fecha": nxt[0].start.strftime("%Y-%m-%d"),
+                    "afiche": cinepolis.poster_url(nxt[1]),
+                }
+                if nxt
+                else None
             ),
             "cartelera_completa": data.complete,
             "actualizado": data.updated.astimezone(ZoneInfo(data.cinema.timezone)).strftime("%Y-%m-%d %H:%M"),

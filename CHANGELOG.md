@@ -5,6 +5,7 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+- **Cinépolis**: ahora lee toda la cartelera del cine (antes se quedaba en las 25 primeras películas y dejaba fuera a otras con funciones) y la próxima función también mira los días siguientes. Se actualiza cada hora.
 ## 3.2.2
 
 - **Corrección importante**: las respuestas de Cinépolis, del listado de Vamoh, del calendario de Vamoh y del tren de EFE se leían a medias cuando llegaban en varios trozos, y fallaban con «no devolvió JSON». Ahora se leen completas.

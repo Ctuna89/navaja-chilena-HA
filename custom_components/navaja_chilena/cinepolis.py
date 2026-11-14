@@ -575,7 +575,7 @@ async def fetch_cartelera(
     now: datetime,
     api_key: str = CINEPOLIS_API_KEY,
     *,
-    max_movies: int = 25,
+    max_movies: int = 60,
     pause: float = 0.0,
 ) -> CinepolisCartelera:
     """Películas del cine con sus funciones. `billboard` es por película: una consulta cada una, con tope y pausa entre ellas.

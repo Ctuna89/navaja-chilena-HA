@@ -170,8 +170,8 @@ Cines disponibles: los 22 de **Cinemark** en Chile.
 **Cinépolis** (`sensor.cinepolis_<cine>_cartelera_de_hoy`): escribe el nombre de tu cine de Cinépolis en las opciones (por ejemplo *La Reina*) y se resuelve con el servicio de búsqueda de Cinépolis; si no lo encuentra, te lo dice.
 - Mismos atributos que Cinemark: `peliculas` (título, duración, género, clasificación y las funciones con hora, fecha, formato, idioma —subtitulada o doblada—, experiencia de sala y sala), `resumen`, `proxima_funcion` y `fecha`, más la ubicación del cine.
 - Las horas son las del cine y se conserva la fecha completa de cada función, así que las de después de medianoche cuentan bien.
-- Se actualiza cada 45 minutos. Si Cinépolis no responde, se conserva el último resultado hasta por un día y los atributos `actualizado`, `desactualizado` y `ultimo_error` lo indican; pasado ese día, queda «no disponible». Una falla nunca se muestra como «sin funciones».
-- Cada película se consulta por separado (hasta 25 por cine); `cartelera_completa` indica si quedó alguna fuera.
+- Se actualiza cada hora. Si Cinépolis no responde, se conserva el último resultado hasta por un día y los atributos `actualizado`, `desactualizado` y `ultimo_error` lo indican; pasado ese día, queda «no disponible». Una falla nunca se muestra como «sin funciones».
+- Cada película se consulta por separado (unas 35 en un cine grande, hasta 60), así que son unas 40 consultas por hora; `cartelera_completa` indica si quedó alguna fuera. `peliculas` es la cartelera de hoy y `proxima_funcion` mira también los días siguientes (trae su `fecha`).
 - **Afiche:** `afiche` es la imagen vertical de la película en el sitio de imágenes de Cinépolis, y es la imagen de la entidad (la de la próxima función). Si la ruta que entrega el servicio no tiene la forma conocida, queda vacío en vez de inventar un enlace.
 - Son los servicios que usa el propio sitio de Cinépolis, que **autorizó su uso**; no son una API pública versionada, así que podrían cambiar.
 
