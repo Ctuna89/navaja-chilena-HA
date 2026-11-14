@@ -58,8 +58,8 @@ from .const import (
 from .const import EV_CONNECTORS, EV_MAX_BYTES, EV_STATUS_MAX_AGE, EV_URL
 from .const import VAMOH_CATEGORIES, VAMOH_EVENTS_URL, VAMOH_PAGE_MAX_BYTES, VAMOH_PAGE_PAUSE, VAMOH_REGIONS
 
-HEADERS = {
-    "User-Agent": "NavajaChilena/2.4 (https://github.com/Ctuna89/navaja-chilena-HA; integración de Home Assistant)"
+HEADERS = {   # solo ASCII: algunos servicios (Cloudflare) rechazan caracteres no ASCII en los encabezados
+    "User-Agent": "NavajaChilena/3 (+https://github.com/Ctuna89/navaja-chilena-HA; Home Assistant integration)"
 }
 
 STOP_CODE_RE = re.compile(r"^[A-Z]{1,3}\d{1,5}$")
@@ -94,6 +94,37 @@ def parse_stop_codes(raw: str) -> list[str]:
         if code not in codes:
             codes.append(code)
     return codes
+
+
+async def _read_limited(resp: aiohttp.ClientResponse, limit: int) -> bytes:
+    """Cuerpo completo de la respuesta, con tope. `resp.content.read(n)` NO sirve: devuelve solo lo que ya llegó, y una respuesta
+    partida en trozos (lo normal tras un CDN) quedaría cortada. Devuelve como máximo `limit + 1` bytes para detectar el exceso."""
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in resp.content.iter_chunked(65536):
+        chunks.append(chunk)
+        size += len(chunk)
+        if size > limit:
+            break
+    return b"".join(chunks)[: limit + 1]
+
+
+def response_hint(resp: aiohttp.ClientResponse) -> str:
+    """Datos útiles para diagnosticar un bloqueo o una respuesta rara (sin contenido ni credenciales)."""
+    parts = [f"HTTP {resp.status}"]
+    for name, label in (("Content-Type", "tipo"), ("Server", "servidor"), ("CF-Ray", "cf-ray")):
+        value = resp.headers.get(name)
+        if value:
+            parts.append(f"{label} {value[:60]}")
+    return ", ".join(parts)
+
+
+def body_snippet(body: bytes, size: int = 100) -> str:
+    """Primeras palabras de una respuesta inesperada, sin etiquetas HTML; si no es texto, solo su tamaño."""
+    text = body[: size * 8].decode("utf-8", "replace")
+    if not text.strip() or text.count("\ufffd") > 3 or sum(1 for c in text if ord(c) < 32 and c not in "\r\n\t") > 3:
+        return f"(contenido no textual, {len(body)} bytes)"
+    return " ".join(re.sub(r"<[^>]*>", " ", text).split())[:size]
 
 
 async def _get_json(session: aiohttp.ClientSession, url: str, headers: dict[str, str] | None = None) -> Any:
@@ -2362,7 +2393,7 @@ async def fetch_vamoh_calendar(
                 return None, etag, modified
             if resp.status >= 300:
                 raise NavajaApiError(f"Vamoh respondió HTTP {resp.status}", resp.status)
-            body = await resp.content.read(VAMOH_MAX_BYTES + 1)
+            body = await _read_limited(resp, VAMOH_MAX_BYTES)
             new_etag, new_mod = resp.headers.get("ETag"), resp.headers.get("Last-Modified")
     except aiohttp.ClientError as err:
         raise NavajaApiError(f"No fue posible conectar con Vamoh: {type(err).__name__}") from err
@@ -2770,12 +2801,12 @@ def parse_vamoh_page(html: str) -> VamohPage:
 async def _get_vamoh_page(session: aiohttp.ClientSession, url: str) -> str:
     try:
         async with session.get(
-            url, headers=HEADERS | {"Accept": "text/html"}, timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+            url, headers=HEADERS | {"Accept": "text/html", "Accept-Encoding": "gzip, deflate"}, timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
         ) as resp:
             if resp.status in (403, 429, 503):
-                raise NavajaApiError(f"Vamoh no atendió la solicitud (HTTP {resp.status}); puede ser una protección anti-bots", resp.status)
+                raise NavajaApiError(f"Vamoh no atendió la solicitud ({response_hint(resp)}); puede ser una protección anti-bots", resp.status)
             resp.raise_for_status()
-            body = await resp.content.read(VAMOH_PAGE_MAX_BYTES + 1)
+            body = await _read_limited(resp, VAMOH_PAGE_MAX_BYTES)
     except aiohttp.ClientResponseError as err:
         raise NavajaApiError(f"Vamoh respondió HTTP {err.status}", err.status) from err
     except aiohttp.ClientError as err:

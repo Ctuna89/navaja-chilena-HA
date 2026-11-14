@@ -437,3 +437,27 @@ def test_poster_url_only_converts_the_known_path_shape():
     for path in ("/pimcore/25732/assets/Chile/Tickets/Movies/FIESTAPAGANA/Es/720X1022_2__2/",
                  "/pimcore/25496/assets/Chile/Tickets/Movies/BTSWORLDTOURARIRANGINJAKARTA/Es/720x1022px_Poster_WEB_Desktop_5/"):
         assert cp.poster_url(movie(path)).startswith("https://pimcore-content.cinepolis.com/assets/Chile/Tickets/Movies/")
+
+
+async def test_post_graphql_non_json_response_explains_what_came_back(hass, aioclient_mock):
+    aioclient_mock.post(cp.CINEPOLIS_BILLBOARD_URL, text="<html><title>Attention Required! | Cloudflare</title></html>",
+                        headers={"Content-Type": "text/html", "Server": "cloudflare", "CF-Ray": "abc123-GRU"})
+    with pytest.raises(api.NavajaApiError) as err:
+        await cp.post_graphql(async_get_clientsession(hass), cp.CINEPOLIS_BILLBOARD_URL, "query { x }", {}, "CLAVE-SECRETA")
+    text = str(err.value)
+    assert "no devolvió JSON" in text and "HTTP 200" in text and "cloudflare" in text and "abc123-GRU" in text and "Attention Required" in text
+    assert "CLAVE-SECRETA" not in text
+
+
+async def test_post_graphql_block_message_includes_the_ray_id_for_support(hass, aioclient_mock):
+    aioclient_mock.post(cp.CINEPOLIS_BILLBOARD_URL, status=403, text="<html>blocked</html>", headers={"Server": "cloudflare", "CF-Ray": "zzz-SCL"})
+    with pytest.raises(api.NavajaApiError) as err:
+        await cp.post_graphql(async_get_clientsession(hass), cp.CINEPOLIS_BILLBOARD_URL, "query { x }", {}, "K")
+    assert "HTTP 403" in str(err.value) and "zzz-SCL" in str(err.value) and err.value.status == 403
+
+
+async def test_post_graphql_sends_plain_encoding_headers(hass, aioclient_mock):
+    aioclient_mock.post(cp.CINEPOLIS_BILLBOARD_URL, json={"data": {}})
+    await cp.post_graphql(async_get_clientsession(hass), cp.CINEPOLIS_BILLBOARD_URL, "query { x }", {}, "K")
+    headers = aioclient_mock.mock_calls[0][3]
+    assert headers["Accept-Encoding"] == "gzip, deflate" and headers["User-Agent"].isascii()
