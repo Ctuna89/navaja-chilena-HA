@@ -5,6 +5,13 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+## 3.2.2
+
+- **Corrección importante**: las respuestas de Cinépolis, del listado de Vamoh, del calendario de Vamoh y del tren de EFE se leían a medias cuando llegaban en varios trozos, y fallaban con «no devolvió JSON». Ahora se leen completas.
+- **Mejor diagnóstico**: cuando un servicio bloquea o responde algo inesperado, el mensaje del registro incluye el código HTTP, el servidor, el identificador de Cloudflare (`cf-ray`) y las primeras palabras de la respuesta, nunca claves.
+- **Identificación solo ASCII**: la integración se identifica como `NavajaChilena/3 (+https://github.com/Ctuna89/navaja-chilena-HA; Home Assistant integration)`, porque algunos servicios rechazan caracteres no ASCII en los encabezados.
+- **Aviso**: el listado web de Vamoh sigue sin funcionar si Vamoh bloquea las solicitudes automáticas (HTTP 403 de Cloudflare); depende de que Vamoh las habilite.
+
 ## 3.2.1
 
 - **Cinépolis**: la cartelera de hoy de tu cine de Cinépolis (escribes su nombre, p. ej. «La Reina») con afiche, películas, funciones, formato, idioma y sala, en la hora del cine. Cada 45 minutos, con el último resultado conservado si el servicio falla y sin confundir una falla con «sin funciones». Funciona con los servicios del propio sitio de Cinépolis, con su autorización.
