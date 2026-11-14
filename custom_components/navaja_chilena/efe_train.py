@@ -19,7 +19,7 @@ from urllib.parse import urlencode
 
 import aiohttp
 
-from .api import HEADERS, NavajaApiError
+from .api import HEADERS, NavajaApiError, _read_limited
 
 # Opciones del asistente y frecuencia de consulta
 CONF_TRAIN_TRIPS = "train_trips"
@@ -256,7 +256,7 @@ async def fetch_departures(
             timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
         ) as resp:
             resp.raise_for_status()
-            body = await resp.content.read(MAX_RESPONSE_BYTES + 1)
+            body = await _read_limited(resp, MAX_RESPONSE_BYTES)
     except aiohttp.ClientResponseError as err:
         raise NavajaApiError(f"EFE respondió HTTP {err.status}", err.status) from err
     except (aiohttp.ClientError, TimeoutError) as err:

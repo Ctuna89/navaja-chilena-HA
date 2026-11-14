@@ -24,7 +24,7 @@ from zoneinfo import ZoneInfo
 
 import aiohttp
 
-from .api import HEADERS, NavajaApiError, _plain
+from .api import HEADERS, NavajaApiError, _plain, _read_limited, body_snippet, response_hint
 from .const import CINEPOLIS_API_KEY, CINEPOLIS_IMAGE_BASE, REQUEST_TIMEOUT
 
 CINEPOLIS_BILLBOARD_URL = "https://api-g.cinepolis.com/v2/billboards/graphql"
@@ -230,7 +230,14 @@ class CinepolisShowtime:
 
 def cinepolis_headers(api_key: str) -> dict[str, str]:
     """Encabezados que usa el sitio. La clave solo viaja en `x-apikey`; nunca se escribe en mensajes ni en el registro."""
-    return HEADERS | {"Content-Type": "application/json", "country-id": CINEPOLIS_COUNTRY, "language": "ES", "x-apikey": api_key}
+    return HEADERS | {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip, deflate",
+        "country-id": CINEPOLIS_COUNTRY,
+        "language": "ES",
+        "x-apikey": api_key,
+    }
 
 
 async def post_graphql(
@@ -246,10 +253,11 @@ async def post_graphql(
             headers=cinepolis_headers(api_key),
             timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
         ) as resp:
+            hint = response_hint(resp)
             if resp.status in (401, 403):
-                raise NavajaApiError(f"Cinépolis rechazó la solicitud (HTTP {resp.status}): revisa la clave de aplicación", resp.status)
+                raise NavajaApiError(f"Cinépolis rechazó la solicitud ({hint}): revisa la clave de aplicación o un posible bloqueo anti-bots", resp.status)
             resp.raise_for_status()
-            body = await resp.content.read(CINEPOLIS_MAX_BYTES + 1)
+            body = await _read_limited(resp, CINEPOLIS_MAX_BYTES)
     except aiohttp.ClientResponseError as err:
         raise NavajaApiError(f"Cinépolis respondió HTTP {err.status}", err.status) from err
     except aiohttp.ClientError as err:
@@ -261,7 +269,7 @@ async def post_graphql(
     try:
         payload = json.loads(body)
     except ValueError as err:
-        raise NavajaApiError("Cinépolis no devolvió JSON") from err
+        raise NavajaApiError(f"Cinépolis no devolvió JSON ({hint}): {body_snippet(body)}") from err
     if not isinstance(payload, dict):
         raise NavajaApiError("Respuesta inesperada de Cinépolis")
     errors = payload.get("errors")

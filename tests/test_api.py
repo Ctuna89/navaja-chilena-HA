@@ -849,7 +849,10 @@ def test_vamoh_fetch_uses_etag_never_redirects_and_hides_the_url_in_errors():
             self.status, self._b, self.headers = status, body, headers or {}
             self.content = self
         async def read(self, n=-1):
-            return self._b
+            return self._b[:7]        # como aiohttp: solo lo que ya llegó, no todo el cuerpo
+        async def iter_chunked(self, n):
+            for i in range(0, len(self._b), 5000):
+                yield self._b[i:i + 5000]
         async def __aenter__(self):
             return self
         async def __aexit__(self, *a):
@@ -908,3 +911,38 @@ def test_nearest_discount_station_only_considers_brands_with_a_discount():
         {"dias": [2], "estaciones": ["Copec", "SHELL"], "tarjeta": "tenpo", "monto": "$50/L"}]}).items
     grouped = api.discount_brands(list(discounts))
     assert set(grouped) == {"copec", "shell"} and len(grouped["copec"]) == 2
+
+
+# ------------------------------------------------- Lectura completa de respuestas y diagnóstico
+
+def test_read_limited_returns_the_whole_body_even_when_it_arrives_in_chunks():
+    import asyncio
+
+    class Content:
+        def __init__(self, parts):
+            self.parts = parts
+        async def read(self, n=-1):
+            return self.parts[0]                      # lo que ya llegó: así falla el uso de read(n)
+        async def iter_chunked(self, n):
+            for part in self.parts:
+                yield part
+
+    class Resp:
+        def __init__(self, parts):
+            self.content = Content(parts)
+
+    parts = [b'{"data": {"a": ', b'"b"}', b"}"]
+    assert asyncio.run(api._read_limited(Resp(parts), 1000)) == b'{"data": {"a": "b"}}'
+    assert asyncio.run(Resp(parts).content.read()) != b'{"data": {"a": "b"}}'          # el método anterior habría cortado la respuesta
+    big = asyncio.run(api._read_limited(Resp([b"x" * 600, b"y" * 600, b"z" * 600]), 1000))
+    assert len(big) == 1001                                                          # tope: se corta justo después del límite
+
+
+def test_body_snippet_drops_html_and_describes_binary_content():
+    assert api.body_snippet(b"<html><title>Attention Required! | Cloudflare</title><p>Sorry,  you were blocked</p></html>") == "Attention Required! | Cloudflare Sorry, you were blocked"
+    assert api.body_snippet(bytes(range(0, 40)) * 5) == "(contenido no textual, 200 bytes)"
+    assert api.body_snippet(b"") == "(contenido no textual, 0 bytes)"
+
+
+def test_user_agent_is_ascii_and_identifies_the_project():
+    assert api.HEADERS["User-Agent"].isascii() and "NavajaChilena" in api.HEADERS["User-Agent"] and "github.com/Ctuna89/navaja-chilena-HA" in api.HEADERS["User-Agent"]
