@@ -43,13 +43,6 @@ from .const import (
     NEAR_DEFAULT_RADIUS,
     NEAR_RADII,
     CONF_CINEPOLIS_CINEMA,
-    CONF_VAMOH_CATEGORY,
-    CONF_VAMOH_REGION,
-    CONF_VAMOH_URL,
-    VAMOH_ALL_CATEGORIES,
-    VAMOH_CATEGORIES,
-    VAMOH_NONE,
-    VAMOH_REGIONS,
     CONF_EVENTS_COMMUNE,
     CONF_EVENTS_FREE_ONLY,
     CONF_NEWS_COUNT,
@@ -270,27 +263,6 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
                 CONF_CINEPOLIS_CINEMA, default=defaults.get(CONF_CINEPOLIS_CINEMA, "")
             ): selector.TextSelector(),
             vol.Required(
-                CONF_VAMOH_REGION, default=defaults.get(CONF_VAMOH_REGION, VAMOH_NONE)
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[selector.SelectOptionDict(value=VAMOH_NONE, label="No usar / None")]
-                    + [selector.SelectOptionDict(value=k, label=v) for k, v in VAMOH_REGIONS.items()],
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Required(
-                CONF_VAMOH_CATEGORY, default=defaults.get(CONF_VAMOH_CATEGORY, VAMOH_ALL_CATEGORIES)
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[selector.SelectOptionDict(value=VAMOH_ALL_CATEGORIES, label="Todas / All")]
-                    + [selector.SelectOptionDict(value=k, label=v) for k, v in VAMOH_CATEGORIES.items()],
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Optional(
-                CONF_VAMOH_URL, default=defaults.get(CONF_VAMOH_URL, "")
-            ): selector.TextSelector(),
-            vol.Required(
                 CONF_CLARO_ARENA, default=defaults.get(CONF_CLARO_ARENA, False)
             ): selector.BooleanSelector(),
             vol.Required(
@@ -390,9 +362,6 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         parse_trips(user_input.get(CONF_TRAIN_TRIPS, ""), bool(user_input.get(CONF_TRAIN_RETURN)))  # el tope cuenta el sentido inverso
     except ValueError:
         return user_input, {CONF_TRAIN_TRIPS: "invalid_trip"}
-    vamoh = str(user_input.get(CONF_VAMOH_URL) or "").strip()
-    if vamoh and not api.vamoh_url_ok(vamoh):
-        return user_input, {CONF_VAMOH_URL: "invalid_vamoh_url"}
     zone = str(user_input.get(CONF_REGIONAL_ZONE, REGIONAL_NONE))
     try:
         regional = api.parse_regional_codes(user_input.get(CONF_REGIONAL_STOPS, ""))
@@ -415,9 +384,7 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         or bool(str(user_input.get(CONF_EVENTS_COMMUNE) or "").strip())
         or bool(user_input.get(CONF_CLARO_ARENA))
         or bool(user_input.get(CONF_NEAR_TRACKER))
-        or bool(str(user_input.get(CONF_VAMOH_URL) or "").strip())
         or bool(str(user_input.get(CONF_CINEPOLIS_CINEMA) or "").strip())
-        or str(user_input.get(CONF_VAMOH_REGION, VAMOH_NONE)) != VAMOH_NONE
         or (zone != REGIONAL_NONE and bool(regional))
         or str(user_input.get(CONF_FOOTBALL_TEAM, FOOTBALL_NONE)) != FOOTBALL_NONE
         or bool(user_input.get(CONF_FOOTBALL_LEAGUE))
@@ -435,7 +402,6 @@ def _validate(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str
         CONF_VEHICLES_MORE: ", ".join(f"{d}:{t}" for d, t in more_vehicles),
         CONF_PHARMACY_COMUNA: user_input.get(CONF_PHARMACY_COMUNA, "").strip(),
         CONF_REGIONAL_STOPS: ", ".join(regional),
-        CONF_VAMOH_URL: vamoh,
     }, errors
 
 
@@ -489,20 +455,6 @@ async def _resolve_cinepolis(hass, text: str) -> tuple[str, dict[str, str]]:
     return cinema.name, {}
 
 
-async def _check_vamoh(hass, url: str) -> dict[str, str]:
-    """Que el enlace entregue un calendario .ics. Si Vamoh no responde en este momento, no se bloquea."""
-    if not url:
-        return {}
-    try:
-        await api.fetch_vamoh_calendar(async_get_clientsession(hass), url)
-    except api.NavajaApiError as err:
-        if err.status is None and "no es un calendario" in str(err):
-            return {CONF_VAMOH_URL: "vamoh_not_calendar"}
-        if err.status in (401, 403, 404):
-            return {CONF_VAMOH_URL: "vamoh_not_calendar"}
-    return {}
-
-
 async def _check_regional(hass, zone: str, codes: list[str]) -> dict[str, str]:
     """Rechaza paraderos que no existen en la ciudad. Si no se puede comprobar, no se bloquea."""
     if zone == REGIONAL_NONE or not codes:
@@ -540,8 +492,6 @@ class NavajaConfigFlow(ConfigFlow, domain=DOMAIN):
                 cinema, errors = await _resolve_cinepolis(self.hass, str(cleaned.get(CONF_CINEPOLIS_CINEMA) or ""))
                 cleaned = {**cleaned, CONF_CINEPOLIS_CINEMA: cinema}
             if not errors:
-                errors = await _check_vamoh(self.hass, str(cleaned.get(CONF_VAMOH_URL) or ""))
-            if not errors:
                 return self.async_create_entry(title="Navaja Chilena", data=cleaned)
         return self.async_show_form(
             step_id="user", data_schema=_schema(user_input or {}), errors=errors
@@ -572,8 +522,6 @@ class NavajaOptionsFlow(OptionsFlow):
             if not errors:
                 cinema, errors = await _resolve_cinepolis(self.hass, str(cleaned.get(CONF_CINEPOLIS_CINEMA) or ""))
                 cleaned = {**cleaned, CONF_CINEPOLIS_CINEMA: cinema}
-            if not errors:
-                errors = await _check_vamoh(self.hass, str(cleaned.get(CONF_VAMOH_URL) or ""))
             if not errors:
                 return self.async_create_entry(data=cleaned)
         current = {**self.config_entry.data, **self.config_entry.options}

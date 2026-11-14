@@ -35,9 +35,6 @@
           "near_tracker": "«Cerca de ti»: persona o teléfono cuya ubicación avisa (cines y estaciones con descuento)",
           "near_radius": "Distancia de aviso de «Cerca de ti»",
           "cinepolis_cinema": "Cinépolis: nombre del cine para su cartelera (ej. La Reina)",
-          "vamoh_region": "Panoramas por Vamoh: región (listado público de vamoh.cl)",
-          "vamoh_category": "Panoramas por Vamoh: categoría",
-          "vamoh_url": "Panoramas por Vamoh: enlace del calendario (.ics) de tu comuna o tu enlace personal (solo si no eliges región)",
           "claro_arena": "Eventos del estadio Claro Arena (conciertos y partidos)",
           "news_topics": "Temas de noticias (titulares de La Tercera y Cooperativa)",
           "news_count": "Cantidad de titulares por tema",
@@ -62,9 +59,7 @@
       "invalid_trip": "Trayecto de tren inválido. Usa «Origen > Destino» con estaciones de la línea Limache–Puerto, ej. Villa Alemana > Puerto. Máximo 8 trayectos (contando el sentido inverso).",
       "invalid_vehicle": "Vehículo inválido. Usa un dígito de 0 a 9, con un tipo opcional (ej. 3, 5:moto, 7:sin_sello) y hasta 5 vehículos en total.",
       "events_commune_not_found": "No encontré esa comuna en Chile Cultura. Escríbela como en su sitio (ej. Providencia, Ñuñoa, Viña del Mar).",
-      "cinepolis_cinema_not_found": "No encontramos un cine de Cinépolis con ese nombre. Escribe el nombre como aparece en cinepolis.cl, por ejemplo La Reina.",
-      "invalid_vamoh_url": "El enlace de Vamoh debe empezar con https:// y ser de vamoh.cl.",
-      "vamoh_not_calendar": "Ese enlace no entregó un calendario. Revisa que sea el enlace .ics que te dio Vamoh."
+      "cinepolis_cinema_not_found": "No encontramos un cine de Cinépolis con ese nombre. Escribe el nombre como aparece en cinepolis.cl, por ejemplo La Reina."
     },
     "abort": {
       "already_configured": "Navaja Chilena ya está configurada."
@@ -106,9 +101,6 @@
           "near_tracker": "«Cerca de ti»: persona o teléfono cuya ubicación avisa (cines y estaciones con descuento)",
           "near_radius": "Distancia de aviso de «Cerca de ti»",
           "cinepolis_cinema": "Cinépolis: nombre del cine para su cartelera (ej. La Reina)",
-          "vamoh_region": "Panoramas por Vamoh: región (listado público de vamoh.cl)",
-          "vamoh_category": "Panoramas por Vamoh: categoría",
-          "vamoh_url": "Panoramas por Vamoh: enlace del calendario (.ics) de tu comuna o tu enlace personal (solo si no eliges región)",
           "claro_arena": "Eventos del estadio Claro Arena (conciertos y partidos)",
           "news_topics": "Temas de noticias (titulares de La Tercera y Cooperativa)",
           "news_count": "Cantidad de titulares por tema",
@@ -133,9 +125,7 @@
       "invalid_trip": "Trayecto de tren inválido. Usa «Origen > Destino» con estaciones de la línea Limache–Puerto, ej. Villa Alemana > Puerto. Máximo 8 trayectos (contando el sentido inverso).",
       "invalid_vehicle": "Vehículo inválido. Usa un dígito de 0 a 9, con un tipo opcional (ej. 3, 5:moto, 7:sin_sello) y hasta 5 vehículos en total.",
       "events_commune_not_found": "No encontré esa comuna en Chile Cultura. Escríbela como en su sitio (ej. Providencia, Ñuñoa, Viña del Mar).",
-      "cinepolis_cinema_not_found": "No encontramos un cine de Cinépolis con ese nombre. Escribe el nombre como aparece en cinepolis.cl, por ejemplo La Reina.",
-      "invalid_vamoh_url": "El enlace de Vamoh debe empezar con https:// y ser de vamoh.cl.",
-      "vamoh_not_calendar": "Ese enlace no entregó un calendario. Revisa que sea el enlace .ics que te dio Vamoh."
+      "cinepolis_cinema_not_found": "No encontramos un cine de Cinépolis con ese nombre. Escribe el nombre como aparece en cinepolis.cl, por ejemplo La Reina."
     }
   },
   "entity": {

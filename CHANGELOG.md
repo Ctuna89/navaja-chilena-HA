@@ -5,24 +5,27 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+## 3.2.3
+
+- **Se retira un módulo de panoramas de un tercero** que se había incorporado en la 3.2.0: sus entidades y sus opciones se eliminan solas al actualizar.
 - **Cinépolis**: ahora lee toda la cartelera del cine (antes se quedaba en las 25 primeras películas y dejaba fuera a otras con funciones) y la próxima función también mira los días siguientes. Se actualiza cada hora.
+
 ## 3.2.2
 
-- **Corrección importante**: las respuestas de Cinépolis, del listado de Vamoh, del calendario de Vamoh y del tren de EFE se leían a medias cuando llegaban en varios trozos, y fallaban con «no devolvió JSON». Ahora se leen completas.
+- **Corrección importante**: las respuestas de Cinépolis y del tren de EFE se leían a medias cuando llegaban en varios trozos, y fallaban con «no devolvió JSON». Ahora se leen completas.
 - **Mejor diagnóstico**: cuando un servicio bloquea o responde algo inesperado, el mensaje del registro incluye el código HTTP, el servidor, el identificador de Cloudflare (`cf-ray`) y las primeras palabras de la respuesta, nunca claves.
 - **Identificación solo ASCII**: la integración se identifica como `NavajaChilena/3 (+https://github.com/Ctuna89/navaja-chilena-HA; Home Assistant integration)`, porque algunos servicios rechazan caracteres no ASCII en los encabezados.
-- **Aviso**: el listado web de Vamoh sigue sin funcionar si Vamoh bloquea las solicitudes automáticas (HTTP 403 de Cloudflare); depende de que Vamoh las habilite.
 
 ## 3.2.1
 
 - **Cinépolis**: la cartelera de hoy de tu cine de Cinépolis (escribes su nombre, p. ej. «La Reina») con afiche, películas, funciones, formato, idioma y sala, en la hora del cine. Cada 45 minutos, con el último resultado conservado si el servicio falla y sin confundir una falla con «sin funciones». Funciona con los servicios del propio sitio de Cinépolis, con su autorización.
+
 ## 3.2.0
 
-Una versión con tres módulos nuevos: cargadores eléctricos, «Cerca de ti» y Panoramas por Vamoh.
+Una versión con dos módulos nuevos: cargadores eléctricos y «Cerca de ti».
 
 - **Cargadores eléctricos**: el cargador público libre más cercano a tu casa, cuántos puntos libres hay, el más barato por kWh y, si agregas el sensor de batería de tu auto, «Conviene cargar» cuando la batería está baja y hay un cargador libre compatible. Eliges los conectores de tu auto, el radio y la potencia mínima. Datos del mapa de cargadores públicos del Ministerio de Energía (registro SEC), consultados cada 15 minutos; un punto sin novedades hace más de 2 días no se cuenta como libre. Con «Cerca de ti» también avisa al pasar cerca de un cargador libre. Incluye tarjetas y automatizaciones de ejemplo.
 - **Cerca de ti** (opcional): eliges tu teléfono y una distancia, y dos sensores se encienden cuando pasas cerca de un Cinemark (con la próxima función) o de una estación de servicio con descuento hoy para tus tarjetas. La ubicación no sale de tu Home Assistant. Incluye tarjetas y automatizaciones de ejemplo, también «con zona» para restaurantes.
-- **Panoramas por Vamoh**: eliges tu región y una categoría y lee los panoramas de las páginas públicas de listado de Vamoh, con afiche, precio y la ficha de cada evento en Vamoh. Una consulta por hora, ordenados por fecha, con aviso de resultados parciales, sin llamar «gratis» a lo que no informa precio y conservando el último resultado bueno si Vamoh falla. Como alternativa se puede leer su calendario (.ics) o tu enlace personal, que nunca se muestra ni se registra. Atribución visible.
 
 ## 3.1.0
 
