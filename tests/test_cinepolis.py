@@ -349,14 +349,15 @@ async def test_cinepolis_sensor_without_showtimes_today_is_zero_not_unavailable(
     freezer.move_to("2026-11-13 12:00:00-03:00")                                # las funciones reales son del 28
     await _setup_cinepolis(hass, aioclient_mock, monkeypatch)
     st = hass.states.get(SENSOR)
-    assert st.state == "0" and st.attributes["proxima_funcion"] is None
+    assert st.state == "0" and st.attributes["peliculas"] == []
+    assert st.attributes["proxima_funcion"]["fecha"] == "2026-11-28"             # hoy no hay, pero sí en un día siguiente
 
 
 async def test_cinepolis_after_the_last_showtime_there_is_no_next_one(hass, aioclient_mock, monkeypatch, freezer):
     freezer.move_to("2026-11-28 21:00:00-03:00")
     await _setup_cinepolis(hass, aioclient_mock, monkeypatch)
     st = hass.states.get(SENSOR)
-    assert st.state == "1" and st.attributes["proxima_funcion"] is None         # la película sigue siendo «de hoy» y no hay otra función
+    assert st.state == "1" and st.attributes["proxima_funcion"] is None         # la película sigue siendo «de hoy» y no hay otra función en ningún día
 
 
 async def test_cinepolis_service_down_is_unavailable_never_empty(hass, aioclient_mock, monkeypatch, freezer):
@@ -461,3 +462,44 @@ async def test_post_graphql_sends_plain_encoding_headers(hass, aioclient_mock):
     await cp.post_graphql(async_get_clientsession(hass), cp.CINEPOLIS_BILLBOARD_URL, "query { x }", {}, "K")
     headers = aioclient_mock.mock_calls[0][3]
     assert headers["Accept-Encoding"] == "gzip, deflate" and headers["User-Agent"].isascii()
+
+
+async def test_cinepolis_next_showtime_also_looks_at_the_following_days(hass, aioclient_mock, monkeypatch, freezer):
+    freezer.move_to("2026-11-27 23:30:00-03:00")                                # hoy ya no quedan funciones; la real es mañana 28 a las 19:30
+    await _setup_cinepolis(hass, aioclient_mock, monkeypatch)
+    st = hass.states.get(SENSOR)
+    assert st.state == "0" and st.attributes["peliculas"] == []                  # la cartelera de hoy está vacía
+    nxt = st.attributes["proxima_funcion"]
+    assert nxt["titulo"] == "AMOR FESTIVAL 2026: ROSE" and nxt["hora"] == "19:30" and nxt["fecha"] == "2026-11-28"
+
+
+async def test_fetch_cartelera_reads_a_whole_big_listing(hass, aioclient_mock):
+    """La Reina tiene 35 películas en cartelera: ninguna debe quedar fuera (antes el tope era 25)."""
+    from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMockResponse
+
+    template = json.loads((FIX / "cinepolis_movies_page1.json").read_text(encoding="utf-8"))["data"]["movies"]["edges"][0]
+    nodes = []
+    for i in range(35):
+        edge = json.loads(json.dumps(template))
+        edge["node"]["id"], edge["node"]["name"] = f"pelicula-{i}", f"PELÍCULA {i}"
+        nodes.append(edge)
+    real = json.loads((FIX / "cinepolis_billboard.json").read_text(encoding="utf-8"))
+    asked = []
+
+    async def effect(method, url, data):
+        v = data["variables"]
+        if data["operationName"] == "Movies":
+            start = int(v.get("after") or 0)
+            page = nodes[start:start + 20]
+            end = start + len(page)
+            body = {"data": {"movies": {"pageInfo": {"startCursor": str(start), "endCursor": str(end) if end < 35 else "", "hasNextPage": end < 35, "hasPreviousPage": start > 0},
+                                        "totalCount": len(page), "edges": page}}}
+        else:
+            asked.append(v["movieId"])
+            body = real
+        return AiohttpClientMockResponse("POST", url, json=body)
+
+    aioclient_mock.post(cp.CINEPOLIS_BILLBOARD_URL, side_effect=effect)
+    cinema = cp.parse_search_cinemas(_real("searchEntities"))[0]
+    cartelera = await cp.fetch_cartelera(async_get_clientsession(hass), cinema, datetime(2026, 11, 13, tzinfo=timezone.utc), "K")
+    assert len(cartelera.movies) == 35 and cartelera.complete and len(asked) == 35

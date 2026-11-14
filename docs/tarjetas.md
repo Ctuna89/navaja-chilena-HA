@@ -842,32 +842,6 @@ content: |
   {% endfor %}
 ```
 
-### Panoramas por Vamoh
-
-Los panoramas de Vamoh de tu región, con afiche, precio y enlace a la ficha de cada uno en Vamoh. Requiere elegir una **región** (y, si quieres, una categoría) en las opciones de Navaja Chilena.
-
-```yaml
-type: markdown
-title: ✨ Panoramas por Vamoh
-content: |
-  {% set e = 'sensor.panoramas_por_vamoh_proximo_panorama' %}
-  {% for p in (state_attr(e, 'proximos') or [])[:5] %}
-  {% if p.imagen %}<img src="{{ p.imagen }}" width="64" align="left" hspace="8">{% endif %}**{{ p.fecha[8:10] }}/{{ p.fecha[5:7] }}{% if p.hora %} {{ p.hora }}{% endif %}** · {{ p.titulo }}
-  {% if p.lugar %}{{ p.lugar }}{% endif %}{% if p.entrada %} · {{ p.entrada }}{% endif %} · [ver en Vamoh]({{ p.ficha }})
-  <br clear="left">
-  {% else %}
-  {{ state_attr(e, 'motivo') or 'Sin datos de Vamoh por ahora.' }}
-  {% endfor %}
-  {% if state_attr(e, 'resultados_parciales') %}
-  <sub>Muestra de los primeros resultados de Vamoh ({{ state_attr(e, 'paginas_leidas') }} páginas).</sub>
-  {% endif %}
-  {% if state_attr(e, 'desactualizado') %}
-  <sub>⚠️ Vamoh no respondió; datos del {{ state_attr(e, 'actualizado') }}.</sub>
-  {% endif %}
-
-  <sub>Panoramas por <a href="https://vamoh.cl">Vamoh</a></sub>
-```
-
 ## 📍 Cerca de ti
 
 Requiere activar **«Cerca de ti»** en las opciones (elige tu teléfono y la distancia). Las tarjetas muestran algo solo cuando estás cerca.

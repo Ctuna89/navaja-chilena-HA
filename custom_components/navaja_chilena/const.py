@@ -329,13 +329,6 @@ CLARO_ARENA_URL = "https://claroarena.cl/cartelera/"
 EVENTS_INTERVAL = timedelta(hours=6)
 EVENTS_PAUSE = 1.0                # segundos entre páginas de la misma fuente
 
-# Panoramas por Vamoh: calendario público (.ics) por comuna, o el enlace personal de la cuenta de Vamoh
-CONF_VAMOH_URL = "vamoh_url"
-VAMOH_SITE = "https://vamoh.cl/"
-VAMOH_HOST_SUFFIX = "vamoh.cl"          # solo se leen enlaces https de vamoh.cl y sus subdominios
-VAMOH_INTERVAL = timedelta(hours=6)     # Vamoh pide consultar «cada unas horas»
-VAMOH_MAX_BYTES = 2_000_000
-VAMOH_ATTRIBUTION = "Panoramas por Vamoh (vamoh.cl)"
 
 # «Cerca de ti» (opcional): avisos según la ubicación de un teléfono, calculados solo dentro de Home Assistant
 CONF_NEAR_TRACKER = "near_tracker"
@@ -371,35 +364,13 @@ EV_LOW_BATTERIES = (20, 30, 40, 50)
 EV_DEFAULT_LOW_BATTERY = 30
 EV_ATTRIBUTION = "Cargadores: mapa de cargadores públicos del Ministerio de Energía (SEC)"
 
-# Panoramas por Vamoh desde sus páginas públicas de listado (datos de hidratación de Next.js), con filtro de región y categoría
-CONF_VAMOH_REGION = "vamoh_region"
-CONF_VAMOH_CATEGORY = "vamoh_category"
-VAMOH_NONE = "none"
-VAMOH_ALL_CATEGORIES = "all"
-VAMOH_EVENTS_URL = "https://vamoh.cl/events/"
-VAMOH_WEB_INTERVAL = timedelta(hours=1)        # una consulta por hora, con caché (lo que Vamoh recomienda)
-VAMOH_WEB_MAX_PAGES = 3                        # el listado viene por relevancia: se leen pocas páginas y se avisa que es parcial
-VAMOH_PAGE_PAUSE = 1.0                         # segundos entre páginas
-VAMOH_PAGE_MAX_BYTES = 4_000_000
-VAMOH_STALE_MAX = timedelta(hours=24)          # sin poder actualizar, se conserva el último resultado bueno hasta por un día
-VAMOH_REGIONS: dict[str, str] = {              # los mismos códigos y nombres que entrega el sitio
-    "15": "Arica y Parinacota", "1": "Tarapacá", "2": "Antofagasta", "3": "Atacama", "4": "Coquimbo", "5": "Valparaíso",
-    "13": "Metropolitana de Santiago", "6": "O'Higgins", "7": "Maule", "16": "Ñuble", "8": "Biobío", "9": "La Araucanía",
-    "14": "Los Ríos", "10": "Los Lagos", "11": "Aysén", "12": "Magallanes",
-}
-VAMOH_CATEGORIES: dict[str, str] = {
-    "musica": "Música", "vida_nocturna": "Vida nocturna", "deporte_fitness": "Deporte", "arte_cultura": "Arte y cultura",
-    "comedia_humor": "Comedia", "aprendizaje_educacion": "Aprendizaje", "familiar_infantil": "Familiar",
-    "exposiciones_ferias": "Exhibiciones", "bienestar_salud": "Bienestar", "social_comunidad": "Social", "gastronomia": "Gastronomía",
-}
-
 # Cinépolis: clave de aplicación del propio sitio de Cinépolis (encabezado x-apikey). Cinépolis autorizó por escrito usar los
 # mismos servicios que su sitio, con esa clave. No es una credencial de ningún usuario. Si Cinépolis la cambia, se actualiza aquí.
 CINEPOLIS_API_KEY = "lQM6Mkvri1iHksKKCfpAiwGXq0YUZA7Nn6XAXRPr4i13LwXo"
 
 # Cinépolis: cartelera de un cine (se elige por nombre, p. ej. «La Reina»)
 CONF_CINEPOLIS_CINEMA = "cinepolis_cinema"
-CINEPOLIS_INTERVAL = timedelta(minutes=45)        # Cinépolis sugiere entre 30 y 60 minutos
+CINEPOLIS_INTERVAL = timedelta(hours=1)           # Cinépolis sugiere entre 30 y 60 minutos; son ~40 consultas por cine (una por película)
 CINEPOLIS_PAUSE = 0.3                             # segundos entre consultas de películas
 CINEPOLIS_IMAGE_BASE = "https://pimcore-content.cinepolis.com"   # imágenes de Cinépolis; la ruta del servicio pasa a ser BASE + /assets/…/nombre.jpg
 CINEPOLIS_STALE_MAX = timedelta(hours=24)         # sin poder actualizar, se conserva el último resultado hasta por un día

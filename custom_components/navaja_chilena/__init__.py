@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from . import api
 from .api import FUEL_LABELS, nearest_theater, parse_stop_codes
@@ -25,12 +26,6 @@ from .const import (
     CONF_NEAR_TRACKER,
     NEAR_DEFAULT_RADIUS,
     CONF_CINEPOLIS_CINEMA,
-    CONF_VAMOH_CATEGORY,
-    CONF_VAMOH_REGION,
-    CONF_VAMOH_URL,
-    VAMOH_ALL_CATEGORIES,
-    VAMOH_CATEGORIES,
-    VAMOH_REGIONS,
     CONF_EVENTS_COMMUNE,
     CONF_EVENTS_FREE_ONLY,
     CONF_NEWS_COUNT,
@@ -62,6 +57,7 @@ from .const import (
     CONF_CINEMA,
     DEFAULT_INDICATORS,
     CONF_AIR,
+    DOMAIN,
     CONF_BOLSA,
     CONF_CRYPTO,
     CONF_HOLIDAYS,
@@ -85,9 +81,7 @@ from .coordinator import (
     arena_coordinator,
     benefits_coordinator,
     culture_coordinator,
-    vamoh_coordinator,
     cinepolis_coordinator,
-    vamoh_web_coordinator,
     news_coordinator,
     regional_coordinator,
     ev_coordinator,
@@ -143,7 +137,6 @@ class RuntimeData:
     news: NavajaCoordinator | None = None
     culture: NavajaCoordinator | None = None
     arena: NavajaCoordinator | None = None
-    vamoh: NavajaCoordinator | None = None
     near_tracker: str = ""
     near_radius: int = NEAR_DEFAULT_RADIUS
     events_commune: str = ""
@@ -196,7 +189,20 @@ async def _refresh(coordinator: NavajaCoordinator | None) -> bool:
     return coordinator.last_update_success
 
 
+def _remove_retired_entities(hass: HomeAssistant, entry: NavajaConfigEntry) -> None:
+    """Quita las entidades y el dispositivo de un módulo que ya no existe, para que no queden «no disponibles» para siempre."""
+    ent_reg = er.async_get(hass)
+    for ent in list(er.async_entries_for_config_entry(ent_reg, entry.entry_id)):
+        if "_vamoh_" in (ent.unique_id or ""):
+            ent_reg.async_remove(ent.entity_id)
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get_device(identifiers={(DOMAIN, "vamoh")})
+    if device is not None:
+        dev_reg.async_remove_device(device.id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bool:
+    _remove_retired_entities(hass, entry)
     opts = _options(entry)
     data = RuntimeData(indicator_codes=list(opts.get(CONF_INDICATORS, [])))
 
@@ -281,13 +287,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
             data.near_radius = int(opts.get(CONF_NEAR_RADIUS, NEAR_DEFAULT_RADIUS))
         except (TypeError, ValueError):
             data.near_radius = NEAR_DEFAULT_RADIUS
-    vamoh_url = str(opts.get(CONF_VAMOH_URL) or "").strip()
-    vamoh_region = str(opts.get(CONF_VAMOH_REGION) or "")
-    vamoh_category = str(opts.get(CONF_VAMOH_CATEGORY) or VAMOH_ALL_CATEGORIES)
-    if vamoh_region in VAMOH_REGIONS:        # el listado web de Vamoh tiene prioridad sobre el calendario .ics
-        data.vamoh = vamoh_web_coordinator(hass, vamoh_region, vamoh_category if vamoh_category in VAMOH_CATEGORIES else None)
-    elif vamoh_url and api.vamoh_url_ok(vamoh_url):
-        data.vamoh = vamoh_coordinator(hass, vamoh_url)
     if opts.get(CONF_CLARO_ARENA):
         data.arena = arena_coordinator(hass)
     topics = [t for t in (opts.get(CONF_NEWS_TOPICS) or []) if t in NEWS_TOPICS]
@@ -340,7 +339,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bo
     coordinators = [
         c
         for c in (data.indicators, data.metro, data.stops, data.train, data.quakes,
-                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.ev, data.cinepolis, data.benefits, data.fuel_discounts, data.regional, data.news, data.culture, data.arena, data.vamoh, data.football, data.national)
+                  data.holidays, data.air, data.pharmacy, data.crypto, data.bolsa, data.cinema, data.ephemerides, data.fuel, data.ev, data.cinepolis, data.benefits, data.fuel_discounts, data.regional, data.news, data.culture, data.arena, data.football, data.national)
         if c is not None
     ]
     results = [await _refresh(c) for c in coordinators]
