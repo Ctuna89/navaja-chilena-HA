@@ -97,13 +97,16 @@ Disponibles: UF, dólar observado, euro, UTM, IPC, IVP, Imacec, TPM, libra de co
 
 ### 🚇 Metro de Santiago
 `sensor.metro_de_santiago_linea_1` … `_linea_6` y `_linea_4a` · estado `operativa`, `con_problemas` o `cerrada` ·
-actualización cada 2 minutos.
+actualización cada 5 minutos.
 
 - Los estados se muestran como «Operativa», «Con problemas» y «Cerrada» (en la interfaz en español).
-- Atributos: `mensaje`, `estaciones` (estado de cada una), `estaciones_con_problemas`, `horario_apertura` y `horario_cierre`.
+- **Fuente oficial:** la página «Estado del servicio» de [metro.cl](https://www.metro.cl/el-viaje/estado-red), la misma que ves en el sitio de Metro.
+  Una línea es «Operativa» solo si Metro la marca como disponible y sin estaciones afectadas; cualquier otro estado, o uno que no se reconozca, figura como «Con problemas».
+- Atributos: `mensaje` (el aviso de Metro, con su hora), `tramo` (por ejemplo «San Pablo → Los Dominicos»), `estaciones_con_problemas`, `motivos` (por ejemplo «Cierre temporal»), `estaciones`, `horario_apertura`, `horario_cierre` y `fuente`.
 - **Horario de servicio** (hora de Santiago): lunes a viernes 06:00–23:00, sábado 06:30–23:00, domingo y festivos 07:30–23:00.
   Fuera de ese horario todas las líneas y estaciones figuran como `cerrada`.  Los festivos se consideran automáticamente.
-- Si la fuente no responde, el sensor queda «no disponible».
+- Si la página no responde o cambia de formato, el sensor queda «no disponible»: nunca se supone «operativa» sin evidencia.
+- Es la página pública de Metro, no una API con versiones: si Metro rediseña el sitio, el sensor queda no disponible hasta ajustar la integración.
 
 ### 🚌 Paraderos
 `sensor.paraderos_red_movilidad_paradero_<código>` · minutos para el próximo bus · actualización cada minuto.
@@ -392,7 +395,8 @@ necesidad de registrarte.
 | Módulo | Fuente |
 |---|---|
 | Indicadores económicos e IPSA | [mindicador.cl](https://mindicador.cl) y [findic.cl](https://findic.cl) |
-| Metro y paraderos | [api.xor.cl](https://api.xor.cl) (datos del Metro de Santiago y de Red Movilidad) |
+| Metro | Página oficial «Estado del servicio» de [Metro de Santiago](https://www.metro.cl/el-viaje/estado-red) |
+| Paraderos | [api.xor.cl](https://api.xor.cl) (datos de Red Movilidad) |
 | Sismos | Centro Sismológico Nacional (vía api.gael.cloud) y [USGS](https://earthquake.usgs.gov) |
 | Feriados | [boostr.cl](https://api.boostr.cl) |
 | Calidad del aire y UV | [Open-Meteo](https://open-meteo.com) |

@@ -137,7 +137,7 @@ Las siete líneas, con el color de cada una:
 
 ![Estado de las siete líneas del Metro](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/metro-lineas.png)
 
-*Ejemplo con un incidente simulado en la Línea 2.*
+*La captura es un ejemplo con un incidente simulado; con datos reales cada estación muestra además su motivo, por ejemplo «Cierre temporal».*
 
 ```yaml
 type: grid
@@ -179,7 +179,7 @@ Resumen con las estaciones afectadas (o el aviso de que el Metro está cerrado):
 
 ![Resumen del estado de la red del Metro](https://raw.githubusercontent.com/Ctuna89/navaja-chilena-HA/main/docs/img/metro-estado.png)
 
-*Ejemplo con un incidente simulado en la Línea 2.*
+*La captura es un ejemplo con un incidente simulado; con datos reales cada estación muestra además su motivo, por ejemplo «Cierre temporal».*
 
 ```yaml
 type: markdown
@@ -194,7 +194,7 @@ content: |
   {% for l in mal %}
   ### ⚠️ {{ l.name }}
   {{ l.attributes.mensaje }}
-  {% for e in l.attributes.estaciones_con_problemas %}- {{ e }}
+  {% for e in l.attributes.estaciones_con_problemas %}- {{ e }}{% if l.attributes.motivos.get(e) %} · {{ l.attributes.motivos[e] }}{% endif %}
   {% endfor %}
   {% endfor %}
   {% elif lineas %}

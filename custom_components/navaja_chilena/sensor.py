@@ -256,10 +256,13 @@ class MetroLineSensor(_Base):
             stations = {n: "cerrada" for n in line.stations}
         return {
             "mensaje": line.message if is_open else "Fuera de horario de servicio",
+            "tramo": line.route or None,
             "estaciones_con_problemas": line.stations_with_issues if is_open else [],
+            "motivos": line.reasons if is_open else {},
             "estaciones": stations,
             "horario_apertura": opens.strftime("%H:%M"),
             "horario_cierre": closes.strftime("%H:%M"),
+            "fuente": "Metro de Santiago (metro.cl, Estado del servicio)",
         }
 
 

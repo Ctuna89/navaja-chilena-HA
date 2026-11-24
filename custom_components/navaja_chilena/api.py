@@ -235,39 +235,8 @@ class MetroLine:
     message: str
     stations_with_issues: list[str] = field(default_factory=list)
     stations: dict[str, bool] = field(default_factory=dict)  # nombre -> operativa
-
-
-_OK_CODES = {"0", "true", "ok", "operativa", "operativo", "operational", "normal", "open"}
-_BAD_CODES = {
-    "1", "2", "3", "false", "cerrada", "cerrado", "closed", "no habilitada",
-    "con problemas", "problemas", "accesos cerrados",
-}
-
-
-def _status_ok(status: Any) -> tuple[bool | None, str]:
-    """Normaliza un estado a (operativa, mensaje).
-
-    En api.xor.cl los códigos de estación son: 0 operativa, 1 cerrada
-    temporalmente, 2 no habilitada, 3 accesos cerrados. Si el estado no es
-    reconocible devuelve None (desconocido): nunca se asume "operativa".
-    """
-    if status is None:
-        return None, ""
-    code: Any = status
-    message = ""
-    if isinstance(status, dict):
-        code = next(
-            (status[k] for k in ("code", "id", "estado", "status") if k in status), None
-        )
-        message = str(status.get("message") or status.get("description") or "")
-    if isinstance(code, bool):
-        return code, message
-    code_s = str(code).strip().lower() if code is not None else ""
-    if code_s in _OK_CODES:
-        return True, message or "Operativa"
-    if code_s in _BAD_CODES:
-        return False, message or "Con problemas"
-    return None, message
+    route: str = ""                                           # tramo de la línea, p. ej. «San Pablo → Los Dominicos»
+    reasons: dict[str, str] = field(default_factory=dict)     # estación con problemas -> motivo, p. ej. «Cierre temporal»
 
 
 KNOWN_LINES = {
@@ -275,62 +244,57 @@ KNOWN_LINES = {
     "l4a": "Línea 4A", "l5": "Línea 5", "l6": "Línea 6",
 }
 
+_METRO_ROW = '<div class="row padding-bottom-30">'
+_METRO_TAG_RE = re.compile(r"<[^>]*>")
 
-def parse_metro(data: Any) -> dict[str, MetroLine]:
-    """Interpreta la respuesta de https://api.xor.cl/red/metro-network.
 
-    La API solo lista en `lines` las líneas con incidentes; con `issues: false`
-    llega `lines: []`. Por eso una línea ausente es operativa **únicamente** si
-    la respuesta es válida (`api_status` OK y `issues` informado). Cualquier otra
-    cosa lanza error y los sensores quedan no disponibles (jamás se supone
-    "operativa" sin evidencia). Una línea listada con estado ilegible se
-    considera con problemas (es preferible una falsa alarma a un falso normal).
+def _metro_text(fragment: str | None) -> str:
+    return " ".join(html_lib.unescape(_METRO_TAG_RE.sub(" ", fragment or "")).split())
+
+
+def parse_metro_page(page: Any) -> dict[str, MetroLine]:
+    """Interpreta la página oficial «Estado del servicio» de Metro (https://www.metro.cl/el-viaje/estado-red).
+
+    Cada línea es un bloque con su ícono, el estado («Línea disponible», «Estaciones cerradas»…), su tramo y, si hay incidentes,
+    el aviso y las estaciones afectadas con su motivo. Una línea es operativa SOLO si la página la marca como disponible (ícono de
+    estado «ok» y texto «disponible») y no lista estaciones con problemas; cualquier otro estado es «con problemas»: es preferible
+    una falsa alarma a un falso normal. Si la página no trae las siete líneas conocidas (cambió su estructura, o es una página de
+    error), es un error y los sensores quedan no disponibles: nunca se supone «operativa» sin evidencia.
     """
-    if not isinstance(data, dict):
+    if not isinstance(page, str):
         raise NavajaApiError("Respuesta de Metro inesperada")
-    if str(data.get("api_status", "")).upper() != "OK":
-        raise NavajaApiError(f"La API del Metro informa estado {data.get('api_status')!r}")
-    lines_raw = data.get("lines")
-    if not isinstance(lines_raw, list):
-        raise NavajaApiError("Respuesta de Metro sin lista de líneas")
-    if not lines_raw and not isinstance(data.get("issues"), bool):
-        raise NavajaApiError("Respuesta de Metro sin indicador de incidentes")
-
-    result: dict[str, MetroLine] = {
-        lid: MetroLine(id=lid, name=name, operational=True, message="Operativa")
-        for lid, name in KNOWN_LINES.items()
-    }
-    for item in lines_raw:
-        if not isinstance(item, dict) or "id" not in item:
+    found: dict[str, MetroLine] = {}
+    for block in page.split(_METRO_ROW)[1:]:
+        icon = re.search(r"ico-(l\d+a?)\.svg", block)
+        if icon is None or icon.group(1) in found:
             continue
-        line_id = str(item["id"]).lower()
-        stations = item.get("stations") or item.get("estaciones") or []
-        problems: list[str] = []
-        station_states: dict[str, bool] = {}
-        for st in stations:
-            if not isinstance(st, dict):
-                continue
-            ok, _ = _status_ok(st.get("status", st.get("estado")))
-            st_name = str(st.get("name") or st.get("nombre") or st.get("id"))
-            ok = bool(ok)  # estado ilegible = con problemas
-            station_states[st_name] = ok
-            if not ok:
-                problems.append(st_name)
-        line_ok, message = _status_ok(item.get("status", item.get("estado")))
-        operational = (not problems) if station_states else bool(line_ok)
-        if not operational and not message:
-            message = f"{len(problems)} estación(es) con problemas" if problems else "Con problemas"
-        if operational and not message:
-            message = "Operativa"
-        result[line_id] = MetroLine(
+        line_id = icon.group(1)
+        state_icon = re.search(r"ico-estado-([a-z0-9-]+)\.svg", block)
+        title = _metro_text((re.search(r'h4">(.*?)</p>', block, re.S) or [None, None])[1])
+        route = _metro_text((re.search(r'<p class="margin-bottom-0">([^<]*)</p>\s*</div>\s*</div>', block) or [None, None])[1])
+        notice = _metro_text((re.search(r"<p>(.*?)</p>\s*<ul>", block, re.S) or [None, None])[1])
+        reasons = {
+            _metro_text(name): _metro_text(reason)
+            for name, reason in re.findall(r"<li>\s*<strong>(.*?)</strong>\s*:?\s*(.*?)</li>", block, re.S)
+            if _metro_text(name)
+        }
+        available = state_icon is not None and state_icon.group(1) == "ok" and "disponible" in title.casefold()
+        operational = available and not reasons
+        message = "Operativa" if operational else (notice or title or "Con problemas")
+        found[line_id] = MetroLine(
             id=line_id,
-            name=str(item.get("name") or item.get("nombre") or KNOWN_LINES.get(line_id) or line_id.upper()),
+            name=KNOWN_LINES.get(line_id, line_id.upper().replace("L", "Línea ", 1)),
             operational=operational,
             message=message,
-            stations_with_issues=problems,
-            stations=station_states,
+            stations_with_issues=list(reasons),
+            stations={name: False for name in reasons},
+            route=route,
+            reasons=reasons,
         )
-    return result
+    missing = [lid for lid in KNOWN_LINES if lid not in found]
+    if missing:
+        raise NavajaApiError(f"La página de estado de Metro no trae las líneas {', '.join(m.upper() for m in missing)} (¿cambió su formato?)")
+    return found
 
 
 # Horario de funcionamiento del Metro de Santiago (hora de Chile continental).
@@ -357,7 +321,7 @@ def metro_is_open(now: datetime | None = None, holiday: bool = False) -> bool:
 
 
 async def fetch_metro(session: aiohttp.ClientSession) -> dict[str, MetroLine]:
-    return parse_metro(await _get_json(session, METRO_URL))
+    return parse_metro_page(await _get_text(session, METRO_URL))
 
 
 # ------------------------------------------------------------------ Paraderos
