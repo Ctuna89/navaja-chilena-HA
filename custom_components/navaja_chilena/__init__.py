@@ -8,7 +8,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from . import api
 from .api import FUEL_LABELS, nearest_theater, parse_stop_codes
@@ -124,6 +123,8 @@ class RuntimeData:
     pharmacy_comuna: str = ""
     fuel: NavajaCoordinator | None = None
     ev: NavajaCoordinator | None = None
+    vamoh: NavajaCoordinator | None = None      # sin coordinador por ahora: los sensores de Vamoh no se crean
+    vamoh_commune: str | None = None
     cinepolis: NavajaCoordinator | None = None
     cinepolis_cinema: str = ""
     ev_connectors: list[str] = field(default_factory=list)
@@ -189,20 +190,7 @@ async def _refresh(coordinator: NavajaCoordinator | None) -> bool:
     return coordinator.last_update_success
 
 
-def _remove_retired_entities(hass: HomeAssistant, entry: NavajaConfigEntry) -> None:
-    """Quita las entidades y el dispositivo de un módulo que ya no existe, para que no queden «no disponibles» para siempre."""
-    ent_reg = er.async_get(hass)
-    for ent in list(er.async_entries_for_config_entry(ent_reg, entry.entry_id)):
-        if "_vamoh_" in (ent.unique_id or ""):
-            ent_reg.async_remove(ent.entity_id)
-    dev_reg = dr.async_get(hass)
-    device = dev_reg.async_get_device(identifiers={(DOMAIN, "vamoh")})
-    if device is not None:
-        dev_reg.async_remove_device(device.id)
-
-
 async def async_setup_entry(hass: HomeAssistant, entry: NavajaConfigEntry) -> bool:
-    _remove_retired_entities(hass, entry)
     opts = _options(entry)
     data = RuntimeData(indicator_codes=list(opts.get(CONF_INDICATORS, [])))
 
