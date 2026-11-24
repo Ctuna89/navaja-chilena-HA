@@ -126,10 +126,10 @@ async def async_setup_entry(
             CultureNextSensor(rt.culture, entry, rt.events_commune, rt.events_free_only),
         ]
     if rt.vamoh:
-    fixed += [
-        VamohTodaySensor(rt.vamoh, entry, rt.vamoh_commune),
-        VamohNextSensor(rt.vamoh, entry, rt.vamoh_commune),
-    ]
+        fixed += [
+            VamohTodaySensor(rt.vamoh, entry, rt.vamoh_commune),
+            VamohNextSensor(rt.vamoh, entry, rt.vamoh_commune),
+        ]
     if rt.arena:
         fixed.append(ArenaNextSensor(rt.arena, entry))
     if rt.news:

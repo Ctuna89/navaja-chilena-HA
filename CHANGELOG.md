@@ -5,6 +5,7 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+- **Corrección**: un error de sintaxis en `sensor.py` impedía cargar todos los sensores; se corrige y los sensores de panoramas de terceros solo se crean si existe su coordinador. Se quita el limpiador de entidades retiradas de la 3.2.3, que habría borrado entidades nuevas con ese nombre.
 ## 3.2.4
 
 - **Metro: estado desde la página oficial** (metro.cl, «Estado del servicio»). Antes se usaba un servicio de terceros que seguía mostrando todo operativo aunque Metro informara estaciones cerradas. Ahora cada línea muestra el aviso de Metro, su tramo, las estaciones afectadas y el motivo (por ejemplo «Cierre temporal»). Un estado que no se reconoce cuenta como «con problemas», y si la página no responde el sensor queda no disponible.

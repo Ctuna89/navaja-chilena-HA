@@ -1536,22 +1536,6 @@ async def test_ev_documented_cards_when_the_source_is_down(hass, aioclient_mock,
     assert "Sin tarifas" in Template(_doc_card("💸 Carga más barata cerca"), hass).async_render()
 
 
-async def test_retired_module_entities_and_device_are_removed_on_setup(hass, aioclient_mock):
-    from homeassistant.helpers import device_registry as dr, entity_registry as er
-    mock_all(aioclient_mock)
-    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False})
-    entry.add_to_hass(hass)
-    ent_reg, dev_reg = er.async_get(hass), dr.async_get(hass)
-    old = ent_reg.async_get_or_create("sensor", DOMAIN, f"{entry.entry_id}_vamoh_hoy_hoy", config_entry=entry)
-    old2 = ent_reg.async_get_or_create("sensor", DOMAIN, f"{entry.entry_id}_vamoh_proximo_proximo", config_entry=entry)
-    dev_reg.async_get_or_create(config_entry_id=entry.entry_id, identifiers={(DOMAIN, "vamoh")})
-    await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
-    assert ent_reg.async_get(old.entity_id) is None and ent_reg.async_get(old2.entity_id) is None
-    assert dev_reg.async_get_device(identifiers={(DOMAIN, "vamoh")}) is None
-    assert hass.states.get("sensor.indicadores_economicos_uf") is not None          # el resto sigue funcionando
-
-
 async def test_metro_documented_card_shows_the_affected_stations_with_their_reason(hass, aioclient_mock, monkeypatch):
     from homeassistant.helpers.template import Template
     monkeypatch.setattr(api, "metro_is_open", lambda *a, **k: True)
@@ -1560,3 +1544,18 @@ async def test_metro_documented_card_shows_the_affected_stations_with_their_reas
     assert "Línea 1" in card and "#L1 disponible de San Pablo a Manquehue" in card
     assert "Hernando de Magallanes · Cierre temporal" in card and "Los Dominicos · Cierre temporal" in card
     assert "Sin incidentes" not in card                                    # con incidentes reales no puede decir que todo está bien
+
+
+async def test_integration_loads_without_a_vamoh_coordinator(hass, aioclient_mock):
+    """Los sensores de Vamoh solo se crean si hay un coordinador de Vamoh; sin él, la integración carga y el resto funciona."""
+    from custom_components.navaja_chilena import sensor as sensor_module   # el módulo debe poder importarse
+    assert hasattr(sensor_module, "VamohTodaySensor") and hasattr(sensor_module, "VamohNextSensor")
+    mock_all(aioclient_mock)
+    entry = MockConfigEntry(domain=DOMAIN, data={"indicators": ["uf"], "metro": False})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is config_entries.ConfigEntryState.LOADED
+    assert entry.runtime_data.vamoh is None and entry.runtime_data.vamoh_commune is None
+    assert hass.states.get("sensor.indicadores_economicos_uf") is not None
+    assert not [s for s in hass.states.async_all("sensor") if "vamoh" in s.entity_id]
