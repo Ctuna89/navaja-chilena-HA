@@ -58,7 +58,16 @@ from .const import EV_CONNECTORS, EV_MAX_BYTES, EV_STATUS_MAX_AGE, EV_URL
 HEADERS = {   # solo ASCII: algunos servicios (Cloudflare) rechazan caracteres no ASCII en los encabezados
     "User-Agent": "NavajaChilena/3 (+https://github.com/Ctuna89/navaja-chilena-HA; Home Assistant integration)"
 }
-
+VAMOH_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "es-CL,es;q=0.9,en;q=0.8",
+    "Referer": "https://vamoh.cl/",
+}
 STOP_CODE_RE = re.compile(r"^[A-Z]{1,3}\d{1,5}$")
 
 
