@@ -5,6 +5,8 @@ El número de versión vive en `custom_components/navaja_chilena/manifest.json`;
 
 ## Sin publicar
 
+## 3.2.4
+
 - **Metro: estado desde la página oficial** (metro.cl, «Estado del servicio»). Antes se usaba un servicio de terceros que seguía mostrando todo operativo aunque Metro informara estaciones cerradas. Ahora cada línea muestra el aviso de Metro, su tramo, las estaciones afectadas y el motivo (por ejemplo «Cierre temporal»). Un estado que no se reconoce cuenta como «con problemas», y si la página no responde el sensor queda no disponible.
 ## 3.2.3
 
