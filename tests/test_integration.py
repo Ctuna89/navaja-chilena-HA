@@ -134,7 +134,7 @@ async def test_metro_recovers_and_lines_appear(hass, aioclient_mock, monkeypatch
     await setup(hass, aioclient_mock, metro_status=404)
     aioclient_mock.clear_requests()
     mock_all(aioclient_mock)                          # el Metro vuelve
-    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=5))
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=15))   # con la fuente caída se consulta cada vez menos
     await hass.async_block_till_done()
     assert states(hass)["Línea 2"] == "operativa"
 
