@@ -125,11 +125,6 @@ async def async_setup_entry(
             CultureTodaySensor(rt.culture, entry, rt.events_commune, rt.events_free_only),
             CultureNextSensor(rt.culture, entry, rt.events_commune, rt.events_free_only),
         ]
-    if rt.vamoh:
-    fixed += [
-        VamohTodaySensor(rt.vamoh, entry, rt.vamoh_commune),
-        VamohNextSensor(rt.vamoh, entry, rt.vamoh_commune),
-    ]
     if rt.arena:
         fixed.append(ArenaNextSensor(rt.arena, entry))
     if rt.news:
@@ -515,80 +510,7 @@ class CultureNextSensor(_EventsBase):
             attrs["motivo"] = f"No hay eventos publicados en {self._commune} desde hoy"
         return attrs
 
-class VamohTodaySensor(_EventsBase):
-    """Eventos de Vamoh para hoy."""
-    _kind = "vamoh_hoy"
-    _attr_icon = "mdi:calendar-today"
-    _attr_native_unit_of_measurement = "eventos"
 
-    def __init__(self, coordinator, entry, commune: str | None) -> None:
-        super().__init__(coordinator, entry, self._kind)
-        self._commune = commune
-
-    @property
-    def native_value(self) -> int:
-        today = self._today()
-        return sum(1 for e in self.coordinator.data if e.start.date() == today)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        today = self._today()
-        events = [e for e in self.coordinator.data if e.start.date() == today]
-        return {
-            "comuna": self._commune or "todas",
-            "eventos": [
-                {
-                    "nombre": e.name,
-                    "fecha": e.start.isoformat(),
-                    "recinto": e.venue,
-                    "gratis": e.free,
-                    "url": e.url,
-                }
-                for e in events
-            ],
-            "fuente": "Vamoh",
-        }
-
-
-class VamohNextSensor(_EventsBase):
-    """Próximo evento de Vamoh."""
-    _kind = "vamoh_proximo"
-    _attr_icon = "mdi:calendar-arrow-right"
-
-    def __init__(self, coordinator, entry, commune: str | None) -> None:
-        super().__init__(coordinator, entry, self._kind)
-        self._commune = commune
-
-    @property
-    def native_value(self) -> str | None:
-        today = self._today()
-        upcoming = [e for e in self.coordinator.data if e.start.date() >= today]
-        return upcoming[0].name if upcoming else None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        today = self._today()
-        upcoming = sorted(
-            [e for e in self.coordinator.data if e.start.date() >= today],
-            key=lambda e: e.start,
-        )
-        if not upcoming:
-            return {}
-        nxt = upcoming[0]
-        return {
-            "nombre": nxt.name,
-            "fecha": nxt.start.isoformat(),
-            "recinto": nxt.venue,
-            "comuna": nxt.commune,
-            "gratis": nxt.free,
-            "url": nxt.url,
-            "siguientes": [
-                {"nombre": e.name, "fecha": e.start.isoformat()}
-                for e in upcoming[1:4]
-            ],
-            "fuente": "Vamoh",
-        }
-        
 class ArenaNextSensor(_EventsBase):
     """Próximo evento del estadio Claro Arena (conciertos y partidos)."""
 
