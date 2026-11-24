@@ -24,8 +24,7 @@ INDICATORS = {"version": "1", "uf": {"codigo": "uf", "nombre": "UF", "unidad_med
               "fecha": "2026-11-07T03:00:00.000Z", "valor": 39000.5},
               "dolar": {"codigo": "dolar", "nombre": "Dólar", "unidad_medida": "Pesos",
               "fecha": "2026-11-07T03:00:00.000Z", "valor": 950.2}}
-METRO = {"api_status": "OK", "issues": True, "lines": [
-    {"id": "l2", "name": "Línea 2", "stations": [{"name": "B", "status": {"code": "1"}}]}]}
+METRO = (Path(__file__).parent / "fixtures/metro_estado_red.html").read_text(encoding="utf-8")   # página real de metro.cl: L1 con estaciones cerradas
 CSN = [{"Fecha": "2026-11-07 23:54:11", "Profundidad": "74", "Magnitud": "2.9",
         "RefGeografica": "26 km al E de Sierra Gorda"}]
 BUDA = {"ticker": {"last_price": ["74385376.0", "CLP"], "price_variation_24h": "-0.001",
@@ -42,7 +41,7 @@ DATA = {"indicators": ["uf", "dolar"], "metro": True, "stops": "PC615", "quakes"
 
 def mock_all(mock, metro_status=200):
     mock.get(INDICATORS_URL, json=INDICATORS)
-    mock.get(METRO_URL, json=METRO, status=metro_status)
+    mock.get(METRO_URL, text=METRO, status=metro_status)
     mock.get(STOP_URL.format(code="PC615"), json=STOP)
     mock.get(QUAKES_URL, json=QUAKES)
     mock.get(IPSA_URL, json={"codigo": "ipsa", "serie": [{"fecha": "2026-11-09", "valor": 10100}, {"fecha": "2026-11-06", "valor": 10000}]})
@@ -84,11 +83,16 @@ async def test_metro_states(hass, aioclient_mock, monkeypatch):
     monkeypatch.setattr(api, "metro_is_open", lambda *a, **k: True)
     await setup(hass, aioclient_mock)
     st = states(hass)
-    assert st["Línea 1"] == "operativa"          # no listada = sin incidentes
+    assert st["Línea 2"] == "operativa"          # la página oficial la marca como disponible
+    line2 = next(x for x in hass.states.async_all("sensor") if x.name.endswith("Línea 2"))
+    assert line2.attributes["device_class"] == "enum"
+    assert line2.attributes["options"] == ["operativa", "con_problemas", "cerrada"]   # estados traducibles
+    assert st["Línea 1"] == "con_problemas"      # dos estaciones cerradas según metro.cl
     line1 = next(x for x in hass.states.async_all("sensor") if x.name.endswith("Línea 1"))
-    assert line1.attributes["device_class"] == "enum"
-    assert line1.attributes["options"] == ["operativa", "con_problemas", "cerrada"]   # estados traducibles
-    assert st["Línea 2"] == "con_problemas"
+    assert line1.attributes["estaciones_con_problemas"] == ["Hernando de Magallanes", "Los Dominicos"]
+    assert line1.attributes["motivos"] == {"Hernando de Magallanes": "Cierre temporal", "Los Dominicos": "Cierre temporal"}
+    assert line1.attributes["tramo"] == "San Pablo → Los Dominicos" and "metro.cl" in line1.attributes["fuente"]
+    assert line1.attributes["mensaje"].endswith("#L1 disponible de San Pablo a Manquehue")
     assert st["UF"] == "39000.5"
     assert st["Paradero PC615"] == "5"
     assert st["Último sismo (CSN)"] == "2.9"
@@ -130,9 +134,9 @@ async def test_metro_recovers_and_lines_appear(hass, aioclient_mock, monkeypatch
     await setup(hass, aioclient_mock, metro_status=404)
     aioclient_mock.clear_requests()
     mock_all(aioclient_mock)                          # el Metro vuelve
-    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=5))
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=15))   # con la fuente caída se consulta cada vez menos
     await hass.async_block_till_done()
-    assert states(hass)["Línea 1"] == "operativa"
+    assert states(hass)["Línea 2"] == "operativa"
 
 
 async def test_all_sources_down_retries_setup(hass, aioclient_mock):
@@ -1546,3 +1550,13 @@ async def test_retired_module_entities_and_device_are_removed_on_setup(hass, aio
     assert ent_reg.async_get(old.entity_id) is None and ent_reg.async_get(old2.entity_id) is None
     assert dev_reg.async_get_device(identifiers={(DOMAIN, "vamoh")}) is None
     assert hass.states.get("sensor.indicadores_economicos_uf") is not None          # el resto sigue funcionando
+
+
+async def test_metro_documented_card_shows_the_affected_stations_with_their_reason(hass, aioclient_mock, monkeypatch):
+    from homeassistant.helpers.template import Template
+    monkeypatch.setattr(api, "metro_is_open", lambda *a, **k: True)
+    await setup(hass, aioclient_mock)
+    card = Template(_doc_card("Estado de la red"), hass).async_render()
+    assert "Línea 1" in card and "#L1 disponible de San Pablo a Manquehue" in card
+    assert "Hernando de Magallanes · Cierre temporal" in card and "Los Dominicos · Cierre temporal" in card
+    assert "Sin incidentes" not in card                                    # con incidentes reales no puede decir que todo está bien

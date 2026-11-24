@@ -49,39 +49,57 @@ def load(name):
     return json.loads((FIX / name).read_text())
 
 
-def test_metro_real_response_no_incidents():
-    """Respuesta real: lines vacío + issues false => todas las líneas conocidas operativas."""
-    out = api.parse_metro(load("metro_ok.json"))
+def _metro_html():
+    return (Path(__file__).parent / "fixtures/metro_estado_red.html").read_text(encoding="utf-8")
+
+
+def test_metro_real_page_with_closed_stations():
+    """Página real de metro.cl (24-nov-2026): L1 con dos estaciones cerradas, el resto disponible."""
+    out = api.parse_metro_page(_metro_html())
     assert set(out) == set(api.KNOWN_LINES)
-    assert all(l.operational is True for l in out.values())
+    l1 = out["l1"]
+    assert l1.operational is False and l1.name == "Línea 1"
+    assert l1.stations_with_issues == ["Hernando de Magallanes", "Los Dominicos"]
+    assert l1.reasons == {"Hernando de Magallanes": "Cierre temporal", "Los Dominicos": "Cierre temporal"}
+    assert l1.message == "24/11/2026 10:31 - #L1 disponible de San Pablo a Manquehue"
+    assert l1.route == "San Pablo → Los Dominicos"
+    for lid in ("l2", "l3", "l4", "l4a", "l5", "l6"):
+        assert out[lid].operational is True and out[lid].message == "Operativa" and out[lid].stations_with_issues == []
+    assert out["l6"].route == "Los Leones → Cerrillos" and out["l4a"].name == "Línea 4A"
 
 
-def test_metro_incident_and_station_codes():
-    # En api.xor.cl: 0 operativa, 1 cerrada temporalmente, 2 no habilitada, 3 accesos cerrados
-    data = {"api_status": "OK", "issues": True, "lines": [
-        {"id": "l2", "name": "Línea 2", "stations": [
-            {"name": "C", "status": {"code": "0"}},
-            {"name": "D", "status": {"code": "1", "message": "Cerrada"}}]}]}
-    out = api.parse_metro(data)
-    assert out["l2"].operational is False and out["l2"].stations_with_issues == ["D"]
-    assert out["l1"].operational is True            # no listada = sin incidentes
+def test_metro_page_all_lines_available():
+    page = _metro_html().replace("ico-estado-retraso", "ico-estado-ok").replace("Estaciones<br/>cerradas", "Línea<br/>disponible")
+    page = page.replace("<li><strong>Hernando de Magallanes</strong> : Cierre temporal</li>", "").replace("<li><strong>Los Dominicos</strong> : Cierre temporal</li>", "")
+    assert all(l.operational is True for l in api.parse_metro_page(page).values())
 
 
-def test_metro_listed_line_with_unreadable_status_is_a_problem():
-    data = {"api_status": "OK", "issues": True, "lines": [{"id": "l3", "status": {"code": "?"}}]}
-    assert api.parse_metro(data)["l3"].operational is False   # falsa alarma > falso normal
+def test_metro_unknown_state_is_a_problem_never_normal():
+    page = _metro_html().replace("ico-estado-ok", "ico-estado-algo-nuevo")                 # un ícono que no conocemos
+    out = api.parse_metro_page(page)
+    assert all(l.operational is False for l in out.values())                             # falsa alarma > falso normal
+    page2 = _metro_html().replace("Línea<br/>disponible", "Línea<br/>con demoras", 1)     # texto distinto con ícono «ok»
+    assert api.parse_metro_page(page2)["l2"].operational is False and api.parse_metro_page(page2)["l3"].operational is True
 
 
-def test_metro_invalid_responses_raise_never_default_to_operational():
-    for bad in (
-        {"api_status": "ERROR", "issues": False, "lines": []},
-        {"api_status": "OK", "lines": []},            # sin 'issues': no hay evidencia
-        {"issues": False, "lines": []},               # sin api_status
-        {"api_status": "OK", "issues": False},        # sin lista
-        [], None, "x",
-    ):
+def test_metro_ok_icon_with_listed_stations_is_still_a_problem():
+    page = _metro_html().replace("ico-estado-retraso", "ico-estado-ok").replace("Estaciones<br/>cerradas", "Línea<br/>disponible")
+    assert api.parse_metro_page(page)["l1"].operational is False                         # lista estaciones con problemas
+
+
+def test_metro_invalid_pages_raise_never_default_to_operational():
+    for bad in ("", "<html><title>Error 503</title></html>", "<div>Estado del servicio</div>", None, [], {"lines": []}):
         with pytest.raises(api.NavajaApiError):
-            api.parse_metro(bad)
+            api.parse_metro_page(bad)
+    page = _metro_html()
+    cut = page.replace("ico-l6.svg", "ico-x6.svg")                                         # falta una línea conocida
+    with pytest.raises(api.NavajaApiError):
+        api.parse_metro_page(cut)
+
+
+def test_metro_page_decodes_html_entities_and_extra_whitespace():
+    page = _metro_html().replace("Cierre temporal", "Cierre &amp; mantención   programada", 1)
+    assert api.parse_metro_page(page)["l1"].reasons["Hernando de Magallanes"] == "Cierre & mantención programada"
 
 
 def test_stop():

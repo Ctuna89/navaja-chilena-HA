@@ -14,14 +14,14 @@ CONF_STOPS = "stops"
 # APIs públicas (sin clave)
 INDICATORS_URL = "https://mindicador.cl/api"
 INDICATORS_FALLBACK_URL = "https://findic.cl/api/"  # mismo formato; trae más indicadores
-METRO_URL = "https://api.xor.cl/red/metro-network"
+METRO_URL = "https://www.metro.cl/el-viaje/estado-red"   # página oficial «Estado del servicio» de Metro de Santiago
 STOP_URL = "https://api.xor.cl/red/bus-stop/{code}"
 
 REQUEST_TIMEOUT = 15
 
 # Frecuencias de actualización
 INDICATORS_INTERVAL = timedelta(hours=1)
-METRO_INTERVAL = timedelta(minutes=2)
+METRO_INTERVAL = timedelta(minutes=5)   # página oficial de Metro: sin sobrecargar su sitio
 STOPS_INTERVAL = timedelta(minutes=1)
 
 # Indicadores disponibles: código en mindicador.cl -> nombre en español
