@@ -30,7 +30,7 @@ def alight(name, loc, size, energy):
 for i in range(1, NC + 1):
     for dx in (-5, 0, 5) if i not in (1, NC) else (-5, 0, 4.5):
         sign = -1 if i == 1 else 1
-        alight(f"int{i}_{dx}", (xs[i - 1] + sign * dx, 0, 3.30), 2.5, 55)
+        alight(f"int{i}_{dx}", (xs[i - 1] + sign * dx, 0, 3.30), 2.5, 25)
 alight("cabina", (xs[-1] + 7.9, 0, 3.30), 1.0, 12)
 
 def make_cam(name, loc, target, lens=35, ortho=None, rot=None):
@@ -61,6 +61,8 @@ views = {
     "08_frontal_bajo": make_cam("v8", (xn + 5.0, 3.8, 0.85), (xn - 2.5, 0.0, 1.75), 28),
     "09_pupitre_detalle": make_cam("v9", (xf + 7.85, 0.55, 2.62), (xf + 8.45, 0.15, 2.30), 22),
     "10_puertas_interior": make_cam("v10", (xs[2] - 2.2, 0.7, 2.45), (xs[2] - 2.18, -1.3, 2.1), 20),
+    "11_costado": make_cam("v11", (xs[3] + 1.0, 9.0, 2.0), (xs[3] + 0.0, 0.0, 2.0), 35),
+    "12_enganche": make_cam("v12", (xn + 2.6, 2.0, 1.3), (xn + 0.1, 0.0, 0.95), 35),
     "06_aerea_frontal": make_cam("v6", (xn + 16, -12, 9), (xn - 9, 0.0, 1.8), 40),
 }
 os.makedirs(os.path.join(HERE, "renders"), exist_ok=True)

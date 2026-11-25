@@ -141,6 +141,12 @@ def mk(name, col, metal=0.0, rough=0.5, emit=None, strength=0.0, coat=0.0, glass
     m = bpy.data.materials.new(name); m.use_nodes = True
     nt = m.node_tree; nt.nodes.clear()
     out = nt.nodes.new("ShaderNodeOutputMaterial")
+    if name == "lens":
+        b = nt.nodes.new("ShaderNodeBsdfPrincipled")
+        b.inputs["Base Color"].default_value = (*col, 1); b.inputs["Roughness"].default_value = 0.04
+        b.inputs["Transmission Weight"].default_value = 1.0; b.inputs["IOR"].default_value = 1.49
+        nt.links.new(b.outputs[0], out.inputs[0]); m.diffuse_color = (*col, 1); MATS[name] = m
+        return m
     if glass:
         tr = nt.nodes.new("ShaderNodeBsdfTransparent")
         gl = nt.nodes.new("ShaderNodeBsdfGlossy"); gl.inputs["Roughness"].default_value = 0.03
@@ -159,12 +165,35 @@ def mk(name, col, metal=0.0, rough=0.5, emit=None, strength=0.0, coat=0.0, glass
             b.inputs["Emission Color"].default_value = (*emit, 1)
             b.inputs["Emission Strength"].default_value = strength
         nt.links.new(b.outputs[0], out.inputs[0])
+        if name == "body":       # acero inox satinado: variacion de rugosidad + suciedad leve abajo y en el techo
+            geo = nt.nodes.new("ShaderNodeNewGeometry"); sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+            nz = nt.nodes.new("ShaderNodeTexNoise"); nz.inputs["Scale"].default_value = 3.0; nz.inputs["Detail"].default_value = 8.0
+            nz2 = nt.nodes.new("ShaderNodeTexNoise"); nz2.inputs["Scale"].default_value = 60.0
+            rz = nt.nodes.new("ShaderNodeMapRange"); rz.inputs["From Min"].default_value = 0.75; rz.inputs["From Max"].default_value = 1.35
+            rz.inputs["To Min"].default_value = 1.0; rz.inputs["To Max"].default_value = 0.0
+            mul = nt.nodes.new("ShaderNodeMath"); mul.operation = 'MULTIPLY'
+            mix = nt.nodes.new("ShaderNodeMix"); mix.data_type = 'RGBA'
+            mix.inputs[6].default_value = (*col, 1); mix.inputs[7].default_value = (0.22, 0.20, 0.18, 1)
+            rr = nt.nodes.new("ShaderNodeMapRange"); rr.inputs["To Min"].default_value = rough - 0.08; rr.inputs["To Max"].default_value = rough + 0.12
+            add = nt.nodes.new("ShaderNodeMath"); add.operation = 'ADD'
+            nt.links.new(geo.outputs["Position"], sep.inputs[0]); nt.links.new(sep.outputs["Z"], rz.inputs["Value"])
+            nt.links.new(rz.outputs[0], mul.inputs[0]); nt.links.new(nz.outputs["Fac"], mul.inputs[1])
+            nt.links.new(mul.outputs[0], mix.inputs[0]); nt.links.new(mix.outputs[2], b.inputs["Base Color"])
+            nt.links.new(nz2.outputs["Fac"], add.inputs[0]); nt.links.new(mul.outputs[0], add.inputs[1])
+            nt.links.new(add.outputs[0], rr.inputs["Value"]); nt.links.new(rr.outputs[0], b.inputs["Roughness"])
+        if name == "floor":      # caucho/linoleo gris con motas antideslizantes
+            vo = nt.nodes.new("ShaderNodeTexVoronoi"); vo.inputs["Scale"].default_value = 220.0
+            cr = nt.nodes.new("ShaderNodeValToRGB"); cr.color_ramp.interpolation = 'CONSTANT'
+            cr.color_ramp.elements[0].position = 0.0; cr.color_ramp.elements[0].color = (0.62, 0.62, 0.60, 1)
+            cr.color_ramp.elements[1].position = 0.10; cr.color_ramp.elements[1].color = (*col, 1)
+            e = cr.color_ramp.elements.new(0.97); e.color = (0.12, 0.12, 0.13, 1)
+            nt.links.new(vo.outputs["Distance"], cr.inputs["Fac"]); nt.links.new(cr.outputs["Color"], b.inputs["Base Color"])
     m.diffuse_color = (*col, 1)
     MATS[name] = m
     return m
 
 def make_materials():
-    mk("body", (0.46, 0.47, 0.49), 0.9, 0.38)          # acero inoxidable
+    mk("body", (0.50, 0.51, 0.53), 0.9, 0.32)          # acero inoxidable satinado
     mk("roof", (0.16, 0.165, 0.17), 0.5, 0.45)
     mk("liner", (0.90, 0.89, 0.84), 0, 0.45)           # paredes interiores blancas
     mk("red", (0.95, 0.012, 0.015), 0.0, 0.25, coat=0.6)
@@ -177,10 +206,10 @@ def make_materials():
     mk("seat_dark", (0.55, 0.02, 0.03), 0, 0.25, coat=0.8)
     mk("seat_white", (0.9, 0.9, 0.9), 0, 0.25, coat=0.6)
     mk("seat_base", (0.1, 0.1, 0.11), 0.2, 0.5)
-    mk("floor", (0.40, 0.41, 0.42), 0, 0.7)
+    mk("floor", (0.30, 0.31, 0.32), 0, 0.75)
     mk("groove", (0.25, 0.26, 0.27), 0, 0.9)
     mk("ceiling", (0.93, 0.93, 0.91), 0, 0.5)
-    mk("light", (1, 1, 1), emit=(1.0, 0.97, 0.9), strength=2.5)
+    mk("light", (1, 1, 1), emit=(1.0, 0.98, 0.95), strength=7.0)
     mk("amber", (1, 0.5, 0.05), emit=(1.0, 0.45, 0.03), strength=18.0)
     mk("headlight", (1, 1, 1), emit=(1.0, 0.97, 0.9), strength=40.0)
     mk("taillight", (1, 0.05, 0.03), emit=(1.0, 0.03, 0.02), strength=14.0)
@@ -190,10 +219,19 @@ def make_materials():
     mk("iron", (0.04, 0.045, 0.055), 0.6, 0.45)
     mk("motor", (0.18, 0.19, 0.2), 0.8, 0.4)
     mk("wheel", (0.42, 0.42, 0.43), 0.95, 0.35)
-    mk("handle", (0.8, 0.8, 0.82), 1.0, 0.2)
+    mk("handle", (0.80, 0.80, 0.79), 0.0, 0.45)         # triangulo de plastico gris claro
     mk("strap", (0.04, 0.04, 0.045), 0, 0.7)
     mk("desk", (0.085, 0.10, 0.135), 0.35, 0.42)
-    mk("pole", (0.8, 0.8, 0.82), 1.0, 0.2)
+    mk("pole", (0.72, 0.72, 0.73), 1.0, 0.30)          # acero cepillado satinado
+    mk("lens", (0.95, 0.95, 0.95))
+    mk("lens_red", (0.9, 0.1, 0.08), 0.0, 0.08, coat=1.0)
+    mk("lens_amber", (1.0, 0.55, 0.05), 0.0, 0.08, coat=1.0)
+    mk("coupler_dk", (0.06, 0.065, 0.07), 0.5, 0.45)
+    mk("coupler_face", (0.20, 0.21, 0.22), 0.8, 0.35)
+    mk("hvac", (0.74, 0.75, 0.76), 0.2, 0.45)
+    mk("seat_emboss", (0.66, 0.02, 0.03), 0.0, 0.35, coat=0.4)
+    mk("seat_emboss_w", (0.85, 0.85, 0.84), 0.0, 0.35, coat=0.4)
+    mk("clamp", (0.45, 0.46, 0.47), 0.8, 0.45)
     mk("tire", (0.025, 0.025, 0.027), 0.0, 0.8)
     mk("gloss_black", (0.01, 0.01, 0.012), 0.2, 0.12, coat=1.0)
     mk("chrome", (0.9, 0.9, 0.92), 1.0, 0.08)
@@ -246,14 +284,14 @@ def xf_of_z(z):
     if z <= 0.88: return 8.60 + (z - SILL) / (0.88 - SILL) * 0.06
     if z <= 1.22: return 8.66 + (z - 0.88) / 0.34 * 0.21
     if z <= 1.80: return 8.87 + 0.03 * math.sin(math.pi / 2 * (z - 1.22) / 0.58)
-    if z <= 3.30: return 8.90 - 0.14 * (z - 1.80) / 1.5
-    R = 0.28; dz = min(z - 3.30, R)
-    return 8.76 - R + math.sqrt(max(R * R - dz * dz, 0.0))
+    if z <= 3.24: return 8.90 - 0.21 * ((z - 1.80) / 1.44) ** 1.25
+    R = 0.34; dz = min(z - 3.24, R)
+    return 8.69 - R + math.sqrt(max(R * R - dz * dz, 0.0))
 
-def corner_a(z): return min(0.20, xf_of_z(z) - XB - 0.03)
+def corner_a(z): return min(0.24, xf_of_z(z) - XB - 0.03)
 def x0_of_z(z): return xf_of_z(z) - corner_a(z)
 
-SE = 3.2
+SE = 2.4
 def cap_xy(z, s_, d=0.0):
     A = max(corner_a(z) - d, 0.0); b = max(roof_half(z) - d, 0.0)
     return (x0_of_z(z) + A * max(0.0, 1 - abs(s_) ** SE) ** (1 / SE) - (d if A <= 0 else 0), s_ * b, z)
@@ -299,7 +337,7 @@ def build_nose(g, texts, dest, num):
     cap_s += [GL_Y / HW, -GL_Y / HW, MK_Y / HW, -MK_Y / HW]
     cap_s = sorted(set(round(v, 6) for v in cap_s))
     zb = [SILL + (ROOF_T - SILL) * (1 - (1 - i / 110) ** 2.2) for i in range(111)]
-    zb += [0.88, 1.22, MK_Z0, GL_Z0, GL_Z1, MK_Z1, 3.30, 3.45, ROOF_E]
+    zb += [0.88, 1.22, MK_Z0, GL_Z0, GL_Z1, MK_Z1, 3.24, 3.30, 3.45, ROOF_E]
     zs = []
     for z in sorted(zb):
         if not zs or z - zs[-1] > 0.003: zs.append(z)
@@ -361,7 +399,7 @@ def build_nose(g, texts, dest, num):
     ML = frame_at(p - n * 0.05, n)
     box(g, "screen2", (0, 0, 0), (0.02, 1.42, 0.17), 0.006, 2, M=ML)
     box(g, "desk", (-0.06, 0, 0.12), (0.10, 1.9, 0.07), 0.02, 2, M=ML)
-    R = Matrix.Rotation(math.radians(-5.3), 4, 'Y') @ Matrix.Rotation(math.radians(90), 4, 'Z') @ Matrix.Rotation(math.radians(90), 4, 'X')
+    R = Matrix.Rotation(math.radians(-8.3), 4, 'Y') @ Matrix.Rotation(math.radians(90), 4, 'Z') @ Matrix.Rotation(math.radians(90), 4, 'X')
     texts.append((dest[0], Matrix.Translation(p - n * 0.038 + Vector((0, -0.55, 0))) @ R, 0.11, "amber"))
     texts.append((dest[1], Matrix.Translation(p - n * 0.038 + Vector((0, 0.12, 0))) @ R, 0.11, "amber"))
     # placa de numero
@@ -381,17 +419,21 @@ def build_nose(g, texts, dest, num):
     for k in (-1, 0, 1):
         box(g, "red", (0, 0, 0), (0.008, 0.074, 0.074), 0.003, 1,
             M=ML @ Matrix.Translation((0.02, k * 0.093, 0)) @ Matrix.Rotation(math.radians(45), 4, 'X'))
-    # grupos opticos: blanco (exterior), rojo, ambar
+    # grupos opticos: carcasa negra hundida (labio perimetral) + reflector + lente gruesa
     for sg in (-1, 1):
-        plaque(g, "gloss_black", sg * 0.55, 1.615, 0.58, 0.17, 0.06, off=0.004, depth=0.02, rot=math.radians(-sg * 4))
-        for yy, mt in ((0.73, "headlight"), (0.555, "taillight"), (0.385, "amber")):
-            p, n = nose_at(sg * yy, 1.615 + (0.012 if yy > 0.6 else 0) * 0); ML = frame_at(p + n * 0.026, n)
-            cyl(g, mt, (0, 0, 0), (0.012, 0, 0), 0.046, seg=40, M=ML)
-            torus(g, "chrome", (0, 0, 0), 0.053, 0.008, 40, 8, M=ML @ Matrix.Rotation(math.radians(90), 4, 'Y'))
-            if mt == "headlight":
-                for k in range(6):
-                    a_ = 2 * math.pi * k / 6
-                    cyl(g, "chrome", (0.008, 0.025 * math.cos(a_), 0.025 * math.sin(a_)), (0.016, 0.025 * math.cos(a_), 0.025 * math.sin(a_)), 0.011, seg=16, M=ML)
+        p, n = nose_at(sg * 0.55, 1.615); ML = frame_at(p, n) @ Matrix.Rotation(math.radians(-sg * 4), 4, 'X')
+        o = rrect(0.60, 0.19, 0.07, 8); i1 = rrect(0.56, 0.15, 0.055, 8); i2 = rrect(0.54, 0.13, 0.05, 8)
+        loft(g, "gloss_black", [[(0.003, u, v) for u, v in o], [(0.028, u, v) for u, v in o],
+                                [(0.030, u, v) for u, v in i1], [(0.012, u, v) for u, v in i2]], close=True, M=ML)
+        g.add("skirt", [(0.012, u, v) for u, v in i2], [tuple(range(len(i2)))], ML)
+        for yy, lamp, lens in ((0.73, "headlight", "lens"), (0.555, "taillight", "lens_red"), (0.385, "amber", "lens_amber")):
+            p, n = nose_at(sg * yy, 1.615); ML = frame_at(p + n * 0.013, n)
+            prof = [(0.008, 0.0), (0.02, 0.002), (0.032, 0.007), (0.042, 0.014), (0.048, 0.02), (0.050, 0.021),
+                    (0.0475, 0.021), (0.04, 0.016), (0.03, 0.01), (0.018, 0.0045), (0.008, 0.003)]
+            revolve(g, "chrome", prof, 40, M=ML @ Matrix.Rotation(math.radians(90), 4, 'Y'))   # reflector
+            cyl(g, lamp, (0.004, 0, 0), (0.016, 0, 0), 0.011 if lamp == "headlight" else 0.03, seg=20, M=ML)
+            cyl(g, lens, (0.019, 0, 0), (0.027, 0, 0), 0.049, 0.047, seg=48, M=ML)            # lente 8 mm
+            torus(g, "chrome", (0, 0, 0), 0.051, 0.0045, 48, 8, M=ML @ Matrix.Translation((0.024, 0, 0)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
         # rejillas inferiores (louvers)
         p, n = nose_at(sg * 0.80, 1.05); ML = frame_at(p, n)
         box(g, "skirt", (0.0, 0, 0), (0.02, 0.36, 0.24), 0.02, 2, M=ML)
@@ -401,20 +443,33 @@ def build_nose(g, texts, dest, num):
     ML = Matrix.Translation((xf_of_z(3.5) - 0.12, 0, 3.55))
     box(g, "gloss_black", (0, 0, 0.04), (0.20, 0.40, 0.11), 0.04, 4, M=ML)
     cyl(g, "glass", (0.10, 0, 0.04), (0.105, 0, 0.04), 0.03, seg=24, M=ML)
-    # limpiaparabrisas: pivote bajo-centro, brazo hacia arriba-izquierda
-    piv, n0 = nose_at(0.02, 2.16)
-    cyl(g, "black", piv + n0 * 0.01, piv + n0 * 0.06, 0.028, seg=24)
-    arm = [nose_at(0.02 - 0.62 * t, 2.16 + 0.70 * t) for t in (0, 0.25, 0.5, 0.75, 1.0)]
-    tube(g, "black", [p + n * (0.05 - 0.02 * i / 4) for i, (p, n) in enumerate(arm)], 0.011, 10)
-    blade = [nose_at(-0.62, 2.55 + 0.62 * t) for t in (0, 0.33, 0.66, 1.0)]
-    tube(g, "rubber", [p + n * 0.025 for p, n in blade], 0.009, 8)
+    # limpiaparabrisas tipo pantografo: base articulada, dos brazos paralelos, portaescobilla
+    piv, n0 = nose_at(0.06, 2.20)
+    ML = frame_at(piv, n0)
+    box(g, "black", (0.02, 0, 0), (0.04, 0.16, 0.08), 0.015, 3, M=ML)
+    cyl(g, "black", (0.03, -0.04, 0), (0.07, -0.04, 0), 0.026, seg=24, M=ML)
+    cyl(g, "black", (0.03, 0.04, 0), (0.06, 0.04, 0), 0.016, seg=20, M=ML)
+    for dy in (-0.04, 0.04):
+        arm = [nose_at(0.06 + dy - 0.50 * t, 2.20 + 0.56 * t) for t in (0, 0.33, 0.66, 1.0)]
+        tube(g, "black", [p + n * (0.07 - 0.03 * k / 3) for k, (p, n) in enumerate(arm)], 0.010 if dy < 0 else 0.007, 10)
+    ph, nh = nose_at(-0.44, 2.76)
+    box(g, "black", (0.035, 0, 0), (0.03, 0.10, 0.05), 0.01, 2, M=frame_at(ph, nh))
+    blade = [nose_at(-0.44, 2.56 + 0.44 * t) for t in (0, 0.33, 0.66, 1.0)]
+    tube(g, "black", [p + n * 0.032 for p, n in blade], 0.008, 8)
+    tube(g, "rubber", [p + n * 0.02 for p, n in blade], 0.005, 6)
     # topes y enganche
-    coupler(g, 8.25, 1.0)
-    # deflector de obstaculos (barra gris inferior)
-    box(g, "guard", (8.55, 0, 0.32), (0.10, 2.0, 0.14), 0.03, 3)
+    coupler(g, 8.30, 1.0)
+    # faldon limpiavias gris oscuro, pegado bajo el frente, con abertura para el enganche
     for sg in (-1, 1):
-        box(g, "guard", (8.55, sg * 1.0, 0.25), (0.14, 0.02, 0.30), 0.006, 2)
-        box(g, "guard", (8.30, sg * 0.95, 0.62), (0.12, 0.10, 0.55), 0.02, 2, M=Matrix.Translation((0, 0, 0)))
+        prof = [(sg * 0.36, 0), (sg * 1.12, 0), (sg * 1.12, 1), (sg * 0.36, 1)]
+        q = []
+        for yy, t in prof:
+            q.append((8.56 + 0.06 * t, yy, SILL - 0.42 * t))
+        flat = [(8.50, sg * 0.36, SILL + 0.02), (8.50, sg * 1.10, SILL + 0.02), (8.53, sg * 1.06, SILL - 0.22), (8.54, sg * 0.40, SILL - 0.24)]
+        loft(g, "skirt", [flat, [(x - 0.04, y, z) for x, y, z in flat]], close=True, caps=True)
+        for yy in (0.5, 0.75, 1.0):
+            box(g, "skirt", (8.44, sg * yy, SILL - 0.10), (0.10, 0.025, 0.22), 0.008, 2)
+        box(g, "skirt", (8.40, sg * 0.74, SILL - 0.02), (0.35, 0.80, 0.03), 0.01, 2)
     # costado de cabina: puerta, ventanilla trapezoidal, asideros, peldano
     for sg in (-1, 1):
         y = sg * (HW + 0.004)
@@ -422,7 +477,11 @@ def build_nose(g, texts, dest, num):
         tube(g, "black", [(x, y, z) for x, z in door], 0.006, 6, closed=True)
         gasket(g, sg, 8.15, 2.82, 0.22, 0.78, 0.07, HW + 0.002, 0.010, 0.012, border=0.04, glass=False)
         g.add("gloss_black", [(x, sg * (HW + 0.004), z) for x, z in rrect(0.22, 0.78, 0.07, 8, 8.15, 2.82)], [tuple(range(36))])
-        wpts = [(8.43, 2.52), (8.62, 2.52), (8.60, 3.02), (8.45, 3.02)]
+        wpts = [(8.41, 2.52), (8.56, 2.52), (8.49, 3.00), (8.42, 3.00)]
+        # camara retrovisora lateral (en lugar de espejo)
+        box(g, "gloss_black", (8.50, sg * (HW + 0.06), 3.18), (0.20, 0.10, 0.10), 0.035, 4)
+        cyl(g, "glass", (8.40, sg * (HW + 0.06), 3.18), (8.395, sg * (HW + 0.06), 3.18), 0.025, seg=20)
+        box(g, "gloss_black", (8.55, sg * (HW + 0.025), 3.18), (0.06, 0.05, 0.05), 0.012, 2)
         g.add("gloss_black", [(x, sg * (HW + 0.004), z) for x, z in wpts], [(0, 1, 2, 3)])
         tube(g, "rubber", [(x, sg * (HW + 0.006), z) for x, z in wpts], 0.012, 8, closed=True)
         for xx in (7.88, 8.42):
@@ -437,20 +496,53 @@ def build_nose(g, texts, dest, num):
     loft(g, "floor", [[(x, y, FLOOR - 0.05) for x, y, _ in pts], [(x, y, FLOOR) for x, y, _ in pts]], close=True, caps=True)
 
 def coupler(g, xf, z):
-    """enganche automatico tipo Scharfenberg"""
-    cyl(g, "iron", (xf - 0.9, 0, z), (xf + 0.55, 0, z), 0.07, seg=32)
-    cyl(g, "iron", (xf - 0.2, 0, z), (xf + 0.25, 0, z), 0.11, 0.11, seg=40)
-    for k in range(6):
-        torus(g, "iron", (0, 0, 0), 0.115, 0.012, 40, 8, M=Matrix.Translation((xf - 0.15 + k * 0.07, 0, z)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
-    box(g, "iron", (xf + 0.68, 0, z), (0.26, 0.34, 0.36), 0.04, 3)
-    box(g, "steel", (xf + 0.825, 0, z), (0.035, 0.40, 0.42), 0.012, 2)
-    cyl(g, "steel", (xf + 0.84, -0.09, z + 0.02), (xf + 0.96, -0.09, z + 0.02), 0.055, 0.03, seg=32)
-    cyl(g, "black", (xf + 0.84, 0.09, z + 0.02), (xf + 0.845, 0.09, z + 0.02), 0.06, seg=32)
-    torus(g, "steel", (0, 0, 0), 0.062, 0.01, 32, 8, M=Matrix.Translation((xf + 0.845, 0.09, z + 0.02)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
-    box(g, "steel", (xf + 0.85, 0, z - 0.16), (0.05, 0.22, 0.06), 0.01, 2)
-    tube(g, "iron", [(xf + 0.7, 0.18, z + 0.05), (xf + 0.75, 0.25, z - 0.05), (xf + 0.72, 0.27, z - 0.3)], 0.014, 10)
-    tube(g, "rubber", [(xf + 0.6, -0.17, z - 0.1), (xf + 0.4, -0.22, z - 0.3), (xf + 0.1, -0.18, z - 0.25), (xf - 0.3, -0.12, z - 0.1)], 0.018, 10)
-    box(g, "iron", (xf - 0.75, 0, z), (0.3, 0.5, 0.3), 0.04, 2)
+    """enganche automatico Scharfenberg: cabeza con cono y embudo, caja de contactos electricos arriba
+    y abajo, conexiones neumaticas, aparato de choque y traccion, resortes de centrado y palanca"""
+    D = "coupler_dk"
+    # barra de traccion con aparato de choque (fuelles de goma) y soporte articulado
+    box(g, D, (xf - 0.80, 0, z), (0.30, 0.52, 0.34), 0.04, 3)
+    cyl(g, D, (xf - 0.66, 0, z), (xf - 0.50, 0, z), 0.16, 0.13, seg=48)
+    cyl(g, D, (xf - 0.50, 0, z), (xf + 0.45, 0, z), 0.065, seg=36)
+    for k in range(7):
+        torus(g, "rubber", (0, 0, 0), 0.10, 0.025, 40, 10, M=Matrix.Translation((xf - 0.42 + k * 0.06, 0, z)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
+    cyl(g, D, (xf - 0.46, 0, z), (xf - 0.44, 0, z), 0.13, seg=40)
+    cyl(g, D, (xf + 0.0, 0, z), (xf + 0.02, 0, z), 0.13, seg=40)
+    for sd in (-1, 1):                                             # resortes de centrado
+        coil(g, (0, 0, 0), 0.03, 0.007, 0.34, 7, mat=D) if False else None
+        pts = [(xf - 0.62 + 0.34 * i / 140, sd * (0.20 + 0.03 * math.cos(2 * math.pi * 7 * i / 140)), z - 0.05 + 0.03 * math.sin(2 * math.pi * 7 * i / 140)) for i in range(141)]
+        tube(g, "iron", pts, 0.007, 8)
+        tube(g, D, [(xf - 0.64, sd * 0.20, z - 0.05), (xf - 0.26, sd * 0.20, z - 0.05), (xf - 0.05, sd * 0.10, z - 0.02)], 0.012, 10)
+    # cabeza
+    head = rrect(0.40, 0.40, 0.05, 6)
+    loft(g, D, [[(xf + 0.30, u, z + v) for u, v in rrect(0.30, 0.30, 0.06, 6)], [(xf + 0.42, u, z + v) for u, v in head],
+                [(xf + 0.60, u, z + v) for u, v in head]], close=True, caps=True)
+    face_o = rrect(0.44, 0.44, 0.04, 6); face_i = rrect(0.42, 0.42, 0.03, 6)
+    loft(g, "coupler_face", [[(xf + 0.60, u, z + v) for u, v in face_o], [(xf + 0.64, u, z + v) for u, v in face_o],
+                             [(xf + 0.645, u, z + v) for u, v in face_i]], close=True, caps=True)
+    # cono (izquierda) y embudo (derecha)
+    revolve(g, "coupler_face", [(0.0, 0.0), (0.075, 0.0), (0.072, 0.03), (0.045, 0.16), (0.03, 0.19), (0.0, 0.195)], 48,
+            M=Matrix.Translation((xf + 0.645, -0.10, z + 0.02)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
+    revolve(g, "black", [(0.0, -0.10), (0.03, -0.10), (0.075, -0.005), (0.085, 0.0), (0.0, 0.0)], 48,
+            M=Matrix.Translation((xf + 0.646, 0.10, z + 0.02)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
+    torus(g, "coupler_face", (0, 0, 0), 0.088, 0.008, 48, 8, M=Matrix.Translation((xf + 0.646, 0.10, z + 0.02)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
+    # conexiones neumaticas
+    for yy in (-0.13, 0.13):
+        cyl(g, "coupler_face", (xf + 0.645, yy, z - 0.15), (xf + 0.67, yy, z - 0.15), 0.025, seg=24)
+        torus(g, "rubber", (0, 0, 0), 0.018, 0.006, 24, 6, M=Matrix.Translation((xf + 0.67, yy, z - 0.15)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
+    # cajas de contactos electricos arriba y abajo
+    for zz, sgn_z in ((z + 0.29, 1), (z - 0.29, -1)):
+        box(g, D, (xf + 0.50, 0, zz), (0.24, 0.36, 0.12), 0.02, 3)
+        box(g, "gloss_black", (xf + 0.625, 0, zz), (0.012, 0.32, 0.09), 0.006, 2)
+        for i in range(10):
+            for j in range(2):
+                cyl(g, "chrome", (xf + 0.63, -0.135 + i * 0.03, zz - 0.02 + j * 0.04), (xf + 0.645, -0.135 + i * 0.03, zz - 0.02 + j * 0.04), 0.006, seg=8)
+        tube(g, "iron", [(xf + 0.40, 0.15, zz), (xf + 0.36, 0.15, z + sgn_z * 0.16)], 0.012, 8)
+    # mecanismo de desenganche: palanca y varillaje
+    tube(g, "iron", [(xf + 0.50, 0.21, z + 0.10), (xf + 0.56, 0.27, z + 0.02), (xf + 0.56, 0.29, z - 0.24), (xf + 0.50, 0.30, z - 0.36)], 0.012, 10)
+    cyl(g, "btn_red", (xf + 0.50, 0.30, z - 0.36), (xf + 0.50, 0.30, z - 0.40), 0.02, seg=16)
+    box(g, D, (xf + 0.46, 0.21, z + 0.10), (0.08, 0.04, 0.08), 0.01, 2)
+    tube(g, "rubber", [(xf + 0.45, -0.20, z - 0.12), (xf + 0.30, -0.26, z - 0.32), (xf + 0.0, -0.22, z - 0.30), (xf - 0.40, -0.12, z - 0.12)], 0.018, 10)
+    tube(g, "rubber", [(xf + 0.42, 0.20, z - 0.20), (xf + 0.20, 0.24, z - 0.36), (xf - 0.30, 0.16, z - 0.20)], 0.012, 10)
 
 # ================================================================= CAJA
 def skin(g, sgn, a, b, za, zb):
@@ -495,15 +587,30 @@ def side_wall(g, sgn, cab):
             if zz > 1 or all(abs(x - c) > 0.55 for c in xs):
                 cyl(g, "body", (x, sgn * HW, zz), (x, sgn * (HW + 0.006), zz), 0.0055, seg=8)
             x += 0.15
-    # grafica roja (trazada)
-    y = sgn * (HW + 0.002); t = sgn * 0.003
-    for q in LIVERY["cab" if cab else "mid"]:
-        xs_q = [p[0] for p in q]
-        if any(abs(xx - d) < DW / 2 + 0.02 for d in DOORS for xx in xs_q): continue
-        flat_poly(g, "red", [(px, pz) for px, pz in q], y, t)
-    # letrero de destino lateral sobre ventana central
-    box(g, "gloss_black", (0, sgn * (HW + 0.01), 3.19), (1.32, 0.02, 0.17), 0.012, 2)
-    box(g, "screen2", (0, sgn * (HW + 0.021), 3.19), (1.24, 0.004, 0.12), 0.002, 1)
+    # grafica roja (contornos vectorizados) + logo lateral limpio
+    y = sgn * (HW + 0.0015); t = sgn * 0.002
+    for poly in LIVERY["cab" if cab else "mid"]:
+        pts = [(px, pz) for px, pz in poly]
+        if sgn > 0: pts = pts[::-1]
+        flat_poly(g, "red", pts, y, t)
+    lg = LIVERY["logo"]; yl = sgn * (HW + 0.0038)
+    def ell_xz(rx, rz, N=64): return [(lg["x"] + rx * math.cos(2 * math.pi * k / N), lg["z"] + rz * math.sin(2 * math.pi * k / N)) for k in range(N)]
+    g.add("body", [(x, yl, z) for x, z in ell_xz(lg["rx"], lg["ry"])], [tuple(range(64))])
+    ro = ell_xz(lg["rx"] - 0.01, lg["ry"] - 0.01); ri = ell_xz(lg["rx"] - 0.045, lg["ry"] - 0.04)
+    loft(g, "red", [[(x, yl + sgn * 0.0005, z) for x, z in ro], [(x, yl + sgn * 0.0005, z) for x, z in ri]], close=True)
+    for k in (-1, 0, 1):
+        cx = lg["x"] + k * 0.13
+        g.add("red", [(cx, yl + sgn * 0.0006, lg["z"] - 0.085), (cx + 0.065, yl + sgn * 0.0006, lg["z"]),
+                      (cx, yl + sgn * 0.0006, lg["z"] + 0.085), (cx - 0.065, yl + sgn * 0.0006, lg["z"])], [(0, 1, 2, 3)])
+    # letrero electronico lateral enrasado (cristal oscuro a ras de la piel)
+    sr = rrect(1.30, 0.17, 0.03, 6, 0.0, 3.19)
+    g.add("screen2", [(x, sgn * (HW + 0.0012), z) for x, z in sr], [tuple(range(len(sr)))])
+    tube(g, "rubber", [(x, sgn * (HW + 0.001), z) for x, z in sr], 0.006, 6, closed=True)
+    g.add("glass", [(x, sgn * (HW + 0.0045), z) for x, z in sr], [tuple(range(len(sr)))])
+    # rejillas laterales superiores (toma de aire del climatizador)
+    for xc in (-3.4, 3.4):
+        for k in range(14):
+            box(g, "desk_dark", (xc - 0.55 + k * 0.085, sgn * (HW + 0.001), 3.33), (0.05, 0.004, 0.08), 0.002, 1)
     # pulsador e intercomunicador junto a la primera puerta
     xp = DOORS[-1] - DW / 2 - 0.25
     box(g, "white", (xp, sgn * (HW + 0.004), 2.66), (0.12, 0.008, 0.12), 0.01, 2)
@@ -529,6 +636,8 @@ def door_leaves(g, sgn, xd, is_open):
         gasket(g, sgn, cx, cz, ww, hh, 0.10, yc + 0.018, 0.008, 0.02, border=0.04)
         gasket(g, sgn, cx, cz, ww, hh, 0.10, yc - 0.018, -0.008, -0.016, border=0.04, glass=False)
         box(g, "rubber", (xc - d * lw / 2, y, (zb + zt) / 2), (0.022, 0.045, zt - zb), 0.006, 1)
+        rim = rrect(lw - 0.01, zt - zb - 0.01, 0.03, 4, xc, (zb + zt) / 2)
+        tube(g, "rubber", [(x, sgn * (yc + 0.019), z) for x, z in rim], 0.009, 8, closed=True)
         yy = sgn * (yc + 0.0185); tt = sgn * 0.003
         for z0, z1 in ((1.855, 1.91), (1.665, 1.80)):
             if z1 < wz0 or z0 > wz1:
@@ -565,8 +674,15 @@ def door_leaves(g, sgn, xd, is_open):
     box(g, "cab_gray", (xe, sgn * (LIN_I - 0.01), 1.88), (0.09, 0.02, 0.17), 0.01, 2)
     cyl(g, "chrome", (xe, sgn * (LIN_I - 0.02), 1.90), (xe, sgn * (LIN_I - 0.028), 1.90), 0.012, seg=16)
     # indicador luminoso de puerta
-    box(g, "gloss_black", (xd + DW / 2 + 0.12, sgn * (HW + 0.004), 3.18), (0.06, 0.012, 0.10), 0.01, 2)
-    cyl(g, "amber", (xd + DW / 2 + 0.12, sgn * (HW + 0.01), 3.18), (xd + DW / 2 + 0.12, sgn * (HW + 0.014), 3.18), 0.018, seg=20)
+    box(g, "gloss_black", (xd, sgn * (HW + 0.004), DZ1 + 0.10), (0.12, 0.014, 0.05), 0.012, 2)
+    cyl(g, "lens_amber", (xd, sgn * (HW + 0.009), DZ1 + 0.10), (xd, sgn * (HW + 0.016), DZ1 + 0.10), 0.018, seg=20)
+    cyl(g, "amber", (xd, sgn * (HW + 0.006), DZ1 + 0.10), (xd, sgn * (HW + 0.009), DZ1 + 0.10), 0.012, seg=16)
+    # intercomunicador de emergencia (lado opuesto a la caja roja)
+    xi = xd + DW / 2 + 0.20
+    box(g, "cab_gray", (xi, sgn * (LIN_I - 0.01), 2.30), (0.12, 0.02, 0.20), 0.012, 2)
+    for k in range(9):
+        cyl(g, "black", (xi - 0.03 + (k % 3) * 0.03, sgn * (LIN_I - 0.02), 2.35 - (k // 3) * 0.025), (xi - 0.03 + (k % 3) * 0.03, sgn * (LIN_I - 0.022), 2.35 - (k // 3) * 0.025), 0.005, seg=8)
+    cyl(g, "btn_red", (xi, sgn * (LIN_I - 0.02), 2.24), (xi, sgn * (LIN_I - 0.03), 2.24), 0.02, seg=20)
 
 def roof(g, xa, xb):
     N = 48
@@ -576,31 +692,63 @@ def roof(g, xa, xb):
             ROOF_E + (ROOF_T - ROOF_E - 0.05) * abs(math.sin(math.pi * k / N)) ** 0.5) for k in range(N, -1, -1)]
     pts = [(HW, ROOF_E - 0.001)] + out + [(-HW, ROOF_E - 0.001)] + inn
     loft(g, "roof", [[(xa, y, z) for y, z in pts], [(xb, y, z) for y, z in pts]], close=True, caps=True)
-    # equipo de aire acondicionado bajo perfil (centro del techo)
-    box(g, "roof", (0, 0, ROOF_T + 0.01), (4.1, 2.3, 0.06), 0.025, 3)
-    for k in range(2):
-        xc = -1.0 + 2.0 * k
-        box(g, "gloss_black", (xc, 0, ROOF_T + 0.045), (1.2, 1.4, 0.012), 0.004, 1)
-        for j in range(16):
-            box(g, "roof", (xc - 0.56 + j * 0.075, 0, ROOF_T + 0.05), (0.02, 1.36, 0.012), 0.003, 1)
-    for xc in (-5.6, 5.6):
-        box(g, "roof", (xc, 0, ROOF_T + 0.008), (1.2, 1.6, 0.03), 0.01, 2)
+    # climatizadores (HVAC) carenados en gris claro, uno en cada mitad del coche
+    for xc in (-3.4, 3.4):
+        sec = [(-1.12, 0.0), (1.12, 0.0), (1.10, 0.12), (1.0, 0.20), (0.8, 0.23), (-0.8, 0.23), (-1.0, 0.20), (-1.10, 0.12)]
+        rings = []
+        for k, (dx, sc) in enumerate(((-1.25, 0.90), (-1.21, 0.97), (-1.15, 1.0), (1.15, 1.0), (1.21, 0.97), (1.25, 0.90))):
+            rings.append([(xc + dx, y * sc, ROOF_T - 0.01 + h * sc) for y, h in sec])
+        loft(g, "hvac", rings, close=True, caps=True)
+        for dx in (-0.55, 0.55):                                  # ventiladores condensador
+            cyl(g, "desk_dark", (xc + dx, 0, ROOF_T + 0.215), (xc + dx, 0, ROOF_T + 0.226), 0.32, seg=64)
+            torus(g, "hvac", (0, 0, 0), 0.32, 0.012, 64, 8, M=Matrix.Translation((xc + dx, 0, ROOF_T + 0.226)) @ rot_x(90))
+            for k in range(8):
+                box(g, "hvac", (xc + dx, 0, ROOF_T + 0.228), (0.64, 0.012, 0.006), 0.002, 1, M=Matrix.Translation((0, 0, 0)) @ Matrix.Translation((0, (k - 3.5) * 0.075, 0)))
+            cyl(g, "hvac", (xc + dx, 0, ROOF_T + 0.226), (xc + dx, 0, ROOF_T + 0.232), 0.06, seg=24)
+        for sd in (-1, 1):                                        # rejillas laterales del equipo
+            for k in range(16):
+                box(g, "desk_dark", (xc - 0.75 + k * 0.1, sd * 1.111, ROOF_T + 0.09), (0.05, 0.006, 0.10), 0.002, 1)
+    box(g, "roof", (0, 0, ROOF_T + 0.01), (1.6, 0.25, 0.03), 0.008, 2)
+
+FRIEZE = [(-7.30, -5.50, "afiche_1"), (-5.30, -3.42, "info_emergencia"), (-3.20, -1.15, "afiche_2"),
+          (-1.05, 1.05, "mapa_L5"), (1.15, 3.20, "info_emergencia"), (3.42, 5.30, "afiche_3"), (5.50, 7.30, "mapa_L5")]
+
+def frieze_textures(prefix, coll, M, cab):
+    """paneles con textura (UV) sobre las ventanas: mapa termometro L5, afiches, panel de emergencia"""
+    for sgn in (-1, 1):
+        for k, (x0_, x1_, tex) in enumerate(FRIEZE):
+            if cab and x1_ > CAB_P - 0.1: continue
+            y = sgn * 1.0095; z0_, z1_ = 3.16, 3.38
+            verts = [(x0_, y, z0_), (x1_, y, z0_), (x1_, y, z1_), (x0_, y, z1_)]
+            uvs = [(0, 0), (1, 0), (1, 1), (0, 1)] if sgn > 0 else [(1, 0), (0, 0), (0, 1), (1, 1)]
+            me = bpy.data.meshes.new(f"{prefix}_friso_{sgn}_{k}")
+            me.from_pydata(verts, [], [(0, 1, 2, 3)]); uv = me.uv_layers.new()
+            for li, l in enumerate(me.loops): uv.data[li].uv = uvs[l.vertex_index]
+            me.materials.append(tex_material(tex))
+            ob = bpy.data.objects.new(me.name, me); ob.matrix_world = M; coll.objects.link(ob)
+
+TEXMATS = {}
+def tex_material(name):
+    if name in TEXMATS: return TEXMATS[name]
+    m = bpy.data.materials.new("tex_" + name); m.use_nodes = True; nt = m.node_tree; nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial"); b = nt.nodes.new("ShaderNodeBsdfPrincipled")
+    it = nt.nodes.new("ShaderNodeTexImage")
+    img = bpy.data.images.load(os.path.join(HERE, "textures", name + ".png")); img.pack(); it.image = img
+    nt.links.new(it.outputs["Color"], b.inputs["Base Color"])
+    nt.links.new(it.outputs["Color"], b.inputs["Emission Color"]); b.inputs["Emission Strength"].default_value = 0.08
+    b.inputs["Roughness"].default_value = 0.35; b.inputs["Coat Weight"].default_value = 0.5
+    nt.links.new(b.outputs[0], out.inputs[0]); TEXMATS[name] = m
+    return m
 
 def ceiling(g, xa, xb):
     L = xb - xa; xc = (xa + xb) / 2
     for sgn in (-1, 1):
         prof = [(LIN_I, 3.07), (1.017, 3.14), (1.017, 3.40), (1.03, 3.40), (1.03, 3.15), (LIN_I + 0.02, 3.08)]
         loft(g, "ceiling", [[(xa, sgn * y, z) for y, z in prof], [(xb, sgn * y, z) for y, z in prof]], close=True, caps=True)
-        # paneles de informacion (blanco y negro) en la cara vertical
-        x = xa + 0.35
-        while x + 1.2 < xb - 0.2:
-            box(g, "white", (x + 0.6, sgn * 1.012, 3.27), (1.16, 0.006, 0.22), 0.002, 1)
-            box(g, "gloss_black", (x + 0.12, sgn * 1.009, 3.27), (0.22, 0.004, 0.22))
-            box(g, "gloss_black", (x + 1.07, sgn * 1.009, 3.27), (0.18, 0.004, 0.22))
-            for k in range(5):
-                box(g, "black", (x + 0.32 + k * 0.12, sgn * 1.009, 3.26), (0.07, 0.003, 0.07))
-                box(g, "white", (x + 0.32 + k * 0.12, sgn * 1.008, 3.26), (0.055, 0.002, 0.055))
-            x += 1.3
+        # marcos de los paneles del friso (las texturas se agregan en frieze_textures)
+        for x0_, x1_, kind in FRIEZE:
+            if x0_ < xa or x1_ > xb: continue
+            box(g, "steel", ((x0_ + x1_) / 2, sgn * 1.013, 3.27), (x1_ - x0_ + 0.03, 0.006, 0.25), 0.003, 1)
         # franja luminosa continua bajo la cornisa + rejilla de ventilacion
         box(g, "light", (xc, sgn * 1.10, 3.103), (L - 0.3, 0.16, 0.01), 0.003, 1)
         box(g, "desk_dark", (xc, sgn * 0.94, 3.398), (L - 0.4, 0.09, 0.006))
@@ -665,10 +813,12 @@ def seat_bank(g, sgn, a, b, white_first=False, white_last=False):
         x0 = a + k * 0.515 + 0.006; x1 = x0 + 0.503; xc = (x0 + x1) / 2
         m = "seat_white" if ((k == 0 and white_first) or (k == n - 1 and white_last)) else "seat"
         seat_shell(g, m, sgn, x0, x1, wall)
-        dm = "seat_dark" if m == "seat" else "liner"
-        cyl(g, dm, (xc, sgn * (wall - 0.30), FLOOR + 0.4565), (xc, sgn * (wall - 0.30), FLOOR + 0.4595), 0.15, seg=48)
-        nb = Vector((0, -sgn * 0.993, 0.117)); pb = Vector((xc, sgn * (wall - 0.083), FLOOR + 0.72))
-        cyl(g, dm, pb, pb + nb * 0.003, 0.14, seg=48)
+        dm = "seat_emboss" if m == "seat" else "seat_emboss_w"
+        circ = [(xc + 0.15 * math.cos(2 * math.pi * k / 48), sgn * (wall - 0.30) + 0.15 * math.sin(2 * math.pi * k / 48), FLOOR + 0.4558) for k in range(48)]
+        g.add(dm, circ, [tuple(range(48))])
+        nb = Vector((0, -sgn * 0.993, 0.117)); pb = Vector((xc, sgn * (wall - 0.0815), FLOOR + 0.72)) + nb * 0.0004
+        u_ = Vector((1, 0, 0)); v_ = nb.cross(u_).normalized()
+        g.add(dm, [pb + (u_ * math.cos(2 * math.pi * k / 48) + v_ * math.sin(2 * math.pi * k / 48)) * 0.14 for k in range(48)], [tuple(range(48))])
         if k % 2 == 0:
             tube(g, "steel", [(x0 + 0.02, sgn * (wall - 0.01), FLOOR + 0.25), (x0 + 0.02, sgn * (wall - 0.22), FLOOR + 0.40), (x0 + 0.02, sgn * (wall - 0.42), FLOOR + 0.425)], 0.016, 12)
     for xe in (a - 0.01, b + 0.01):
@@ -679,6 +829,8 @@ def seat_bank(g, sgn, a, b, white_first=False, white_last=False):
             pts.append((xe, sgn * (0.78 + 0.40 * (1 - math.cos(ph))), 2.45 + 0.40 * math.sin(ph)))
         tube(g, "pole", pts, 0.019, 20)
         cyl(g, "steel", (xe, sgn * 0.78, FLOOR), (xe, sgn * 0.78, FLOOR + 0.02), 0.04, seg=24)
+        cyl(g, "clamp", (xe, sgn * (wall - 0.03), 2.85), (xe, sgn * wall, 2.85), 0.04, seg=24)
+        cyl(g, "clamp", (xe, sgn * 0.81, FLOOR + 0.57), (xe, sgn * 0.75, FLOOR + 0.57), 0.03, seg=20)
 
 def handles_rails(g, xa, xb):
     def tri_loop():
@@ -701,11 +853,28 @@ def handles_rails(g, xa, xb):
         x = xa + 0.4
         while x < xb - 0.3:
             if all(abs(x - d) > DW / 2 + 0.1 for d in DOORS):
-                tube(g, "pole", [(x, sgn * 0.78, ZR), (x, sgn * 0.78, ZR - 0.09)], 0.009, 10)
-                tube(g, "handle", [(x, sgn * 0.78 + px, ZR - 0.09 + pz) for px, pz in tri], 0.011, 12, closed=True)
+                torus(g, "strap", (0, 0, 0), 0.026, 0.006, 20, 6, M=Matrix.Translation((x, sgn * 0.78, ZR)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
+                box(g, "strap", (x, sgn * 0.78, ZR - 0.10), (0.032, 0.006, 0.16), 0.002, 1)
+                tube(g, "handle", [(x, sgn * 0.78 + px, ZR - 0.17 + pz) for px, pz in tri], 0.013, 12, closed=True)
             x += 0.55
+    def clamp_x(x, y, z):            # abrazadera en cruce de tubo longitudinal y transversal/vertical
+        cyl(g, "clamp", (x - 0.045, y, z), (x + 0.045, y, z), 0.032, seg=24)
+        box(g, "clamp", (x, y, z), (0.05, 0.075, 0.075), 0.014, 2)
+        for dz in (-0.025, 0.025):
+            cyl(g, "chrome", (x - 0.03, y, z + dz), (x - 0.04, y, z + dz), 0.007, seg=6)
+    def clamp_z(x, y, z):            # brida de union tubo vertical / horizontal
+        cyl(g, "clamp", (x, y, z - 0.045), (x, y, z + 0.045), 0.033, seg=24)
+        cyl(g, "clamp", (x, y - 0.045, z), (x, y + 0.045, z), 0.030, seg=24)
+        cyl(g, "chrome", (x + 0.03, y, z + 0.02), (x + 0.04, y, z + 0.02), 0.007, seg=6)
+    for sgn in (-1, 1):
+        x = xa + 0.6
+        while x < xb - 0.3:
+            clamp_z(x, sgn * 0.78, ZR); cyl(g, "clamp", (x, sgn * 0.78, 3.36), (x, sgn * 0.78, 3.40), 0.045, seg=24)
+            x += 1.8
     for d in DOORS:
         if not (xa < d < xb): continue
+        clamp_z(d, 0.0, ZR); clamp_x(d, -0.78, ZR); clamp_x(d, 0.78, ZR)
+        cyl(g, "clamp", (d, 0, 3.36), (d, 0, 3.40), 0.05, seg=24)
         tube(g, "pole", [(d, 0.0, FLOOR), (d, 0.0, 3.40)], 0.021, 28)
         cyl(g, "steel", (d, 0, FLOOR), (d, 0, FLOOR + 0.02), 0.045, seg=28)
         tube(g, "pole", [(d, -0.78, ZR), (d, 0.78, ZR)], 0.019, 24)
@@ -1005,8 +1174,9 @@ def build():
         for sg in (-1, 1):
             R = Matrix.Rotation(math.radians(90), 4, 'X') @ Matrix.Identity(4)
             Rz = Matrix.Rotation(math.pi if sg > 0 else 0, 4, 'Z')
-            T = Matrix.Translation((0, sg * (HW + 0.026), 3.19)) @ Rz @ R
+            T = Matrix.Translation((0, sg * (HW + 0.0028), 3.19)) @ Rz @ R
             add_text(f"C{i + 1}_lat{sg}", c, "Plaza de Maipú", M @ T, 0.085, "amber")
+        frieze_textures(f"C{i + 1}", c, M, cab)
         total += g.tris(); ends.append(span)
         cursor = span[1] + GAP
         print(f"coche {i + 1} ({names[i]}): {g.tris():,} triangulos", flush=True)
