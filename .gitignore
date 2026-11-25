@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+*.blend1
+ns16_metro_santiago/render.log
