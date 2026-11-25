@@ -177,7 +177,7 @@ def make_materials():
     mk("seat_dark", (0.55, 0.02, 0.03), 0, 0.25, coat=0.8)
     mk("seat_white", (0.9, 0.9, 0.9), 0, 0.25, coat=0.6)
     mk("seat_base", (0.1, 0.1, 0.11), 0.2, 0.5)
-    mk("floor", (0.22, 0.225, 0.23), 0, 0.75)
+    mk("floor", (0.40, 0.41, 0.42), 0, 0.7)
     mk("groove", (0.25, 0.26, 0.27), 0, 0.9)
     mk("ceiling", (0.93, 0.93, 0.91), 0, 0.5)
     mk("light", (1, 1, 1), emit=(1.0, 0.97, 0.9), strength=2.5)
@@ -192,15 +192,24 @@ def make_materials():
     mk("wheel", (0.42, 0.42, 0.43), 0.95, 0.35)
     mk("handle", (0.8, 0.8, 0.82), 1.0, 0.2)
     mk("strap", (0.04, 0.04, 0.045), 0, 0.7)
-    mk("desk", (0.30, 0.33, 0.38), 0.2, 0.5)
+    mk("desk", (0.085, 0.10, 0.135), 0.35, 0.42)
     mk("pole", (0.8, 0.8, 0.82), 1.0, 0.2)
     mk("tire", (0.025, 0.025, 0.027), 0.0, 0.8)
     mk("gloss_black", (0.01, 0.01, 0.012), 0.2, 0.12, coat=1.0)
     mk("chrome", (0.9, 0.9, 0.92), 1.0, 0.08)
     mk("guard", (0.36, 0.38, 0.42), 0.3, 0.5)
     mk("hubmetal", (0.16, 0.17, 0.19), 0.7, 0.4)
+    mk("cab_gray", (0.70, 0.71, 0.70), 0.0, 0.5)
+    mk("dmi", (0.05, 0.25, 0.85), emit=(0.10, 0.30, 1.0), strength=2.5)
+    mk("ui_green", (0.2, 0.8, 0.2), emit=(0.3, 1.0, 0.25), strength=3.0)
+    mk("ui_white", (0.9, 0.9, 0.9), emit=(1, 1, 1), strength=2.0)
+    mk("screen_dim", (0.05, 0.06, 0.08), 0.2, 0.15, emit=(0.15, 0.17, 0.22), strength=0.6)
+    mk("btn_blue", (0.05, 0.25, 0.9), 0.0, 0.25, emit=(0.1, 0.3, 1.0), strength=0.8)
+    mk("btn_green", (0.1, 0.7, 0.2), 0.0, 0.25, emit=(0.2, 1.0, 0.3), strength=0.8)
+    mk("btn_yellow", (0.95, 0.75, 0.05), 0.0, 0.25, emit=(1.0, 0.8, 0.1), strength=0.8)
+    mk("btn_red", (0.85, 0.03, 0.03), 0.0, 0.2, coat=0.8)
     mk("desk_dark", (0.12, 0.13, 0.15), 0.2, 0.6)
-    mk("panel", (0.40, 0.42, 0.47), 0.3, 0.45)
+    mk("panel", (0.22, 0.24, 0.28), 0.3, 0.45)
     mk("ad1", (0.15, 0.35, 0.7), 0, 0.4)
     mk("ad2", (0.95, 0.75, 0.1), 0, 0.4)
     mk("ad3", (0.2, 0.6, 0.35), 0, 0.4)
@@ -531,6 +540,30 @@ def door_leaves(g, sgn, xd, is_open):
         box(g, "black", (xd + s2 * (DW / 2 + 0.025), sgn * (HW + 0.002), (FLOOR + DZ1) / 2), (0.04, 0.02, DZ1 - FLOOR), 0.006, 2)
     box(g, "black", (xd, sgn * (HW + 0.002), DZ1 + 0.02), (DW + 0.09, 0.02, 0.05), 0.006, 2)
     box(g, "steel", (xd, sgn * (SK_IN + LIN_I) / 2, FLOOR + 0.005), (DW, HW - LIN_I + 0.04, 0.012))
+    # interior: dintel de acero con remaches, tiradores, adhesivos y caja de emergencia
+    box(g, "body", (xd, sgn * (LIN_I - 0.006), (DZ1 + 3.07) / 2), (DW + 0.1, 0.012, 3.07 - DZ1), 0.003, 1)
+    for k in range(7):
+        xx = xd - DW / 2 + 0.05 + k * (DW - 0.1) / 6
+        cyl(g, "chrome", (xx, sgn * (LIN_I - 0.012), 3.06), (xx, sgn * (LIN_I - 0.016), 3.06), 0.006, seg=8)
+    if not is_open:
+        yin = sgn * (HW - 0.02 - 0.019)
+        for dd in (-1, 1):
+            xh = xd + dd * 0.09
+            box(g, "chrome", (xh, yin, 1.95), (0.045, 0.008, 0.16), 0.012, 3)
+            box(g, "desk_dark", (xh, yin - sgn * 0.003, 1.95), (0.025, 0.004, 0.12), 0.006, 2)
+            xs_ = xd + dd * (DW / 2 - 0.20)
+            box(g, "white", (xs_, sgn * (HW - 0.02 - 0.03), 2.05), (0.07, 0.003, 0.30), 0.002, 1)
+            for k in range(3):
+                box(g, "gloss_black", (xs_, sgn * (HW - 0.02 - 0.032), 2.16 - k * 0.09), (0.05, 0.002, 0.06))
+            box(g, "gloss_black", (xs_, sgn * (HW - 0.02 - 0.032), 1.85), (0.07, 0.002, 0.10))
+    xe = xd - DW / 2 - 0.20
+    box(g, "white", (xe, sgn * (LIN_I - 0.01), 2.40), (0.14, 0.02, 0.15), 0.012, 2)
+    box(g, "btn_red", (xe, sgn * (LIN_I - 0.022), 2.40), (0.10, 0.006, 0.11), 0.004, 1)
+    cyl(g, "chrome", (xe, sgn * (LIN_I - 0.025), 2.40), (xe, sgn * (LIN_I - 0.033), 2.40), 0.012, seg=16)
+    box(g, "white", (xe, sgn * (LIN_I - 0.006), 2.18), (0.13, 0.006, 0.10), 0.004, 1)
+    box(g, "btn_red", (xe, sgn * (LIN_I - 0.03), 2.06), (0.025, 0.05, 0.06), 0.008, 2)
+    box(g, "cab_gray", (xe, sgn * (LIN_I - 0.01), 1.88), (0.09, 0.02, 0.17), 0.01, 2)
+    cyl(g, "chrome", (xe, sgn * (LIN_I - 0.02), 1.90), (xe, sgn * (LIN_I - 0.028), 1.90), 0.012, seg=16)
     # indicador luminoso de puerta
     box(g, "gloss_black", (xd + DW / 2 + 0.12, sgn * (HW + 0.004), 3.18), (0.06, 0.012, 0.10), 0.01, 2)
     cyl(g, "amber", (xd + DW / 2 + 0.12, sgn * (HW + 0.01), 3.18), (xd + DW / 2 + 0.12, sgn * (HW + 0.014), 3.18), 0.018, seg=20)
@@ -558,26 +591,34 @@ def ceiling(g, xa, xb):
     for sgn in (-1, 1):
         prof = [(LIN_I, 3.07), (1.017, 3.14), (1.017, 3.40), (1.03, 3.40), (1.03, 3.15), (LIN_I + 0.02, 3.08)]
         loft(g, "ceiling", [[(xa, sgn * y, z) for y, z in prof], [(xb, sgn * y, z) for y, z in prof]], close=True, caps=True)
-        # portaanuncios (carteles) en la cara vertical
-        x = xa + 0.3
-        k = 0
-        while x + 0.9 < xb - 0.2:
-            col = ("ad1", "ad2", "ad3", "white")[k % 4]
-            box(g, col, (x + 0.45, sgn * 1.012, 3.27), (0.86, 0.006, 0.22), 0.002, 1)
-            x += 1.0; k += 1
-        box(g, "light", (xc, sgn * 1.10, 3.105), (L - 0.4, 0.10, 0.01), 0.003, 1)
+        # paneles de informacion (blanco y negro) en la cara vertical
+        x = xa + 0.35
+        while x + 1.2 < xb - 0.2:
+            box(g, "white", (x + 0.6, sgn * 1.012, 3.27), (1.16, 0.006, 0.22), 0.002, 1)
+            box(g, "gloss_black", (x + 0.12, sgn * 1.009, 3.27), (0.22, 0.004, 0.22))
+            box(g, "gloss_black", (x + 1.07, sgn * 1.009, 3.27), (0.18, 0.004, 0.22))
+            for k in range(5):
+                box(g, "black", (x + 0.32 + k * 0.12, sgn * 1.009, 3.26), (0.07, 0.003, 0.07))
+                box(g, "white", (x + 0.32 + k * 0.12, sgn * 1.008, 3.26), (0.055, 0.002, 0.055))
+            x += 1.3
+        # franja luminosa continua bajo la cornisa + rejilla de ventilacion
+        box(g, "light", (xc, sgn * 1.10, 3.103), (L - 0.3, 0.16, 0.01), 0.003, 1)
+        box(g, "desk_dark", (xc, sgn * 0.94, 3.398), (L - 0.4, 0.09, 0.006))
+        for k in range(4):
+            box(g, "ceiling", (xc, sgn * (0.905 + k * 0.023), 3.396), (L - 0.4, 0.008, 0.006))
     box(g, "ceiling", (xc, 0, 3.42), (L, 2.06, 0.04), 0.01, 2)
-    # paneles de luz centrales + rejillas
-    x = xa + 0.6
-    while x + 1.4 < xb:
-        box(g, "light", (x + 0.7, 0, 3.395), (1.3, 0.55, 0.012), 0.004, 2)
-        for sg in (-1, 1):
-            box(g, "skirt", (x + 0.7, sg * 0.62, 3.397), (0.16, 0.12, 0.008), 0.002, 1)
-            for j in range(5):
-                box(g, "ceiling", (x + 0.64 + j * 0.03, sg * 0.62, 3.392), (0.012, 0.11, 0.006))
+    # juntas diagonales/rectas de paneles y puntos (parlantes / sensores)
+    x = xa + 0.8
+    while x < xb - 0.5:
+        box(g, "groove", (x, 0, 3.399), (0.006, 1.7, 0.003))
+        for sd in (-1, 1):
+            cyl(g, "chrome", (x + 0.4, sd * 0.45, 3.40), (x + 0.4, sd * 0.45, 3.39), 0.035, seg=24)
+            cyl(g, "black", (x + 0.4, sd * 0.45, 3.389), (x + 0.4, sd * 0.45, 3.388), 0.022, seg=24)
         x += 1.6
-    for k in range(int(L // 0.8)):
-        box(g, "groove", (xa + 0.4 + k * 0.8, 0, 3.398), (0.008, 2.0, 0.004))
+    # domo de camara
+    revolve(g, "gloss_black", [(0.0, 0.0), (0.075, 0.0), (0.072, -0.03), (0.055, -0.06), (0.03, -0.075), (0.0, -0.08)], 40,
+            M=Matrix.Translation((xc + 1.0, 0.3, 3.40)))
+    cyl(g, "white", (xc + 1.0, 0.3, 3.40), (xc + 1.0, 0.3, 3.385), 0.09, seg=40)
 
 def interior(g, cab):
     xa, xb = -XB + 0.05, (CAB_P - 0.05) if cab else XB - 0.05
@@ -601,6 +642,16 @@ def interior(g, cab):
     def end_wall(x, sd):
         for s in (-1, 1):
             box(g, "liner", (x, s * 0.98, 2.2), (0.06, 0.48, 2.0), 0.01, 2)
+            fx = x - sd * 0.032
+            for zc in (1.45, 1.75):
+                box(g, "cab_gray", (fx, s * 1.0, zc), (0.006, 0.30, 0.24), 0.004, 1)
+                for k in range(9):
+                    box(g, "desk_dark", (fx - sd * 0.002, s * 1.0, zc - 0.10 + k * 0.025), (0.004, 0.26, 0.008))
+            box(g, "steel", (fx, s * 0.98, 2.45), (0.008, 0.30, 0.42), 0.006, 2)
+            box(g, "white", (fx - sd * 0.004, s * 0.98, 2.45), (0.004, 0.26, 0.38))
+            for k in range(5):
+                box(g, "red" if k % 2 else "gloss_black", (fx - sd * 0.007, s * 0.98 + (k - 2) * 0.035, 2.45 + (k % 3 - 1) * 0.06), (0.002, 0.02, 0.2))
+            tube(g, "pole", [(fx - sd * 0.0, s * 0.76, 1.55), (fx - sd * 0.07, s * 0.76, 1.60), (fx - sd * 0.07, s * 0.76, 2.55), (fx, s * 0.76, 2.60)], 0.016, 14)
         box(g, "liner", (x, 0, 3.31), (0.06, 1.48, 0.22), 0.01, 2)
         box(g, "steel", (x + sd * 0.2, 0, FLOOR + 0.004), (0.4, 1.48, 0.012))
     end_wall(-XB + 0.03, -1)
@@ -609,9 +660,9 @@ def interior(g, cab):
 def seat_bank(g, sgn, a, b, white_first=False, white_last=False):
     n = int(round((b - a) / 0.515))
     wall = LIN_I
-    box(g, "liner", ((a + b) / 2, sgn * (wall - 0.05), FLOOR + 0.20), (b - a + 0.02, 0.08, 0.40), 0.015, 2)
+    box(g, "liner", ((a + b) / 2, sgn * (wall - 0.02), FLOOR + 0.06), (b - a + 0.02, 0.04, 0.12), 0.01, 2)   # zocalo
     for k in range(n):
-        x0 = a + k * 0.515 + 0.02; x1 = x0 + 0.475; xc = (x0 + x1) / 2
+        x0 = a + k * 0.515 + 0.006; x1 = x0 + 0.503; xc = (x0 + x1) / 2
         m = "seat_white" if ((k == 0 and white_first) or (k == n - 1 and white_last)) else "seat"
         seat_shell(g, m, sgn, x0, x1, wall)
         dm = "seat_dark" if m == "seat" else "liner"
@@ -621,7 +672,6 @@ def seat_bank(g, sgn, a, b, white_first=False, white_last=False):
         if k % 2 == 0:
             tube(g, "steel", [(x0 + 0.02, sgn * (wall - 0.01), FLOOR + 0.25), (x0 + 0.02, sgn * (wall - 0.22), FLOOR + 0.40), (x0 + 0.02, sgn * (wall - 0.42), FLOOR + 0.425)], 0.016, 12)
     for xe in (a - 0.01, b + 0.01):
-        box(g, "glass", (xe, sgn * 0.98, FLOOR + 0.98), (0.012, 0.40, 0.82))
         tube(g, "steel", [(xe, sgn * 0.79, FLOOR + 0.57), (xe, sgn * (wall - 0.01), FLOOR + 0.57)], 0.014, 12)
         pts = [(xe, sgn * 0.78, FLOOR), (xe, sgn * 0.78, 2.45)]
         for k in range(1, 19):
@@ -671,62 +721,166 @@ def handles_rails(g, xa, xb):
             box(g, "red", (d, sgn * (LIN_I - 0.022), 3.18), (0.92, 0.004, 0.012))
 
 def cab_interior(g):
+    """cabina vista desde el conductor (+X): espejo en Y del armado"""
+    sub = Geo(); _cab_raw(sub)
+    for mat, (v, f) in sub.d.items():
+        g.add(mat, [(p[0], -p[1], p[2]) for p in v], [fc[::-1] for fc in f])
+
+def _cab_raw(g):
+    """cabina NS-16 segun fotos: pupitre gris azulado de ancho completo, tablero inclinado con
+    pantalla izq., panel de instrumentos, DMI central, pantalla tactil der.; manipulador a la derecha"""
     px = CAB_P
-    # mampara con puerta blanca de ventana alta redondeada
-    for s, w in ((-1, 0.70), (1, 0.70)):
-        box(g, "desk", (px, s * (LIN_I - w / 2), 2.31), (0.05, w, 2.22), 0.01, 2)
-    box(g, "panel", (px + 0.02, 0, 2.21), (0.04, 0.98, 2.0), 0.015, 3)
-    gasket_x = rrect(0.30, 0.95, 0.12, 8, 0.0, 2.45)
-    g.add("glass", [(px + 0.045, u, v) for u, v in gasket_x], [tuple(range(len(gasket_x)))])
-    tube(g, "rubber", [(px + 0.045, u, v) for u, v in gasket_x], 0.016, 10, closed=True)
-    box(g, "liner", (px, 0, 3.33), (0.05, 1.0, 0.18), 0.01, 2)
-    # techo de cabina con panel de luz
-    box(g, "ceiling", ((px + 8.6) / 2, 0, 3.37), (8.6 - px, 2.4, 0.04), 0.01, 2)
-    box(g, "panel", ((px + 8.0) / 2, 0, 3.345), (0.6, 0.6, 0.01), 0.004, 2)
-    # paredes laterales interiores de cabina
-    # pupitre de ancho completo (gris azulado)
-    prof = [(8.12, FLOOR), (8.74, FLOOR), (8.74, 2.12), (8.76, 2.47), (8.70, 2.53), (8.48, 2.22), (8.12, 2.20)]
-    loft(g, "desk", [[(x, -1.18, z) for x, z in prof], [(x, 1.18, z) for x, z in prof]], close=True, caps=True)
-    box(g, "desk_dark", (8.11, 0, 1.68), (0.02, 0.62, 0.95), 0.008, 2)        # hueco de pies
-    # consola inclinada: pantallas laterales y panel central
-    sl = math.atan2(2.53 - 2.22, 8.70 - 8.48)
-    def on_slope(u, y, dz=0.0):
-        x = 8.48 + u * math.cos(sl); z = 2.22 + u * math.sin(sl) + dz
-        return Matrix.Translation((x, y, z)) @ Matrix.Rotation(-(math.pi / 2 - sl), 4, 'Y')
-    for sg in (-1, 1):
-        M = on_slope(0.2, sg * 0.78, 0.01)
-        box(g, "black", (0, 0, 0), (0.30, 0.40, 0.02), 0.01, 2, M=M)
-        box(g, "screen", (0, 0, 0.011), (0.24, 0.33, 0.004), 0.002, 1, M=M)
-    M = on_slope(0.2, -0.22, 0.01)
-    box(g, "panel", (0, 0, 0), (0.32, 0.56, 0.015), 0.006, 2, M=M)
-    knobs = [(-0.2, 0.08), (-0.12, 0.08), (-0.04, 0.08), (0.04, 0.08)]
-    for yy, uu in knobs:
-        cyl(g, "black", (uu, yy, 0.008), (uu, yy, 0.04), 0.022, seg=24, M=M)
-        box(g, "white", (uu, yy, 0.045), (0.035, 0.008, 0.008), M=M)
-    for yy, mt in ((0.10, "screen"), (0.16, "screen"), (0.18, "taillight"), (0.24, "amber")):
-        cyl(g, mt, (0.07 if mt == "screen" else -0.04, yy, 0.008), (0.07 if mt == "screen" else -0.04, yy, 0.02), 0.018, seg=24, M=M)
-    for yy, uu in ((0.22, 0.06), (0.20, -0.08)):        # manometro y voltimetro
-        cyl(g, "chrome", (uu, yy, 0.008), (uu, yy, 0.02), 0.045, seg=40, M=M)
-        cyl(g, "white", (uu, yy, 0.02), (uu, yy, 0.022), 0.039, seg=40, M=M)
-        box(g, "black", (uu + 0.01, yy, 0.024), (0.03, 0.003, 0.002), M=M)
-    box(g, "black", (-0.06, -0.08, 0.02), (0.07, 0.14, 0.03), 0.006, 2, M=M)   # radio
-    box(g, "screen", (-0.06, -0.08, 0.036), (0.04, 0.06, 0.002), M=M)
-    # manipulador traccion/freno (derecha del conductor) y pulsador de hombre muerto
-    cyl(g, "black", (8.35, 0.32, 2.21), (8.35, 0.32, 2.24), 0.06, seg=40)
-    tube(g, "black", [(8.35, 0.32, 2.24), (8.32, 0.32, 2.36)], 0.013, 12)
-    box(g, "black", (8.31, 0.32, 2.39), (0.05, 0.13, 0.05), 0.02, 4)
-    cyl(g, "taillight", (8.30, -0.32, 2.21), (8.30, -0.32, 2.24), 0.03, seg=24)
-    # asiento del conductor (centrado)
-    sx = 7.78
-    cyl(g, "iron", (sx, 0, FLOOR), (sx, 0, FLOOR + 0.40), 0.05, seg=24)
-    cyl(g, "iron", (sx, 0, FLOOR), (sx, 0, FLOOR + 0.03), 0.28, seg=48)
-    box(g, "seat_base", (sx, 0, FLOOR + 0.46), (0.48, 0.50, 0.10), 0.045, 4)
-    M = Matrix.Translation((sx - 0.24, 0, FLOOR + 0.83)) @ Matrix.Rotation(math.radians(10), 4, 'Y')
+    # mampara con puerta de ventana alta redondeada
+    for sd, w in ((-1, 0.70), (1, 0.70)):
+        box(g, "cab_gray", (px, sd * (LIN_I - w / 2), 2.31), (0.05, w, 2.22), 0.01, 2)
+    box(g, "cab_gray", (px + 0.02, 0, 2.21), (0.04, 0.98, 2.0), 0.015, 3)
+    wr = rrect(0.30, 0.95, 0.12, 8, 0.0, 2.45)
+    g.add("glass", [(px + 0.045, u, v) for u, v in wr], [tuple(range(len(wr)))])
+    tube(g, "rubber", [(px + 0.045, u, v) for u, v in wr], 0.016, 10, closed=True)
+    box(g, "cab_gray", (px, 0, 3.33), (0.05, 1.0, 0.18), 0.01, 2)
+    box(g, "chrome", (px + 0.06, 0.38, 2.1), (0.03, 0.03, 0.16), 0.01, 2)
+    # techo y paredes de cabina
+    box(g, "cab_gray", ((px + 8.6) / 2, 0, 3.37), (8.6 - px, 2.4, 0.04), 0.01, 2)
+    box(g, "ceiling", ((px + 8.0) / 2, 0, 3.345), (0.5, 0.5, 0.01), 0.004, 2)
+    for sd in (-1, 1):
+        box(g, "cab_gray", ((px + XB) / 2, sd * (LIN_I - 0.01), 2.3), (XB - px - 0.1, 0.02, 2.1), 0.004, 1)
+    # caja de cortina enrollable sobre la luna
+    cyl(g, "cab_gray", (8.52, -1.05, 3.43), (8.52, 1.05, 3.43), 0.055, seg=32)
+    # ---- pupitre: tres bloques (izq, hueco de rodillas al centro, der)
+    def block(y0, y1, xf):
+        prof = [(xf, 2.07), (xf + 0.02, 2.05), (8.74, 2.05), (8.76, 2.10), (8.76, 2.52), (8.72, 2.56), (8.60, 2.56),
+                (8.585, 2.53), (8.40, 2.17), (xf + 0.02, 2.17), (xf, 2.15)]
+        loft(g, "desk", [[(x, y0, z) for x, z in prof], [(x, y1, z) for x, z in prof]], close=True, caps=True)
+    block(-1.18, -0.36, 8.05); block(0.36, 1.18, 8.05); block(-0.36, 0.36, 8.30)
+    for y0, y1 in ((-1.16, -0.38), (0.38, 1.16)):                       # muebles bajos
+        yc, w = (y0 + y1) / 2, y1 - y0
+        box(g, "cab_gray", (8.42, yc, (FLOOR + 2.05) / 2), (0.66, w, 2.05 - FLOOR), 0.01, 2)
+        for k in (0, 1):
+            box(g, "groove", (8.088, yc - w / 4 + k * w / 2, 1.62), (0.004, w / 2 - 0.04, 0.70), 0.002, 1)
+        box(g, "groove", (8.088, yc, 1.25), (0.004, w - 0.04, 0.008))
+    box(g, "desk_dark", (8.62, 0, (FLOOR + 2.05) / 2), (0.24, 0.72, 2.05 - FLOOR), 0.01, 2)   # fondo del hueco
+    M = Matrix.Translation((8.40, 0, FLOOR + 0.12)) @ Matrix.Rotation(math.radians(30), 4, 'Y')
+    box(g, "desk_dark", (0, 0, 0), (0.30, 0.70, 0.02), 0.006, 1, M=M)      # reposapies
+    tube(g, "chrome", [(8.36, -0.33, 2.03), (8.27, -0.33, 1.99), (8.27, 0.33, 1.99), (8.36, 0.33, 2.03)], 0.016, 14)
+    # ---- tablero inclinado
+    B = Vector((8.40, 0, 2.17)); T = Vector((8.585, 0, 2.53)); d = (T - B).normalized()
+    n = Vector((-d.z, 0, d.x))
+    def F(u, y, out=0.0):
+        p = B + d * u + n * out + Vector((0, y, 0))
+        return Matrix(((n.x, 0, d.x, p.x), (n.y, 1, d.y, p.y), (n.z, 0, d.z, p.z), (0, 0, 0, 1)))
+    def disc(mat, u, y, r, h=0.012, out=0.0, seg=28):
+        cyl(g, mat, (out, 0, 0), (out + h, 0, 0), r, seg=seg, M=F(u, y))
+    UM = 0.20
+    # pantalla izquierda
+    box(g, "gloss_black", (0.01, 0, 0), (0.02, 0.40, 0.31), 0.012, 2, M=F(UM, -0.90))
+    box(g, "screen_dim", (0.021, 0, 0), (0.003, 0.33, 0.24), M=F(UM, -0.90))
+    # panel de instrumentos (gris)
+    PY = -0.36
+    box(g, "panel", (0.006, 0, 0), (0.012, 0.62, 0.35), 0.006, 2, M=F(UM, PY))
+    for k, (dy, mt) in enumerate(((-0.25, "gloss_black"), (-0.19, "white"), (-0.13, "white"), (-0.07, "gloss_black"))):
+        disc("chrome", UM + 0.12, PY + dy, 0.026, 0.006, 0.012)
+        disc(mt, UM + 0.12, PY + dy, 0.020, 0.03, 0.018)
+        box(g, "black" if mt == "white" else "white", (0.05, 0, 0), (0.004, 0.008, 0.03), M=F(UM + 0.12, PY + dy))
+    disc("cab_gray", UM + 0.12, PY + 0.0, 0.03, 0.01, 0.012)                   # parlante
+    for k in range(7):
+        a = 2 * math.pi * k / 7
+        disc("black", UM + 0.12 + 0.014 * math.sin(a), PY + 0.014 * math.cos(a), 0.004, 0.003, 0.022, seg=8)
+    disc("black", UM + 0.12, PY, 0.004, 0.003, 0.022, seg=8)
+    for dy in (0.065, 0.125):
+        disc("chrome", UM + 0.12, PY + dy, 0.026, 0.008, 0.012); disc("btn_blue", UM + 0.12, PY + dy, 0.02, 0.012, 0.016)
+    box(g, "white", (0.016, 0, 0), (0.008, 0.07, 0.07), 0.003, 1, M=F(UM + 0.12, PY + 0.225))        # voltimetro
+    box(g, "black", (0.021, 0.008, 0.008), (0.002, 0.003, 0.045), M=F(UM + 0.12, PY + 0.225) @ Matrix.Rotation(math.radians(30), 4, 'X'))
+    box(g, "gloss_black", (0.02, 0, 0), (0.03, 0.15, 0.07), 0.008, 2, M=F(UM - 0.02, PY - 0.19))    # radio
+    box(g, "screen_dim", (0.036, -0.03, 0.01), (0.002, 0.05, 0.03), M=F(UM - 0.02, PY - 0.19))
+    for i in range(3):
+        for j in range(3):
+            disc("cab_gray", UM - 0.035 + i * 0.014, PY - 0.15 + j * 0.016, 0.004, 0.004, 0.035, seg=8)
+    box(g, "gloss_black", (0.012, 0, 0), (0.016, 0.14, 0.14), 0.01, 2, M=F(UM - 0.05, PY + 0.03))     # velocimetro
+    disc("white", UM - 0.05, PY + 0.03, 0.058, 0.004, 0.02, seg=48)
+    for k in range(11):
+        a = math.radians(-135 + k * 27)
+        box(g, "black", (0.0255, 0.048 * math.sin(a), 0.048 * math.cos(a)), (0.002, 0.003, 0.01), M=F(UM - 0.05, PY + 0.03) @ Matrix.Translation((0, 0, 0)))
+    box(g, "black", (0.026, 0.0, 0.0), (0.002, 0.004, 0.05), M=F(UM - 0.05, PY + 0.03) @ Matrix.Rotation(math.radians(-40), 4, 'X'))
+    disc("black", UM - 0.05, PY + 0.03, 0.012, 0.01, 0.024)
+    for dy, mt in ((0.125, "btn_red"), (0.18, "btn_yellow")):
+        disc("chrome", UM + 0.03, PY + dy, 0.026, 0.008, 0.012); disc(mt, UM + 0.03, PY + dy, 0.02, 0.012, 0.016)
+    disc("chrome", UM - 0.08, PY + 0.20, 0.05, 0.01, 0.012, seg=48)             # manometro
+    disc("gloss_black", UM - 0.08, PY + 0.20, 0.043, 0.004, 0.022, seg=48)
+    box(g, "white", (0.027, 0.0, 0.0), (0.002, 0.003, 0.04), M=F(UM - 0.08, PY + 0.20) @ Matrix.Rotation(math.radians(55), 4, 'X'))
+    box(g, "white", (0.014, 0, 0), (0.004, 0.08, 0.03), 0.002, 1, M=F(UM - 0.14, PY - 0.22))         # numero de tren
+    # DMI central con teclas en el marco
+    DY = 0.19
+    box(g, "gloss_black", (0.015, 0, 0), (0.03, 0.42, 0.36), 0.015, 3, M=F(UM, DY))
+    box(g, "dmi", (0.031, 0, 0), (0.003, 0.27, 0.22), M=F(UM, DY))
+    for r in range(4):
+        for c in range(7):
+            mt = "ui_green" if (r + c) % 4 else "btn_yellow"
+            box(g, mt, (0.0335, -0.11 + c * 0.037, 0.05 - r * 0.035), (0.002, 0.026, 0.02), M=F(UM, DY))
+    box(g, "ui_white", (0.0335, 0, 0.09), (0.002, 0.24, 0.012), M=F(UM, DY))
+    for c in range(11):
+        for uu in (0.155, -0.155):
+            box(g, "desk_dark", (0.032, -0.18 + c * 0.036, uu), (0.006, 0.022, 0.02), 0.003, 1, M=F(UM, DY))
+            box(g, "white", (0.0352, -0.18 + c * 0.036, uu), (0.001, 0.016, 0.014), M=F(UM, DY))
+    for sd in (-1, 1):
+        for r in range(6):
+            box(g, "desk_dark", (0.032, sd * 0.185, 0.10 - r * 0.04), (0.006, 0.022, 0.022), 0.003, 1, M=F(UM, DY))
+    # pantalla tactil derecha (inclinada)
+    box(g, "gloss_black", (0.012, 0, 0), (0.022, 0.42, 0.30), 0.012, 2, M=F(UM, 0.80) @ Matrix.Rotation(math.radians(-8), 4, 'Z'))
+    box(g, "screen_dim", (0.024, 0, 0), (0.003, 0.34, 0.22), M=F(UM, 0.80) @ Matrix.Rotation(math.radians(-8), 4, 'Z'))
+    for r in range(2):
+        for c in range(3):
+            box(g, "panel", (0.026, -0.11 + c * 0.11, 0.05 - r * 0.08), (0.002, 0.09, 0.065), M=F(UM, 0.80) @ Matrix.Rotation(math.radians(-8), 4, 'Z'))
+    # ---- pupitre bajo: izquierda
+    Z = 2.17
+    for yy in (-1.02, -0.64):
+        box(g, "cab_gray", (8.24, yy, Z + 0.004), (0.15, 0.15, 0.008), 0.004, 1)
+        cyl(g, "gloss_black", (8.24, yy, Z), (8.24, yy, Z + 0.05), 0.03, seg=24)
+        box(g, "gloss_black", (8.22, yy, Z + 0.07), (0.13, 0.03, 0.035), 0.012, 3)
+        cyl(g, "chrome", (8.17, yy, Z + 0.07), (8.15, yy, Z + 0.07), 0.018, seg=16)
+    for k, mt in enumerate(("white", "btn_yellow", "btn_green")):
+        cyl(g, "chrome", (8.30, -0.92 + k * 0.08, Z), (8.30, -0.92 + k * 0.08, Z + 0.008), 0.024, seg=24)
+        cyl(g, mt, (8.30, -0.92 + k * 0.08, Z + 0.008), (8.30, -0.92 + k * 0.08, Z + 0.02), 0.018, seg=24)
+    cyl(g, "chrome", (8.13, -0.80, Z), (8.13, -0.80, Z + 0.025), 0.045, seg=40)                   # seta de emergencia
+    revolve(g, "btn_red", [(0.0, 0.0), (0.052, 0.0), (0.055, 0.012), (0.045, 0.028), (0.025, 0.036), (0.0, 0.038)], 40,
+            M=Matrix.Translation((8.13, -0.80, Z + 0.025)))
+    box(g, "cab_gray", (8.12, -1.02, Z + 0.012), (0.08, 0.08, 0.025), 0.006, 2)
+    cyl(g, "btn_green", (8.12, -1.02, Z + 0.025), (8.12, -1.02, Z + 0.04), 0.022, seg=24)
+    # centro: botonera, conmutadores, microfono de mano y de cuello de ganso
+    for k, mt in enumerate(("white", "btn_yellow", "gloss_black", "btn_green", "btn_yellow", "white", "btn_green", "btn_red")):
+        y = -0.31 + k * 0.088
+        cyl(g, "chrome", (8.35, y, Z), (8.35, y, Z + 0.006), 0.02, seg=20)
+        cyl(g, mt, (8.35, y, Z + 0.006), (8.35, y, Z + 0.016), 0.015, seg=20)
+    for y in (-0.12, 0.24):
+        box(g, "gloss_black", (8.33, y, Z + 0.012), (0.06, 0.04, 0.02), 0.006, 2)
+        box(g, "chrome", (8.33, y, Z + 0.04), (0.01, 0.01, 0.04), 0.003, 1)
+    box(g, "gloss_black", (8.20, -0.95, Z + 0.03), (0.05, 0.10, 0.04), 0.012, 3)
+    tube(g, "gloss_black", [(8.36, 0.02, Z), (8.36, 0.02, Z + 0.18), (8.38, 0.02, Z + 0.34), (8.42, 0.0, Z + 0.40)], 0.006, 8)
+    cyl(g, "gloss_black", (8.42, 0.0, Z + 0.40), (8.45, -0.01, Z + 0.43), 0.012, seg=16)
+    cyl(g, "chrome", (8.36, 0.02, Z), (8.36, 0.02, Z + 0.01), 0.025, seg=24)
+    box(g, "gloss_black", (8.37, -0.20, Z + 0.02), (0.06, 0.09, 0.035), 0.012, 3)              # microfono de mano
+    tube(g, "gloss_black", [(8.37, -0.24, Z + 0.02)] + [(8.37 + 0.02 * math.sin(k), -0.26 - k * 0.005, Z + 0.01 + 0.012 * math.cos(k)) for k in range(1, 14)], 0.004, 6)
+    # derecha: manipulador de traccion/freno y intercomunicador
+    box(g, "panel", (8.22, 0.62, Z + 0.002), (0.30, 0.30, 0.006), 0.006, 1)
+    box(g, "desk_dark", (8.22, 0.62, Z + 0.006), (0.20, 0.03, 0.004))
+    box(g, "gloss_black", (8.20, 0.62, Z + 0.06), (0.10, 0.11, 0.10), 0.03, 4)
+    box(g, "gloss_black", (8.25, 0.62, Z + 0.10), (0.06, 0.08, 0.05), 0.02, 3)
+    box(g, "panel", (8.20, 0.98, Z + 0.002), (0.26, 0.26, 0.006), 0.006, 1)
+    cyl(g, "cab_gray", (8.24, 0.94, Z), (8.24, 0.94, Z + 0.02), 0.03, seg=24)
+    for k in range(5):
+        cyl(g, "black", (8.24 + 0.012 * math.cos(k), 0.94 + 0.012 * math.sin(k), Z + 0.02), (8.24 + 0.012 * math.cos(k), 0.94 + 0.012 * math.sin(k), Z + 0.022), 0.003, seg=6)
+    for (xx, yy) in ((8.14, 1.04), (8.26, 1.06)):
+        box(g, "cab_gray", (xx, yy, Z + 0.012), (0.07, 0.07, 0.02), 0.006, 2)
+        cyl(g, "btn_green", (xx, yy, Z + 0.02), (xx, yy, Z + 0.035), 0.02, seg=24)
+    # asiento del conductor
+    sx = 7.72
+    cyl(g, "iron", (sx, 0.05, FLOOR), (sx, 0.05, FLOOR + 0.40), 0.05, seg=24)
+    cyl(g, "iron", (sx, 0.05, FLOOR), (sx, 0.05, FLOOR + 0.03), 0.28, seg=48)
+    box(g, "seat_base", (sx, 0.05, FLOOR + 0.46), (0.48, 0.50, 0.10), 0.045, 4)
+    M = Matrix.Translation((sx - 0.24, 0.05, FLOOR + 0.83)) @ Matrix.Rotation(math.radians(10), 4, 'Y')
     box(g, "seat_base", (0, 0, 0), (0.10, 0.46, 0.66), 0.045, 4, M=M)
-    box(g, "seat_base", (sx - 0.27, 0, FLOOR + 1.24), (0.08, 0.26, 0.16), 0.035, 3)
+    box(g, "seat_base", (sx - 0.27, 0.05, FLOOR + 1.24), (0.08, 0.26, 0.16), 0.035, 3)
     for s2 in (-1, 1):
-        box(g, "seat_base", (sx, s2 * 0.29, FLOOR + 0.66), (0.36, 0.05, 0.05), 0.015, 2)
-    # espejo/caja de cortina y extintor
+        box(g, "seat_base", (sx, 0.05 + s2 * 0.29, FLOOR + 0.66), (0.36, 0.05, 0.05), 0.015, 2)
     cyl(g, "taillight", (7.4, -1.05, FLOOR + 0.1), (7.4, -1.05, FLOOR + 0.58), 0.07, seg=24)
 
 # ================================================================= BOGIE NEUMATICO

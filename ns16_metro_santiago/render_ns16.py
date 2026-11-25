@@ -54,11 +54,13 @@ for l in bpy.data.lights:
 views = {
     "01_exterior_cabina_3cuartos": make_cam("v1", (xn + 7.5, 6.0, 1.9), (xn - 1.5, 0.0, 2.0), 40),
     "02_lateral_tren_completo": make_cam("v2", (cx, 80, 2.0), None, 35, ortho=122, rot=(math.radians(90), 0, math.radians(180))),
-    "03_cabina_conductor": make_cam("v3", (xf + 7.32, -0.35, 2.55), (xf + 8.9, 0.05, 2.35), 16),
-    "04_interior_pasajeros": make_cam("v4", (xs[2] - 7.6, 0.12, 2.15), (xs[2] + 2.0, 0.0, 2.1), 18),
+    "03_cabina_conductor": make_cam("v3", (xf + 7.42, 0.0, 2.78), (xf + 8.6, 0.0, 2.30), 15),
+    "04_interior_pasajeros": make_cam("v4", (xs[2] - 7.6, 0.12, 2.78), (xs[2] + 2.0, 0.0, 2.45), 18),
     "05_bogie": make_cam("v5", (xs[2] + 8.4, 3.4, 0.45), (xs[2] + 5.6, 0.6, 0.55), 35),
     "07_frontal": make_cam("v7", (xn + 8.0, 0.0, 2.1), (xn, 0.0, 2.15), 40),
     "08_frontal_bajo": make_cam("v8", (xn + 5.0, 3.8, 0.85), (xn - 2.5, 0.0, 1.75), 28),
+    "09_pupitre_detalle": make_cam("v9", (xf + 7.85, 0.55, 2.62), (xf + 8.45, 0.15, 2.30), 22),
+    "10_puertas_interior": make_cam("v10", (xs[2] - 2.2, 0.7, 2.45), (xs[2] - 2.18, -1.3, 2.1), 20),
     "06_aerea_frontal": make_cam("v6", (xn + 16, -12, 9), (xn - 9, 0.0, 1.8), 40),
 }
 os.makedirs(os.path.join(HERE, "renders"), exist_ok=True)
