@@ -1,19 +1,17 @@
-"""Tren Metro de Santiago NS-16 (Alstom) - modelo procedural para Blender (bpy).
+"""Tren Metro de Santiago NS-16 (Alstom, rodado neumatico) - modelo procedural para Blender (bpy).
 
 Uso:  python3 build_ns16.py [salida.blend]
-Genera: cabina de conduccion + interior de pasajeros + bogies, 5 coches.
-Sin vias ni anden. Fondo de estudio neutro.
+Formacion de 7 coches S+N+NP+R+N+N+S. Cabina de conduccion, interior de pasajeros y bogies.
+Dimensiones (ancho 2,6 m, piso 1,20 m, 4 puertas/lado, bogies a +-5,6 m) tomadas del tren
+NS-2016 para OpenBVE (OBCL: LucasBVE, DiazMedinarBVE, Manuel Mejias) y de fotos del tren real.
+La grafica roja lateral (ns16_livery.json) es un trazado vectorial de sus texturas.
 """
-import bpy, bmesh, math, sys, os, random
+import bpy, bmesh, math, sys, os, random, json
 from mathutils import Vector, Matrix
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "ns16_metro_santiago.blend")
-N_MID = 5                 # coches intermedios (tren de 7 coches) (total = 2 cabeceros + N_MID)
-FLOOR = 1.05              # altura piso sobre riel
-HW = 1.5                  # semiancho carroceria
-RH = 0.45                 # flecha del techo
-TOP = 3.1 + RH            # altura techo
+N_MID = 5                 # coches intermedios (tren de 7 coches)
 random.seed(7)
 
 # ----------------------------------------------------------------- geometria
@@ -147,8 +145,8 @@ def mk(name, col, metal=0.0, rough=0.5, emit=None, strength=0.0, coat=0.0, glass
         tr = nt.nodes.new("ShaderNodeBsdfTransparent")
         gl = nt.nodes.new("ShaderNodeBsdfGlossy"); gl.inputs["Roughness"].default_value = 0.03
         gl.inputs["Color"].default_value = (0.5, 0.58, 0.62, 1)
-        mix = nt.nodes.new("ShaderNodeMixShader"); mix.inputs[0].default_value = 0.22
-        tr.inputs["Color"].default_value = (0.42, 0.47, 0.5, 1)
+        mix = nt.nodes.new("ShaderNodeMixShader"); mix.inputs[0].default_value = 0.30
+        tr.inputs["Color"].default_value = (0.30, 0.34, 0.36, 1)
         nt.links.new(tr.outputs[0], mix.inputs[1]); nt.links.new(gl.outputs[0], mix.inputs[2])
         nt.links.new(mix.outputs[0], out.inputs[0])
     else:
@@ -168,7 +166,7 @@ def mk(name, col, metal=0.0, rough=0.5, emit=None, strength=0.0, coat=0.0, glass
 def make_materials():
     mk("body", (0.46, 0.47, 0.49), 0.9, 0.38)          # acero inoxidable
     mk("roof", (0.16, 0.165, 0.17), 0.5, 0.45)
-    mk("liner", (0.88, 0.88, 0.87), 0, 0.45)           # paredes interiores blancas
+    mk("liner", (0.90, 0.89, 0.84), 0, 0.45)           # paredes interiores blancas
     mk("red", (0.95, 0.012, 0.015), 0.0, 0.25, coat=0.6)
     mk("black", (0.012, 0.012, 0.015), 0.3, 0.25)
     mk("skirt", (0.035, 0.035, 0.04), 0.2, 0.5)
@@ -194,277 +192,677 @@ def make_materials():
     mk("wheel", (0.42, 0.42, 0.43), 0.95, 0.35)
     mk("handle", (0.8, 0.8, 0.82), 1.0, 0.2)
     mk("strap", (0.04, 0.04, 0.045), 0, 0.7)
-    mk("desk", (0.2, 0.21, 0.23), 0.2, 0.5)
+    mk("desk", (0.30, 0.33, 0.38), 0.2, 0.5)
     mk("pole", (0.8, 0.8, 0.82), 1.0, 0.2)
     mk("tire", (0.025, 0.025, 0.027), 0.0, 0.8)
     mk("gloss_black", (0.01, 0.01, 0.012), 0.2, 0.12, coat=1.0)
     mk("chrome", (0.9, 0.9, 0.92), 1.0, 0.08)
+    mk("guard", (0.36, 0.38, 0.42), 0.3, 0.5)
+    mk("hubmetal", (0.16, 0.17, 0.19), 0.7, 0.4)
+    mk("desk_dark", (0.12, 0.13, 0.15), 0.2, 0.6)
+    mk("panel", (0.40, 0.42, 0.47), 0.3, 0.45)
+    mk("ad1", (0.15, 0.35, 0.7), 0, 0.4)
+    mk("ad2", (0.95, 0.75, 0.1), 0, 0.4)
+    mk("ad3", (0.2, 0.6, 0.35), 0, 0.4)
 
-# ----------------------------------------------------------------- nariz de cabina
-# NS-16 real: frente casi plano, marco rojo envolvente redondeado, mascara negra embutida,
-# parabrisas grande, display de destino, placa de numero, logo, grupos opticos, enganche Scharfenberg
-def a_of_z(z):
-    if z <= 1.28: return 0.55 + 0.22 * ((1.28 - z) / 0.73) ** 1.5
-    if z <= 3.05: return 0.55 - 0.35 * (z - 1.28) / 1.77
-    return 0.20 * max(0.0, 1 - (z - 3.05) / (TOP - 3.05)) ** 0.6
+# ================================================================= DIMENSIONES
+# Medidas tomadas del tren NS-2016 para OpenBVE (Train.dat y geometria de los .csv)
+# y contrastadas con fotos del tren real.
+FLOOR = 1.20                 # piso sobre superficie de rodadura
+HW = 1.295                   # semiancho exterior (ancho 2,6 m)
+SK_IN = 1.245                # cara interior de la piel
+LIN_O, LIN_I = 1.24, 1.20    # revestimiento interior
+SILL = 0.74                  # borde inferior del faldon
+ROOF_E, ROOF_T = 3.40, 3.58  # arranque y cumbrera del techo (casi plano)
+XB = 7.90                    # semilargo de caja
+DOORS = (-6.54, -2.18, 2.18, 6.54)
+DW, DZ1 = 1.30, 3.08         # ancho y dintel de puertas
+WINS = (-4.36, 0.0, 4.36)
+WW, WZ0, WZ1 = 1.50, 2.08, 3.05
+BOGIES = (-5.6, 5.6)
+AXLE, RT, ZA = 0.95, 0.49, 0.54
+GAP = 0.60                   # separacion entre cajas (fuelle)
+CAB_P = 7.25                 # mampara de cabina (coche S)
+HERE = os.path.dirname(os.path.abspath(__file__))
+LIVERY = json.load(open(os.path.join(HERE, "ns16_livery.json")))
 
-def b_of_z(z):
-    if z <= 3.1: return HW if z >= FLOOR else HW - 0.04
-    return HW * math.sqrt(max(0.0, 1 - ((z - 3.1) / RH) ** 2))
+def roof_half(z):
+    if z <= ROOF_E: return HW
+    t = min((z - ROOF_E) / (ROOF_T - ROOF_E), 1.0)
+    return HW * max(0.0, 1 - t ** 4) ** 0.25
 
-SE = 4.0
-def nose_xy(z, s_, d, x0):
-    a = max(a_of_z(z) - d, 0); b = max(b_of_z(z) - d, 0)
-    return (x0 + a * max(0.0, 1 - abs(s_) ** SE) ** (1 / SE), s_ * b, z)
+# ================================================================= NARIZ (casquete frontal)
+def xf_of_z(z):
+    """perfil lateral del frente (x de la cara frontal en el eje) segun el modelo OpenBVE + fotos"""
+    if z <= 0.88: return 8.60 + (z - SILL) / (0.88 - SILL) * 0.06
+    if z <= 1.22: return 8.66 + (z - 0.88) / 0.34 * 0.21
+    if z <= 1.80: return 8.87 + 0.03 * math.sin(math.pi / 2 * (z - 1.22) / 0.58)
+    if z <= 3.30: return 8.90 - 0.14 * (z - 1.80) / 1.5
+    R = 0.28; dz = min(z - 3.30, R)
+    return 8.76 - R + math.sqrt(max(R * R - dz * dz, 0.0))
 
-def nose_at(y, z, x0, d=0.0):
-    b = max(b_of_z(z) - d, 1e-3); s_ = max(-0.9995, min(0.9995, y / b))
-    p = Vector(nose_xy(z, s_, d, x0)); e = 1e-3
-    pz = Vector(nose_xy(z + e, s_, d, x0)) - p
+def corner_a(z): return min(0.20, xf_of_z(z) - XB - 0.03)
+def x0_of_z(z): return xf_of_z(z) - corner_a(z)
+
+SE = 3.2
+def cap_xy(z, s_, d=0.0):
+    A = max(corner_a(z) - d, 0.0); b = max(roof_half(z) - d, 0.0)
+    return (x0_of_z(z) + A * max(0.0, 1 - abs(s_) ** SE) ** (1 / SE) - (d if A <= 0 else 0), s_ * b, z)
+
+def nose_at(y, z, d=0.0):
+    b = max(roof_half(z) - d, 1e-3); s_ = max(-0.9995, min(0.9995, y / b))
+    p = Vector(cap_xy(z, s_, d)); e = 1e-3
+    pz = Vector(cap_xy(z + e, s_, d)) - p
     ds = e if s_ < 0.99 else -e
-    ps = (Vector(nose_xy(z, s_ + ds, d, x0)) - p) * (1 if ds > 0 else -1)
+    ps = (Vector(cap_xy(z, s_ + ds, d)) - p) * (1 if ds > 0 else -1)
     n = ps.cross(pz).normalized()
-    if n.dot(p - Vector((x0 - 1.0, 0, z))) < 0: n = -n
+    if n.dot(p - Vector((XB - 1.0, 0, z))) < 0: n = -n
     return p, n
 
-GL_Y, GL_Z0, GL_Z1 = 1.17, 1.82, 2.55     # parabrisas
-MK_Y, MK_Z0, MK_Z1 = 1.33, 1.30, 3.05     # mascara negra
+GL_Y, GL_Z0, GL_Z1 = 0.97, 2.50, 3.47      # luna (incluye display de destino)
+MK_Y, MK_Z0, MK_Z1 = 1.06, 1.47, 3.51      # mascara negra
 def mask_half(z):
-    r = 0.28
+    r = 0.26
     if z >= MK_Z0 + r: return MK_Y
     t = z - MK_Z0
     return MK_Y - r + math.sqrt(max(0.0, r * r - (r - t) ** 2))
 
-def plaque(g, mat, x0, y, z, w, h, r, off=0.004, depth=0.012, bevel=0.004, nc=8):
-    p, n = nose_at(y, z, x0); ML = frame_at(p, n)
+def plaque(g, mat, y, z, w, h, r, off=0.004, depth=0.012, bevel=0.004, nc=8, rot=0.0):
+    p, n = nose_at(y, z); ML = frame_at(p, n) @ Matrix.Rotation(rot, 4, 'X')
     ring = rrect(w, h, r, nc); ring_b = rrect(w - 2 * bevel, h - 2 * bevel, max(r - bevel, 0.001), nc)
     loft(g, mat, [[(off, u, v) for u, v in ring], [(off + depth - bevel, u, v) for u, v in ring],
                   [(off + depth, u, v) for u, v in ring_b]], close=True, caps=True, M=ML)
     return p, n, ML
 
-def surf_patch(g, mat, x0, ylo, yhi, z0, z1, nz, ny, off):
+def surf_patch(g, mat, ylo, yhi, z0, z1, nz, ny, off):
     rows = []
     for i in range(nz + 1):
         z = z0 + (z1 - z0) * i / nz; row = []
         for j in range(ny + 1):
             y = ylo(z) + (yhi(z) - ylo(z)) * j / ny
-            p, n = nose_at(y, z, x0); row.append(p + n * off)
+            p, n = nose_at(y, z); row.append(p + n * off)
         rows.append(row)
     loft(g, mat, rows)
 
-def build_nose(g, x0, texts, dest=("501", "Plaza de Maipú"), num="141"):
-    lin = [-0.80 + 1.6 * k / 64 for k in range(65)]
-    cor = [0.80 + 0.20 * (1 - (1 - u / 28) ** 2) for u in range(1, 29)]
-    ss = sorted(set(round(v, 6) for v in lin + cor + [-c for c in cor] + [GL_Y / HW, -GL_Y / HW]))
-    zb = [0.55 + (TOP - 0.55) * (1 - (1 - i / 80) ** 2) for i in range(81)] + [0.95, MK_Z0, GL_Z0, GL_Z1, MK_Z1, 3.1]
+def build_nose(g, texts, dest, num):
+    NS, NC = 14, 90
+    cap_s = [-1 + 2 * k / NC for k in range(NC + 1)]
+    cap_s += [GL_Y / HW, -GL_Y / HW, MK_Y / HW, -MK_Y / HW]
+    cap_s = sorted(set(round(v, 6) for v in cap_s))
+    zb = [SILL + (ROOF_T - SILL) * (1 - (1 - i / 110) ** 2.2) for i in range(111)]
+    zb += [0.88, 1.22, MK_Z0, GL_Z0, GL_Z1, MK_Z1, 3.30, 3.45, ROOF_E]
     zs = []
     for z in sorted(zb):
-        if not zs or z - zs[-1] > 0.004: zs.append(z)
-    def outer_mat(zc, sc):
-        if zc < 0.95: return "skirt"
+        if not zs or z - zs[-1] > 0.003: zs.append(z)
+    def outline(z, d=0.0):
+        pts = []; x0 = x0_of_z(z) - (d if corner_a(z) - d <= 0 else 0)
+        b = max(roof_half(z) - d, 0.0)
+        for k in range(NS + 1):                                       # costado izquierdo
+            pts.append(((XB + (x0 - XB) * k / NS), -b, z, "side", k))
+        for s_ in cap_s[1:]:                                          # casquete
+            pts.append(cap_xy(z, s_, d) + ("cap", s_))
+        for k in range(NS - 1, -1, -1):                               # costado derecho
+            pts.append(((XB + (x0 - XB) * k / NS), b, z, "side", k))
+        return pts
+    def mat_of(xc, yc, zc, kind):
+        if zc < 0.88: return "skirt"
+        if kind == "side":
+            if zc < 1.22: return "red"
+            if xc > x0_of_z(zc) - 0.05: return "red"
+            if 3.30 <= zc <= 3.45: return "red"
+            if zc > 3.45: return "roof"
+            return "body"
+        # casquete frontal
         if zc < MK_Z0: return "red"
-        if zc <= MK_Z1:
-            if GL_Z0 <= zc <= GL_Z1 and abs(sc) * HW <= GL_Y: return "glass"
-            return "red"
-        return "roof"
+        if GL_Z0 <= zc <= GL_Z1 and abs(yc) <= GL_Y: return "glass"
+        if zc > MK_Z1: return "gloss_black"
+        return "red"
+    O = [outline(z) for z in zs]; I = [outline(z, 0.06) for z in zs]
     for i in range(len(zs) - 1):
-        z0, z1 = zs[i], zs[i + 1]; zc = (z0 + z1) / 2
-        for j in range(len(ss) - 1):
-            sc = (ss[j] + ss[j + 1]) / 2
-            m = outer_mat(zc, sc)
-            q = [nose_xy(z0, ss[j], 0, x0), nose_xy(z0, ss[j + 1], 0, x0), nose_xy(z1, ss[j + 1], 0, x0), nose_xy(z1, ss[j], 0, x0)]
-            g.add(m, q, [(0, 1, 2, 3)])
-            if m != "glass" and z0 >= FLOOR - 0.02:
-                qi = [nose_xy(z0, ss[j], 0.09, x0), nose_xy(z0, ss[j + 1], 0.09, x0), nose_xy(z1, ss[j + 1], 0.09, x0), nose_xy(z1, ss[j], 0.09, x0)]
-                g.add("desk", qi[::-1], [(0, 1, 2, 3)])
-    # mascara negra (superpuesta, borde curvo continuo)
+        for j in range(len(O[0]) - 1):
+            a, b_, c, d = O[i][j], O[i][j + 1], O[i + 1][j + 1], O[i + 1][j]
+            xc = (a[0] + b_[0] + c[0] + d[0]) / 4; yc = (a[1] + b_[1] + c[1] + d[1]) / 4; zc = (a[2] + d[2]) / 2
+            kind = "cap" if (a[3] == "cap" and b_[3] == "cap") else "side"
+            m = mat_of(xc, yc, zc, kind)
+            g.add(m, [a[:3], b_[:3], c[:3], d[:3]], [(0, 1, 2, 3)])
+            if m != "glass" and a[2] >= FLOOR - 0.01:
+                ai, bi, ci, di = I[i][j], I[i][j + 1], I[i + 1][j + 1], I[i + 1][j]
+                g.add("desk", [di[:3], ci[:3], bi[:3], ai[:3]], [(0, 1, 2, 3)])
+    # mascara negra brillante superpuesta (borde inferior con esquinas curvas)
     off = 0.003
-    surf_patch(g, "gloss_black", x0, lambda z: -mask_half(z), lambda z: mask_half(z), MK_Z0, GL_Z0, 22, 90, off)
-    surf_patch(g, "gloss_black", x0, lambda z: -MK_Y, lambda z: MK_Y, GL_Z1, MK_Z1, 14, 90, off)
-    surf_patch(g, "gloss_black", x0, lambda z: GL_Y, lambda z: MK_Y, GL_Z0, GL_Z1, 20, 6, off)
-    surf_patch(g, "gloss_black", x0, lambda z: -MK_Y, lambda z: -GL_Y, GL_Z0, GL_Z1, 20, 6, off)
-    # reborde rojo (filete) alrededor de la mascara
-    rim = [(-MK_Y, z) for z in [MK_Z1 - k * (MK_Z1 - MK_Z0 - 0.28) / 20 for k in range(21)]]
-    rim += [(-mask_half(MK_Z0 + 0.28 * (1 - k / 16)), MK_Z0 + 0.28 * (1 - k / 16)) for k in range(1, 17)]
-    rim += [(y, MK_Z0) for y in [-(MK_Y - 0.28) + 2 * (MK_Y - 0.28) * k / 20 for k in range(1, 20)]]
-    rim += [(mask_half(MK_Z0 + 0.28 * k / 16), MK_Z0 + 0.28 * k / 16) for k in range(0, 17)]
-    rim += [(MK_Y, z) for z in [MK_Z0 + 0.28 + k * (MK_Z1 - MK_Z0 - 0.28) / 20 for k in range(1, 21)]]
-    pts = []
-    for y, z in rim:
-        p, n = nose_at(y, z, x0); pts.append(p + n * 0.006)
-    tube(g, "red", pts, 0.02, 12)
-    # burlete negro redondeado del parabrisas
-    gp = []
-    for u, v in rrect(2 * GL_Y, GL_Z1 - GL_Z0, 0.09, 10, 0.0, (GL_Z0 + GL_Z1) / 2):
-        p, n = nose_at(u, v, x0); gp.append(p + n * 0.008)
-    tube(g, "rubber", gp, 0.016, 10, closed=True)
-    # display de destino
-    p, n, ML = plaque(g, "screen2", x0, 0.0, 2.80, 2.2, 0.27, 0.04, off=0.004, depth=0.01)
-    for u, v in ((-0.78, 0), (0.12, 0)):
-        pass
-    # grupos opticos en carcasas redondeadas
+    surf_patch(g, "gloss_black", lambda z: -mask_half(z), lambda z: mask_half(z), MK_Z0, GL_Z0, 26, 80, off)
+    surf_patch(g, "gloss_black", lambda z: GL_Y, lambda z: MK_Y, GL_Z0, GL_Z1, 30, 4, off)
+    surf_patch(g, "gloss_black", lambda z: -MK_Y, lambda z: -GL_Y, GL_Z0, GL_Z1, 30, 4, off)
+    surf_patch(g, "gloss_black", lambda z: -MK_Y, lambda z: MK_Y, GL_Z1, MK_Z1, 6, 80, off)
+    # reborde rojo redondeado alrededor de la mascara
+    r = 0.26; rim = []
+    for k in range(25): rim.append((-MK_Y, MK_Z1 - k * (MK_Z1 - MK_Z0 - r) / 24))
+    for k in range(1, 17):
+        zz = MK_Z0 + r * (1 - k / 16); rim.append((-mask_half(zz), zz))
+    for k in range(1, 24): rim.append((-(MK_Y - r) + 2 * (MK_Y - r) * k / 24, MK_Z0))
+    for k in range(0, 17):
+        zz = MK_Z0 + r * k / 16; rim.append((mask_half(zz), zz))
+    for k in range(1, 25): rim.append((MK_Y, MK_Z0 + r + k * (MK_Z1 - MK_Z0 - r) / 24))
+    tube(g, "red", [p + n * 0.004 for p, n in (nose_at(y, z) for y, z in rim)], 0.018, 12)
+    # burlete de la luna
+    gp = [p + n * 0.007 for p, n in (nose_at(u, v) for u, v in rrect(2 * GL_Y, GL_Z1 - GL_Z0, 0.07, 10, 0.0, (GL_Z0 + GL_Z1) / 2))]
+    tube(g, "rubber", gp, 0.014, 10, closed=True)
+    # display de destino detras de la luna + cortina enrollable
+    p, n = nose_at(0, 3.37, 0.0)
+    ML = frame_at(p - n * 0.05, n)
+    box(g, "screen2", (0, 0, 0), (0.02, 1.42, 0.17), 0.006, 2, M=ML)
+    box(g, "desk", (-0.06, 0, 0.12), (0.10, 1.9, 0.07), 0.02, 2, M=ML)
+    R = Matrix.Rotation(math.radians(-5.3), 4, 'Y') @ Matrix.Rotation(math.radians(90), 4, 'Z') @ Matrix.Rotation(math.radians(90), 4, 'X')
+    texts.append((dest[0], Matrix.Translation(p - n * 0.038 + Vector((0, -0.55, 0))) @ R, 0.11, "amber"))
+    texts.append((dest[1], Matrix.Translation(p - n * 0.038 + Vector((0, 0.12, 0))) @ R, 0.11, "amber"))
+    # placa de numero
+    plaque(g, "red", 0.02, 2.36, 0.51, 0.27, 0.035, off=0.006, depth=0.012)
+    p, n = nose_at(0.02, 2.36)
+    texts.append((num, Matrix.Translation(p + n * 0.022) @ R, 0.21, "white"))
+    # tapa rebajada bajo la placa
+    plaque(g, "skirt", 0.0, 2.08, 0.82, 0.22, 0.09, off=0.002, depth=0.012)
+    for yy in (-0.36, 0.36):
+        for zz in (2.0, 2.16):
+            p, n = nose_at(yy, zz); cyl(g, "chrome", p + n * 0.012, p + n * 0.02, 0.008, seg=10)
+    # logo Metro: ovalo rojo + tres rombos
+    p, n = nose_at(0, 1.77); ML = frame_at(p + n * 0.004, n)
+    def ell(rx, ry, x, N=56): return [(x, rx * math.cos(2 * math.pi * k / N), ry * math.sin(2 * math.pi * k / N)) for k in range(N)]
+    loft(g, "red", [ell(0.19, 0.145, 0.0), ell(0.19, 0.145, 0.010), ell(0.183, 0.138, 0.013)], close=True, caps=True, M=ML)
+    loft(g, "gloss_black", [ell(0.168, 0.124, 0.013), ell(0.168, 0.124, 0.016)], close=True, caps=True, M=ML)
+    for k in (-1, 0, 1):
+        box(g, "red", (0, 0, 0), (0.008, 0.074, 0.074), 0.003, 1,
+            M=ML @ Matrix.Translation((0.02, k * 0.093, 0)) @ Matrix.Rotation(math.radians(45), 4, 'X'))
+    # grupos opticos: blanco (exterior), rojo, ambar
     for sg in (-1, 1):
-        plaque(g, "gloss_black", x0, sg * 0.86, 1.43, 0.56, 0.18, 0.07, off=0.004, depth=0.025)
-        for yy, mt in ((1.04, "headlight"), (0.87, "taillight"), (0.70, "amber")):
-            p, n = nose_at(sg * yy, 1.43, x0); ML = frame_at(p + n * 0.03, n)
-            cyl(g, mt, (0, 0, 0), (0.01, 0, 0), 0.047, seg=40, M=ML)
-            torus(g, "chrome", (0, 0, 0), 0.054, 0.008, 40, 8, M=ML @ Matrix.Rotation(math.radians(90), 4, 'Y'))
+        plaque(g, "gloss_black", sg * 0.55, 1.615, 0.58, 0.17, 0.06, off=0.004, depth=0.02, rot=math.radians(-sg * 4))
+        for yy, mt in ((0.73, "headlight"), (0.555, "taillight"), (0.385, "amber")):
+            p, n = nose_at(sg * yy, 1.615 + (0.012 if yy > 0.6 else 0) * 0); ML = frame_at(p + n * 0.026, n)
+            cyl(g, mt, (0, 0, 0), (0.012, 0, 0), 0.046, seg=40, M=ML)
+            torus(g, "chrome", (0, 0, 0), 0.053, 0.008, 40, 8, M=ML @ Matrix.Rotation(math.radians(90), 4, 'Y'))
             if mt == "headlight":
                 for k in range(6):
                     a_ = 2 * math.pi * k / 6
-                    cyl(g, "chrome", (0.006, 0.026 * math.cos(a_), 0.026 * math.sin(a_)), (0.014, 0.026 * math.cos(a_), 0.026 * math.sin(a_)), 0.012, seg=16, M=ML)
-    # rejilla / tapa bajo el parabrisas
-    plaque(g, "skirt", x0, 0.0, 1.60, 0.62, 0.16, 0.07, off=0.003, depth=0.015)
-    # logo Metro: ovalo rojo con tres rombos
-    p, n = nose_at(0, 1.40, x0); ML = frame_at(p + n * 0.004, n)
-    def ell(rx, ry, x, N=56): return [(x, rx * math.cos(2 * math.pi * k / N), ry * math.sin(2 * math.pi * k / N)) for k in range(N)]
-    loft(g, "red", [ell(0.19, 0.13, 0.0), ell(0.19, 0.13, 0.012), ell(0.182, 0.122, 0.016)], close=True, caps=True, M=ML)
-    loft(g, "gloss_black", [ell(0.165, 0.105, 0.016), ell(0.165, 0.105, 0.019)], close=True, caps=True, M=ML)
-    for k in (-1, 0, 1):
-        box(g, "red", (0, 0, 0), (0.01, 0.066, 0.066), 0.004, 1,
-            M=ML @ Matrix.Translation((0.022, k * 0.088, 0)) @ Matrix.Rotation(math.radians(45), 4, 'X'))
-    # placa de numero (cruza el borde inferior del parabrisas)
-    plaque(g, "red", x0, 0.0, GL_Z0 + 0.0, 0.44, 0.23, 0.03, off=0.01, depth=0.014)
+                    cyl(g, "chrome", (0.008, 0.025 * math.cos(a_), 0.025 * math.sin(a_)), (0.016, 0.025 * math.cos(a_), 0.025 * math.sin(a_)), 0.011, seg=16, M=ML)
+        # rejillas inferiores (louvers)
+        p, n = nose_at(sg * 0.80, 1.05); ML = frame_at(p, n)
+        box(g, "skirt", (0.0, 0, 0), (0.02, 0.36, 0.24), 0.02, 2, M=ML)
+        for k in range(6):
+            box(g, "gloss_black", (0.012, 0, -0.1 + k * 0.04), (0.018, 0.32, 0.012), 0.004, 1, M=ML @ Matrix.Rotation(math.radians(-25), 4, 'Y'))
     # camara sobre el capot
-    p, n = nose_at(0, 3.32, x0); ML = frame_at(p, n)
-    box(g, "gloss_black", (0.05, 0, 0), (0.16, 0.38, 0.14), 0.035, 4, M=ML)
-    cyl(g, "glass", (0.13, 0, 0), (0.135, 0, 0), 0.03, seg=24, M=ML)
-    # limpiaparabrisas (uno, como en el real)
-    piv, n0 = nose_at(0.30, 1.74, x0)
-    cyl(g, "black", piv + n0 * 0.01, piv + n0 * 0.06, 0.03, seg=24)
-    arm = [nose_at(0.30 + 0.30 * t, 1.74 + 0.85 * t, x0) for t in (0, 0.25, 0.5, 0.75, 1.0)]
-    tube(g, "black", [p + n * 0.05 for p, n in arm], 0.011, 10)
-    blade = [nose_at(0.42 + 0.30 * t, 1.92 + 0.82 * t, x0) for t in (0, 0.33, 0.66, 1.0)]
-    tube(g, "rubber", [p + n * 0.03 for p, n in blade], 0.009, 8)
-    # topes rojos inferiores
+    ML = Matrix.Translation((xf_of_z(3.5) - 0.12, 0, 3.55))
+    box(g, "gloss_black", (0, 0, 0.04), (0.20, 0.40, 0.11), 0.04, 4, M=ML)
+    cyl(g, "glass", (0.10, 0, 0.04), (0.105, 0, 0.04), 0.03, seg=24, M=ML)
+    # limpiaparabrisas: pivote bajo-centro, brazo hacia arriba-izquierda
+    piv, n0 = nose_at(0.02, 2.16)
+    cyl(g, "black", piv + n0 * 0.01, piv + n0 * 0.06, 0.028, seg=24)
+    arm = [nose_at(0.02 - 0.62 * t, 2.16 + 0.70 * t) for t in (0, 0.25, 0.5, 0.75, 1.0)]
+    tube(g, "black", [p + n * (0.05 - 0.02 * i / 4) for i, (p, n) in enumerate(arm)], 0.011, 10)
+    blade = [nose_at(-0.62, 2.55 + 0.62 * t) for t in (0, 0.33, 0.66, 1.0)]
+    tube(g, "rubber", [p + n * 0.025 for p, n in blade], 0.009, 8)
+    # topes y enganche
+    coupler(g, 8.25, 1.0)
+    # deflector de obstaculos (barra gris inferior)
+    box(g, "guard", (8.55, 0, 0.32), (0.10, 2.0, 0.14), 0.03, 3)
     for sg in (-1, 1):
-        plaque(g, "red", x0, sg * 0.93, 0.80, 0.62, 0.28, 0.06, off=-0.04, depth=0.24, bevel=0.03)
-        plaque(g, "skirt", x0, sg * 0.93, 0.80, 0.34, 0.10, 0.03, off=0.19, depth=0.012)
-    # deflector inferior negro con nervios
-    for k in range(4):
-        p, n = nose_at(0, 0.60 + k * 0.08, x0); ML = frame_at(p, n)
-        box(g, "skirt", (0.01, 0, 0), (0.03, 1.1, 0.025), 0.008, 2, M=ML)
-    coupler(g, x0 + a_of_z(0.65) - 0.55)
-    # textos
-    slope = math.radians(-11.2)
-    R = Matrix.Rotation(slope, 4, 'Y') @ Matrix.Rotation(math.radians(90), 4, 'Z') @ Matrix.Rotation(math.radians(90), 4, 'X')
-    for txt, y, z, size, mat, off in ((dest[0], -0.80, 2.80, 0.15, "amber", 0.016),
-                                       (dest[1], 0.12, 2.80, 0.15, "amber", 0.016),
-                                       (num, 0.0, GL_Z0, 0.19, "white", 0.026)):
-        p, n = nose_at(y, z, x0)
-        texts.append((txt, Matrix.Translation(p + n * off) @ R, size, mat))
+        box(g, "guard", (8.55, sg * 1.0, 0.25), (0.14, 0.02, 0.30), 0.006, 2)
+        box(g, "guard", (8.30, sg * 0.95, 0.62), (0.12, 0.10, 0.55), 0.02, 2, M=Matrix.Translation((0, 0, 0)))
+    # costado de cabina: puerta, ventanilla trapezoidal, asideros, peldano
+    for sg in (-1, 1):
+        y = sg * (HW + 0.004)
+        door = rrect(0.44, 2.05, 0.09, 8, 8.15, 2.28)
+        tube(g, "black", [(x, y, z) for x, z in door], 0.006, 6, closed=True)
+        gasket(g, sg, 8.15, 2.82, 0.22, 0.78, 0.07, HW + 0.002, 0.010, 0.012, border=0.04, glass=False)
+        g.add("gloss_black", [(x, sg * (HW + 0.004), z) for x, z in rrect(0.22, 0.78, 0.07, 8, 8.15, 2.82)], [tuple(range(36))])
+        wpts = [(8.43, 2.52), (8.62, 2.52), (8.60, 3.02), (8.45, 3.02)]
+        g.add("gloss_black", [(x, sg * (HW + 0.004), z) for x, z in wpts], [(0, 1, 2, 3)])
+        tube(g, "rubber", [(x, sg * (HW + 0.006), z) for x, z in wpts], 0.012, 8, closed=True)
+        for xx in (7.88, 8.42):
+            tube(g, "pole", [(xx, sg * HW, 1.45), (xx, sg * (HW + 0.05), 1.50), (xx, sg * (HW + 0.05), 2.65), (xx, sg * HW, 2.70)], 0.014, 14)
+        cyl(g, "chrome", (8.04, y, 2.25), (8.04, sg * (HW + 0.012), 2.25), 0.018, seg=20)
+        box(g, "guard", (8.15, sg * (HW + 0.03), 0.80), (0.40, 0.10, 0.03), 0.008, 2)
+        for xx in (7.98, 8.32):
+            box(g, "guard", (xx, sg * (HW + 0.0), 0.86), (0.03, 0.06, 0.12), 0.005, 1)
     # piso de cabina
-    pts = [nose_xy(1.05, sv, 0.09, x0) for sv in ss]
+    pts = [cap_xy(FLOOR, sv, 0.06) for sv in cap_s]
+    pts = [(CAB_P, -LIN_I, 0)] + [(min(x, 8.82), y, 0) for x, y, _ in pts] + [(CAB_P, LIN_I, 0)]
     loft(g, "floor", [[(x, y, FLOOR - 0.05) for x, y, _ in pts], [(x, y, FLOOR) for x, y, _ in pts]], close=True, caps=True)
 
-def coupler(g, xf):
+def coupler(g, xf, z):
     """enganche automatico tipo Scharfenberg"""
-    z = 0.66
-    cyl(g, "iron", (xf - 0.9, 0, z), (xf + 0.55, 0, z), 0.07, seg=32)            # barra de traccion
-    cyl(g, "iron", (xf - 0.2, 0, z), (xf + 0.25, 0, z), 0.11, 0.11, seg=40)       # amortiguador
+    cyl(g, "iron", (xf - 0.9, 0, z), (xf + 0.55, 0, z), 0.07, seg=32)
+    cyl(g, "iron", (xf - 0.2, 0, z), (xf + 0.25, 0, z), 0.11, 0.11, seg=40)
     for k in range(6):
         torus(g, "iron", (0, 0, 0), 0.115, 0.012, 40, 8, M=Matrix.Translation((xf - 0.15 + k * 0.07, 0, z)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
-    box(g, "iron", (xf + 0.68, 0, z), (0.26, 0.34, 0.36), 0.04, 3)                # cabeza
-    box(g, "steel", (xf + 0.825, 0, z), (0.035, 0.40, 0.42), 0.012, 2)            # placa frontal
-    cyl(g, "steel", (xf + 0.84, -0.09, z + 0.02), (xf + 0.96, -0.09, z + 0.02), 0.055, 0.03, seg=32)   # cono
-    cyl(g, "black", (xf + 0.84, 0.09, z + 0.02), (xf + 0.845, 0.09, z + 0.02), 0.06, seg=32)          # embudo
+    box(g, "iron", (xf + 0.68, 0, z), (0.26, 0.34, 0.36), 0.04, 3)
+    box(g, "steel", (xf + 0.825, 0, z), (0.035, 0.40, 0.42), 0.012, 2)
+    cyl(g, "steel", (xf + 0.84, -0.09, z + 0.02), (xf + 0.96, -0.09, z + 0.02), 0.055, 0.03, seg=32)
+    cyl(g, "black", (xf + 0.84, 0.09, z + 0.02), (xf + 0.845, 0.09, z + 0.02), 0.06, seg=32)
     torus(g, "steel", (0, 0, 0), 0.062, 0.01, 32, 8, M=Matrix.Translation((xf + 0.845, 0.09, z + 0.02)) @ Matrix.Rotation(math.radians(90), 4, 'Y'))
-    box(g, "steel", (xf + 0.85, 0, z - 0.16), (0.05, 0.22, 0.06), 0.01, 2)        # contacto electrico
-    tube(g, "iron", [(xf + 0.7, 0.18, z + 0.05), (xf + 0.75, 0.25, z - 0.05), (xf + 0.72, 0.27, z - 0.3)], 0.014, 10)  # palanca
+    box(g, "steel", (xf + 0.85, 0, z - 0.16), (0.05, 0.22, 0.06), 0.01, 2)
+    tube(g, "iron", [(xf + 0.7, 0.18, z + 0.05), (xf + 0.75, 0.25, z - 0.05), (xf + 0.72, 0.27, z - 0.3)], 0.014, 10)
     tube(g, "rubber", [(xf + 0.6, -0.17, z - 0.1), (xf + 0.4, -0.22, z - 0.3), (xf + 0.1, -0.18, z - 0.25), (xf - 0.3, -0.12, z - 0.1)], 0.018, 10)
-    box(g, "iron", (xf - 0.75, 0, z), (0.3, 0.5, 0.3), 0.04, 2)                   # soporte
+    box(g, "iron", (xf - 0.75, 0, z), (0.3, 0.5, 0.3), 0.04, 2)
 
-# ----------------------------------------------------------------- coche
-WZ0, WZ1 = 1.50, 2.62
+# ================================================================= CAJA
+def skin(g, sgn, a, b, za, zb):
+    if b - a < 1e-3 or zb - za < 1e-3: return
+    box(g, "body", ((a + b) / 2, sgn * (HW + SK_IN) / 2, (za + zb) / 2), (b - a, HW - SK_IN, zb - za), 0.004, 1)
+    box(g, "liner", ((a + b) / 2, sgn * (LIN_O + LIN_I) / 2, (za + zb) / 2), (b - a, LIN_O - LIN_I, zb - za), 0.004, 1)
 
-def spans_to_windows(spans, cabwin=None):
-    wins = []
-    for a, b in spans:
-        L = b - a - 0.36
-        if L < 0.6: continue
-        n = max(1, round(L / 1.9))
-        w = (L - (n - 1) * 0.30) / n
-        for k in range(n):
-            x0 = a + 0.18 + k * (w + 0.30)
-            wins.append((x0, x0 + w, "window"))
-    return wins
-
-def side_pieces(g, sgn, openings, xa, xb, red_from=None):
-    z0, z1 = FLOOR, 3.1
-    def solid(a, b, za, zb):
-        if b - a < 1e-3 or zb - za < 1e-3: return
-        box(g, "body", ((a + b) / 2, sgn * 1.47, (za + zb) / 2), (b - a, 0.06, zb - za), 0.006, 1)
-        box(g, "liner", ((a + b) / 2, sgn * 1.42, (za + zb) / 2), (b - a, 0.04, zb - za), 0.006, 1)
-    cur = xa
-    for a, b, kind in sorted(openings):
-        solid(cur, a, z0, z1)
+def side_wall(g, sgn, cab):
+    xb = XB
+    ops = [(d - DW / 2, d + DW / 2, "door") for d in DOORS] + [(w - WW / 2, w + WW / 2, "win") for w in WINS]
+    cur = -XB
+    for a, b, kind in sorted(ops):
+        skin(g, sgn, cur, a, FLOOR, ROOF_E)
         if kind == "door":
-            solid(a, b, 2.95, z1)
+            skin(g, sgn, a, b, DZ1, ROOF_E)
         else:
-            wz0, wz1 = (WZ0, WZ1) if kind == "window" else (1.95, 2.75)
-            solid(a, b, z0, wz0); solid(a, b, wz1, z1)
-            cx, cz, w, h = (a + b) / 2, (wz0 + wz1) / 2, b - a - 0.08, wz1 - wz0 - 0.08
-            rr = 0.13 if kind == "window" else 0.09
-            gasket(g, sgn, cx, cz, w, h, rr, 1.50, 0.014, 0.035)
-            gasket(g, sgn, cx, cz, w, h, rr, 1.40, -0.010, -0.04, border=0.045, glass=False)
+            skin(g, sgn, a, b, FLOOR, WZ0); skin(g, sgn, a, b, WZ1, ROOF_E)
+            cx, cz, w, h = (a + b) / 2, (WZ0 + WZ1) / 2, b - a - 0.06, WZ1 - WZ0 - 0.06
+            gasket(g, sgn, cx, cz, w, h, 0.13, HW, 0.012, 0.03, border=0.05)
+            gasket(g, sgn, cx, cz, w, h, 0.13, LIN_I, -0.010, -0.04, border=0.05, glass=False)
+            # marco interior marron oscuro (como el real)
+            gasket(g, sgn, cx, cz, w - 0.05, h - 0.05, 0.11, LIN_I - 0.012, -0.004, -0.02, border=0.03, glass=False, mat="seat_base")
         cur = b
-    solid(cur, xb, z0, z1)
-    # zocalo inferior de acero
-    box(g, "body", ((xa + xb) / 2, sgn * 1.47, 0.925), (xb - xa, 0.06, 0.25), 0.02, 2)
-    box(g, "black", ((xa + xb) / 2, sgn * 1.502, 1.05), (xb - xa, 0.006, 0.012))
-    # remaches en costuras (linea de techo y zocalo)
-    for zz in (3.065, 0.86):
-        x = xa + 0.1
-        while x < xb - 0.1:
-            cyl(g, "body", (x, sgn * 1.50, zz), (x, sgn * 1.507, zz), 0.0065, seg=8)
-            x += 0.16
+    skin(g, sgn, cur, XB, FLOOR, ROOF_E)
+    # faldon con arcos sobre los neumaticos
+    pts = [(-XB, FLOOR)]
+    xs = sorted([b + a for b in BOGIES for a in (-AXLE, AXLE)])
+    x = -XB
+    poly = [(-XB, SILL)]
+    for c in xs:
+        for k in range(17):
+            t = math.pi * k / 16
+            poly.append((c - 0.52 * math.cos(t), SILL + 0.13 * math.sin(t)))
+    poly += [(XB, SILL), (XB, FLOOR), (-XB, FLOOR)]
+    poly = poly[::-1] if sgn < 0 else poly
+    flat_poly(g, "body", poly, sgn * SK_IN, sgn * (HW - SK_IN))
+    box(g, "black", (0, sgn * (HW + 0.002), FLOOR + 0.004), (2 * XB, 0.004, 0.01))
+    # remaches de costura (zocalo y alero)
+    for zz in (3.36, 0.80):
+        x = -XB + 0.1
+        while x < XB - 0.1:
+            if zz > 1 or all(abs(x - c) > 0.55 for c in xs):
+                cyl(g, "body", (x, sgn * HW, zz), (x, sgn * (HW + 0.006), zz), 0.0055, seg=8)
+            x += 0.15
+    # grafica roja (trazada)
+    y = sgn * (HW + 0.002); t = sgn * 0.003
+    for q in LIVERY["cab" if cab else "mid"]:
+        xs_q = [p[0] for p in q]
+        if any(abs(xx - d) < DW / 2 + 0.02 for d in DOORS for xx in xs_q): continue
+        flat_poly(g, "red", [(px, pz) for px, pz in q], y, t)
+    # letrero de destino lateral sobre ventana central
+    box(g, "gloss_black", (0, sgn * (HW + 0.01), 3.19), (1.32, 0.02, 0.17), 0.012, 2)
+    box(g, "screen2", (0, sgn * (HW + 0.021), 3.19), (1.24, 0.004, 0.12), 0.002, 1)
+    # pulsador e intercomunicador junto a la primera puerta
+    xp = DOORS[-1] - DW / 2 - 0.25
+    box(g, "white", (xp, sgn * (HW + 0.004), 2.66), (0.12, 0.008, 0.12), 0.01, 2)
+    cyl(g, "taillight", (xp, sgn * (HW + 0.008), 2.66), (xp, sgn * (HW + 0.014), 2.66), 0.035, seg=24)
+    box(g, "steel", (xp, sgn * (HW + 0.004), 2.42), (0.10, 0.008, 0.14), 0.01, 2)
+    for d in DOORS:
+        door_leaves(g, sgn, d, is_open=(sgn == 1))
 
-def red_band(g, sgn, spans, doors, xa, xb):
-    """grafica roja NS-16: dos franjas paralelas + motivo escalonado entre puertas"""
-    y = sgn * 1.502; t = sgn * 0.004
-    cuts = sorted([(d - 0.66, d + 0.66) for d in doors])
-    segs = []; cur = xa + 0.05
-    for a, b in cuts:
-        segs.append((cur, a)); cur = b
-    segs.append((cur, xb - 0.05))
-    for a, b in segs:
-        if b - a < 0.05: continue
-        flat_poly(g, "red", [(a, 1.255), (b, 1.255), (b, 1.285), (a, 1.285)], y, t)
-        flat_poly(g, "red", [(a, 1.355), (b, 1.355), (b, 1.415), (a, 1.415)], y, t)
-    for a, b in spans:
-        if b - a < 2.6: continue
-        flat_poly(g, "red", [(a + 0.55, 1.285), (b - 0.95, 1.285), (b - 0.70, 1.47), (a + 0.95, 1.47)], y, t)
-        flat_poly(g, "red", [(a + 0.18, 1.30), (a + 0.40, 1.30), (a + 0.52, 1.35), (a + 0.30, 1.35)], y, t)
-        flat_poly(g, "red", [(b - 0.62, 1.42), (b - 0.42, 1.42), (b - 0.36, 1.47), (b - 0.56, 1.47)], y, t)
-
-def door_leaves(g, sgn, xd, is_open, w=1.3):
-    lw = w / 2 - 0.01
-    for k, d in enumerate((-1, 1)):
-        xc = xd + d * (lw / 2 + 0.005)
-        if is_open: xc = xd + d * (w / 2 + lw / 2 - 0.06)
-        yc = 1.53 if is_open else 1.475
+def door_leaves(g, sgn, xd, is_open):
+    lw = DW / 2 - 0.008
+    for d in (-1, 1):
+        xc = xd + d * (lw / 2 + 0.004)
+        if is_open: xc = xd + d * (DW / 2 + lw / 2 - 0.05)
+        yc = (HW + 0.035) if is_open else (HW - 0.02)
         y = sgn * yc
-        zb, zt = FLOOR + 0.02, 2.93
-        wz0, wz1 = 1.48, 2.78
-        box(g, "body", (xc, y, (zb + wz0) / 2), (lw, 0.04, wz0 - zb), 0.01, 2)
-        box(g, "body", (xc, y, (zt + wz1) / 2), (lw, 0.04, zt - wz1), 0.01, 2)
+        zb, zt = FLOOR + 0.01, DZ1 - 0.02
+        wz0, wz1 = 1.62, 2.92
+        box(g, "body", (xc, y, (zb + wz0) / 2), (lw, 0.035, wz0 - zb), 0.008, 2)
+        box(g, "body", (xc, y, (zt + wz1) / 2), (lw, 0.035, zt - wz1), 0.008, 2)
         for s2 in (-1, 1):
-            box(g, "body", (xc + s2 * (lw / 2 - 0.07), y, (wz0 + wz1) / 2), (0.14, 0.04, wz1 - wz0), 0.01, 2)
-        cx, cz, ww, hh = xc, (wz0 + wz1) / 2, lw - 0.22, wz1 - wz0 - 0.08
-        gasket(g, sgn, cx, cz, ww, hh, 0.09, yc + 0.02, 0.01, 0.025, border=0.045)
-        gasket(g, sgn, cx, cz, ww, hh, 0.09, yc - 0.02, -0.01, -0.02, border=0.045, glass=False)
-        box(g, "rubber", (xc + d * -lw / 2, y, 1.99), (0.025, 0.05, 1.9), 0.006, 1)
-        yy = sgn * (yc + 0.021); tt = sgn * 0.004
-        flat_poly(g, "red", [(xc - lw / 2, 1.255), (xc + lw / 2, 1.255), (xc + lw / 2, 1.285), (xc - lw / 2, 1.285)], yy, tt)
-        flat_poly(g, "red", [(xc - lw / 2, 1.355), (xc + lw / 2, 1.355), (xc + lw / 2, 1.415), (xc - lw / 2, 1.415)], yy, tt)
+            box(g, "body", (xc + s2 * (lw / 2 - 0.08), y, (wz0 + wz1) / 2), (0.16, 0.035, wz1 - wz0), 0.008, 2)
+        cx, cz, ww, hh = xc, (wz0 + wz1) / 2, lw - 0.24, wz1 - wz0 - 0.06
+        gasket(g, sgn, cx, cz, ww, hh, 0.10, yc + 0.018, 0.008, 0.02, border=0.04)
+        gasket(g, sgn, cx, cz, ww, hh, 0.10, yc - 0.018, -0.008, -0.016, border=0.04, glass=False)
+        box(g, "rubber", (xc - d * lw / 2, y, (zb + zt) / 2), (0.022, 0.045, zt - zb), 0.006, 1)
+        yy = sgn * (yc + 0.0185); tt = sgn * 0.003
+        for z0, z1 in ((1.855, 1.91), (1.665, 1.80)):
+            if z1 < wz0 or z0 > wz1:
+                flat_poly(g, "red", [(xc - lw / 2, z0), (xc + lw / 2, z0), (xc + lw / 2, z1), (xc - lw / 2, z1)], yy, tt)
+            else:
+                for xa_, xb_ in ((xc - lw / 2, xc - lw / 2 + 0.16), (xc + lw / 2 - 0.16, xc + lw / 2)):
+                    flat_poly(g, "red", [(xa_, z0), (xb_, z0), (xb_, z1), (xa_, z1)], yy, tt)
     for s2 in (-1, 1):
-        box(g, "black", (xd + s2 * (w / 2 + 0.03), sgn * 1.5, 2.0), (0.05, 0.03, 1.95), 0.008, 2)
-    box(g, "black", (xd, sgn * 1.5, 3.0), (w + 0.12, 0.03, 0.08), 0.008, 2)
-    box(g, "steel", (xd, sgn * 1.43, FLOOR + 0.005), (w, 0.12, 0.012))
+        box(g, "black", (xd + s2 * (DW / 2 + 0.025), sgn * (HW + 0.002), (FLOOR + DZ1) / 2), (0.04, 0.02, DZ1 - FLOOR), 0.006, 2)
+    box(g, "black", (xd, sgn * (HW + 0.002), DZ1 + 0.02), (DW + 0.09, 0.02, 0.05), 0.006, 2)
+    box(g, "steel", (xd, sgn * (SK_IN + LIN_I) / 2, FLOOR + 0.005), (DW, HW - LIN_I + 0.04, 0.012))
     # indicador luminoso de puerta
-    box(g, "gloss_black", (xd + w / 2 + 0.17, sgn * 1.505, 2.55), (0.07, 0.014, 0.16), 0.012, 2)
-    cyl(g, "taillight", (xd + w / 2 + 0.17, sgn * 1.512, 2.58), (xd + w / 2 + 0.17, sgn * 1.516, 2.58), 0.02, seg=20)
-    cyl(g, "amber", (xd + w / 2 + 0.17, sgn * 1.512, 2.52), (xd + w / 2 + 0.17, sgn * 1.516, 2.52), 0.02, seg=20)
+    box(g, "gloss_black", (xd + DW / 2 + 0.12, sgn * (HW + 0.004), 3.18), (0.06, 0.012, 0.10), 0.01, 2)
+    cyl(g, "amber", (xd + DW / 2 + 0.12, sgn * (HW + 0.01), 3.18), (xd + DW / 2 + 0.12, sgn * (HW + 0.014), 3.18), 0.018, seg=20)
+
+def roof(g, xa, xb):
+    N = 48
+    out = [(HW * math.copysign(abs(math.cos(math.pi * k / N)) ** 0.5, math.cos(math.pi * k / N)),
+            ROOF_E + (ROOF_T - ROOF_E) * abs(math.sin(math.pi * k / N)) ** 0.5) for k in range(N + 1)]
+    inn = [((HW - 0.05) * math.copysign(abs(math.cos(math.pi * k / N)) ** 0.5, math.cos(math.pi * k / N)),
+            ROOF_E + (ROOF_T - ROOF_E - 0.05) * abs(math.sin(math.pi * k / N)) ** 0.5) for k in range(N, -1, -1)]
+    pts = [(HW, ROOF_E - 0.001)] + out + [(-HW, ROOF_E - 0.001)] + inn
+    loft(g, "roof", [[(xa, y, z) for y, z in pts], [(xb, y, z) for y, z in pts]], close=True, caps=True)
+    # equipo de aire acondicionado bajo perfil (centro del techo)
+    box(g, "roof", (0, 0, ROOF_T + 0.01), (4.1, 2.3, 0.06), 0.025, 3)
+    for k in range(2):
+        xc = -1.0 + 2.0 * k
+        box(g, "gloss_black", (xc, 0, ROOF_T + 0.045), (1.2, 1.4, 0.012), 0.004, 1)
+        for j in range(16):
+            box(g, "roof", (xc - 0.56 + j * 0.075, 0, ROOF_T + 0.05), (0.02, 1.36, 0.012), 0.003, 1)
+    for xc in (-5.6, 5.6):
+        box(g, "roof", (xc, 0, ROOF_T + 0.008), (1.2, 1.6, 0.03), 0.01, 2)
+
+def ceiling(g, xa, xb):
+    L = xb - xa; xc = (xa + xb) / 2
+    for sgn in (-1, 1):
+        prof = [(LIN_I, 3.07), (1.017, 3.14), (1.017, 3.40), (1.03, 3.40), (1.03, 3.15), (LIN_I + 0.02, 3.08)]
+        loft(g, "ceiling", [[(xa, sgn * y, z) for y, z in prof], [(xb, sgn * y, z) for y, z in prof]], close=True, caps=True)
+        # portaanuncios (carteles) en la cara vertical
+        x = xa + 0.3
+        k = 0
+        while x + 0.9 < xb - 0.2:
+            col = ("ad1", "ad2", "ad3", "white")[k % 4]
+            box(g, col, (x + 0.45, sgn * 1.012, 3.27), (0.86, 0.006, 0.22), 0.002, 1)
+            x += 1.0; k += 1
+        box(g, "light", (xc, sgn * 1.10, 3.105), (L - 0.4, 0.10, 0.01), 0.003, 1)
+    box(g, "ceiling", (xc, 0, 3.42), (L, 2.06, 0.04), 0.01, 2)
+    # paneles de luz centrales + rejillas
+    x = xa + 0.6
+    while x + 1.4 < xb:
+        box(g, "light", (x + 0.7, 0, 3.395), (1.3, 0.55, 0.012), 0.004, 2)
+        for sg in (-1, 1):
+            box(g, "skirt", (x + 0.7, sg * 0.62, 3.397), (0.16, 0.12, 0.008), 0.002, 1)
+            for j in range(5):
+                box(g, "ceiling", (x + 0.64 + j * 0.03, sg * 0.62, 3.392), (0.012, 0.11, 0.006))
+        x += 1.6
+    for k in range(int(L // 0.8)):
+        box(g, "groove", (xa + 0.4 + k * 0.8, 0, 3.398), (0.008, 2.0, 0.004))
+
+def interior(g, cab):
+    xa, xb = -XB + 0.05, (CAB_P - 0.05) if cab else XB - 0.05
+    # piso con bandas de goma
+    box(g, "floor", (0, 0, FLOOR - 0.03), (2 * XB, 2 * SK_IN, 0.06), 0.004, 1)
+    edges = sorted([d + s * DW / 2 for d in DOORS for s in (-1, 1)])
+    spans = [(-XB, edges[0])] + [(edges[i], edges[i + 1]) for i in range(1, len(edges) - 1, 2)] + [(edges[-1], XB)]
+    for si, (a, b) in enumerate(spans):
+        if cab and a > CAB_P - 0.1: continue
+        bb = min(b, CAB_P - 0.05) if cab else b
+        for sgn in (-1, 1):
+            L = bb - a - 0.24
+            if L < 0.45: continue
+            n = max(1, min(4, int((L + 0.02) // 0.515)))
+            w = n * 0.515
+            c = (a + bb) / 2
+            seat_bank(g, sgn, c - w / 2, c + w / 2, white_last=(sgn == 1), white_first=(sgn == -1))
+    handles_rails(g, xa + 0.25, xb - 0.25)
+    ceiling(g, -XB, (CAB_P if cab else XB))
+    # testeros
+    def end_wall(x, sd):
+        for s in (-1, 1):
+            box(g, "liner", (x, s * 0.98, 2.2), (0.06, 0.48, 2.0), 0.01, 2)
+        box(g, "liner", (x, 0, 3.31), (0.06, 1.48, 0.22), 0.01, 2)
+        box(g, "steel", (x + sd * 0.2, 0, FLOOR + 0.004), (0.4, 1.48, 0.012))
+    end_wall(-XB + 0.03, -1)
+    if not cab: end_wall(XB - 0.03, 1)
+
+def seat_bank(g, sgn, a, b, white_first=False, white_last=False):
+    n = int(round((b - a) / 0.515))
+    wall = LIN_I
+    box(g, "liner", ((a + b) / 2, sgn * (wall - 0.05), FLOOR + 0.20), (b - a + 0.02, 0.08, 0.40), 0.015, 2)
+    for k in range(n):
+        x0 = a + k * 0.515 + 0.02; x1 = x0 + 0.475; xc = (x0 + x1) / 2
+        m = "seat_white" if ((k == 0 and white_first) or (k == n - 1 and white_last)) else "seat"
+        seat_shell(g, m, sgn, x0, x1, wall)
+        dm = "seat_dark" if m == "seat" else "liner"
+        cyl(g, dm, (xc, sgn * (wall - 0.30), FLOOR + 0.4565), (xc, sgn * (wall - 0.30), FLOOR + 0.4595), 0.15, seg=48)
+        nb = Vector((0, -sgn * 0.993, 0.117)); pb = Vector((xc, sgn * (wall - 0.083), FLOOR + 0.72))
+        cyl(g, dm, pb, pb + nb * 0.003, 0.14, seg=48)
+        if k % 2 == 0:
+            tube(g, "steel", [(x0 + 0.02, sgn * (wall - 0.01), FLOOR + 0.25), (x0 + 0.02, sgn * (wall - 0.22), FLOOR + 0.40), (x0 + 0.02, sgn * (wall - 0.42), FLOOR + 0.425)], 0.016, 12)
+    for xe in (a - 0.01, b + 0.01):
+        box(g, "glass", (xe, sgn * 0.98, FLOOR + 0.98), (0.012, 0.40, 0.82))
+        tube(g, "steel", [(xe, sgn * 0.79, FLOOR + 0.57), (xe, sgn * (wall - 0.01), FLOOR + 0.57)], 0.014, 12)
+        pts = [(xe, sgn * 0.78, FLOOR), (xe, sgn * 0.78, 2.45)]
+        for k in range(1, 19):
+            ph = math.radians(90 * k / 18)
+            pts.append((xe, sgn * (0.78 + 0.40 * (1 - math.cos(ph))), 2.45 + 0.40 * math.sin(ph)))
+        tube(g, "pole", pts, 0.019, 20)
+        cyl(g, "steel", (xe, sgn * 0.78, FLOOR), (xe, sgn * 0.78, FLOOR + 0.02), 0.04, seg=24)
+
+def handles_rails(g, xa, xb):
+    def tri_loop():
+        poly = [(0.0, 0.0), (-0.075, -0.14), (0.075, -0.14)]
+        for _ in range(3):
+            q = []
+            for i in range(len(poly)):
+                p0, p1 = poly[i], poly[(i + 1) % len(poly)]
+                q.append((0.75 * p0[0] + 0.25 * p1[0], 0.75 * p0[1] + 0.25 * p1[1]))
+                q.append((0.25 * p0[0] + 0.75 * p1[0], 0.25 * p0[1] + 0.75 * p1[1]))
+            poly = q
+        return poly
+    tri = tri_loop(); ZR = 2.92
+    for sgn in (-1, 1):
+        tube(g, "pole", [(xa, sgn * 0.78, ZR), (xb, sgn * 0.78, ZR)], 0.019, 24)
+        x = xa + 0.6
+        while x < xb - 0.3:
+            tube(g, "pole", [(x, sgn * 0.78, ZR), (x, sgn * 0.78, 3.40)], 0.014, 12)
+            x += 1.8
+        x = xa + 0.4
+        while x < xb - 0.3:
+            if all(abs(x - d) > DW / 2 + 0.1 for d in DOORS):
+                tube(g, "pole", [(x, sgn * 0.78, ZR), (x, sgn * 0.78, ZR - 0.09)], 0.009, 10)
+                tube(g, "handle", [(x, sgn * 0.78 + px, ZR - 0.09 + pz) for px, pz in tri], 0.011, 12, closed=True)
+            x += 0.55
+    for d in DOORS:
+        if not (xa < d < xb): continue
+        tube(g, "pole", [(d, 0.0, FLOOR), (d, 0.0, 3.40)], 0.021, 28)
+        cyl(g, "steel", (d, 0, FLOOR), (d, 0, FLOOR + 0.02), 0.045, seg=28)
+        tube(g, "pole", [(d, -0.78, ZR), (d, 0.78, ZR)], 0.019, 24)
+        for sgn in (-1, 1):
+            for s2 in (-1, 1):
+                xx = d + s2 * (DW / 2 + 0.09)
+                tube(g, "pole", [(xx, sgn * LIN_I, 1.50), (xx, sgn * (LIN_I - 0.07), 1.55), (xx, sgn * (LIN_I - 0.07), 2.85), (xx, sgn * LIN_I, 2.90)], 0.016, 16)
+            # mapa de linea LED sobre la puerta
+            box(g, "white", (d, sgn * (LIN_I - 0.01), 3.18), (1.0, 0.02, 0.12), 0.01, 2)
+            for k in range(16):
+                cyl(g, "amber" if k % 5 else "taillight", (d - 0.45 + k * 0.06, sgn * (LIN_I - 0.022), 3.18),
+                    (d - 0.45 + k * 0.06, sgn * (LIN_I - 0.03), 3.18), 0.01, seg=16)
+            box(g, "red", (d, sgn * (LIN_I - 0.022), 3.18), (0.92, 0.004, 0.012))
+
+def cab_interior(g):
+    px = CAB_P
+    # mampara con puerta blanca de ventana alta redondeada
+    for s, w in ((-1, 0.70), (1, 0.70)):
+        box(g, "desk", (px, s * (LIN_I - w / 2), 2.31), (0.05, w, 2.22), 0.01, 2)
+    box(g, "panel", (px + 0.02, 0, 2.21), (0.04, 0.98, 2.0), 0.015, 3)
+    gasket_x = rrect(0.30, 0.95, 0.12, 8, 0.0, 2.45)
+    g.add("glass", [(px + 0.045, u, v) for u, v in gasket_x], [tuple(range(len(gasket_x)))])
+    tube(g, "rubber", [(px + 0.045, u, v) for u, v in gasket_x], 0.016, 10, closed=True)
+    box(g, "liner", (px, 0, 3.33), (0.05, 1.0, 0.18), 0.01, 2)
+    # techo de cabina con panel de luz
+    box(g, "ceiling", ((px + 8.6) / 2, 0, 3.37), (8.6 - px, 2.4, 0.04), 0.01, 2)
+    box(g, "panel", ((px + 8.0) / 2, 0, 3.345), (0.6, 0.6, 0.01), 0.004, 2)
+    # paredes laterales interiores de cabina
+    # pupitre de ancho completo (gris azulado)
+    prof = [(8.12, FLOOR), (8.74, FLOOR), (8.74, 2.12), (8.76, 2.47), (8.70, 2.53), (8.48, 2.22), (8.12, 2.20)]
+    loft(g, "desk", [[(x, -1.18, z) for x, z in prof], [(x, 1.18, z) for x, z in prof]], close=True, caps=True)
+    box(g, "desk_dark", (8.11, 0, 1.68), (0.02, 0.62, 0.95), 0.008, 2)        # hueco de pies
+    # consola inclinada: pantallas laterales y panel central
+    sl = math.atan2(2.53 - 2.22, 8.70 - 8.48)
+    def on_slope(u, y, dz=0.0):
+        x = 8.48 + u * math.cos(sl); z = 2.22 + u * math.sin(sl) + dz
+        return Matrix.Translation((x, y, z)) @ Matrix.Rotation(-(math.pi / 2 - sl), 4, 'Y')
+    for sg in (-1, 1):
+        M = on_slope(0.2, sg * 0.78, 0.01)
+        box(g, "black", (0, 0, 0), (0.30, 0.40, 0.02), 0.01, 2, M=M)
+        box(g, "screen", (0, 0, 0.011), (0.24, 0.33, 0.004), 0.002, 1, M=M)
+    M = on_slope(0.2, -0.22, 0.01)
+    box(g, "panel", (0, 0, 0), (0.32, 0.56, 0.015), 0.006, 2, M=M)
+    knobs = [(-0.2, 0.08), (-0.12, 0.08), (-0.04, 0.08), (0.04, 0.08)]
+    for yy, uu in knobs:
+        cyl(g, "black", (uu, yy, 0.008), (uu, yy, 0.04), 0.022, seg=24, M=M)
+        box(g, "white", (uu, yy, 0.045), (0.035, 0.008, 0.008), M=M)
+    for yy, mt in ((0.10, "screen"), (0.16, "screen"), (0.18, "taillight"), (0.24, "amber")):
+        cyl(g, mt, (0.07 if mt == "screen" else -0.04, yy, 0.008), (0.07 if mt == "screen" else -0.04, yy, 0.02), 0.018, seg=24, M=M)
+    for yy, uu in ((0.22, 0.06), (0.20, -0.08)):        # manometro y voltimetro
+        cyl(g, "chrome", (uu, yy, 0.008), (uu, yy, 0.02), 0.045, seg=40, M=M)
+        cyl(g, "white", (uu, yy, 0.02), (uu, yy, 0.022), 0.039, seg=40, M=M)
+        box(g, "black", (uu + 0.01, yy, 0.024), (0.03, 0.003, 0.002), M=M)
+    box(g, "black", (-0.06, -0.08, 0.02), (0.07, 0.14, 0.03), 0.006, 2, M=M)   # radio
+    box(g, "screen", (-0.06, -0.08, 0.036), (0.04, 0.06, 0.002), M=M)
+    # manipulador traccion/freno (derecha del conductor) y pulsador de hombre muerto
+    cyl(g, "black", (8.35, 0.32, 2.21), (8.35, 0.32, 2.24), 0.06, seg=40)
+    tube(g, "black", [(8.35, 0.32, 2.24), (8.32, 0.32, 2.36)], 0.013, 12)
+    box(g, "black", (8.31, 0.32, 2.39), (0.05, 0.13, 0.05), 0.02, 4)
+    cyl(g, "taillight", (8.30, -0.32, 2.21), (8.30, -0.32, 2.24), 0.03, seg=24)
+    # asiento del conductor (centrado)
+    sx = 7.78
+    cyl(g, "iron", (sx, 0, FLOOR), (sx, 0, FLOOR + 0.40), 0.05, seg=24)
+    cyl(g, "iron", (sx, 0, FLOOR), (sx, 0, FLOOR + 0.03), 0.28, seg=48)
+    box(g, "seat_base", (sx, 0, FLOOR + 0.46), (0.48, 0.50, 0.10), 0.045, 4)
+    M = Matrix.Translation((sx - 0.24, 0, FLOOR + 0.83)) @ Matrix.Rotation(math.radians(10), 4, 'Y')
+    box(g, "seat_base", (0, 0, 0), (0.10, 0.46, 0.66), 0.045, 4, M=M)
+    box(g, "seat_base", (sx - 0.27, 0, FLOOR + 1.24), (0.08, 0.26, 0.16), 0.035, 3)
+    for s2 in (-1, 1):
+        box(g, "seat_base", (sx, s2 * 0.29, FLOOR + 0.66), (0.36, 0.05, 0.05), 0.015, 2)
+    # espejo/caja de cortina y extintor
+    cyl(g, "taillight", (7.4, -1.05, FLOOR + 0.1), (7.4, -1.05, FLOOR + 0.58), 0.07, seg=24)
+
+# ================================================================= BOGIE NEUMATICO
+def bogie(g, xb):
+    for ax in (-AXLE, AXLE):
+        x = xb + ax
+        cyl(g, "iron", (x, -1.06, ZA), (x, 1.06, ZA), 0.075, seg=32)
+        box(g, "iron", (x, 0, ZA), (0.30, 0.38, 0.40), 0.06, 3)
+        for sg in (-1, 1):
+            M = Matrix.Translation((x, sg * 1.06, ZA)) @ rot_x(-90 * sg)
+            revolve(g, "tire", tire_profile(RT, 0.30, 0.29, (-0.075, 0.0, 0.075)), 80, M=M)
+            hub(g, M)
+            prof = [(0.10, 0.0), (0.20, 0.0), (0.20, 0.03), (0.36, 0.03), (0.36, 0.0), (0.42, 0.005), (0.452, 0.015),
+                    (0.452, 0.025), (0.42, 0.045), (0.415, 0.11), (0.36, 0.11), (0.36, 0.06), (0.20, 0.06), (0.20, 0.10), (0.10, 0.10)]
+            revolve(g, "wheel", prof, 72, M=Matrix.Translation((x, sg * 0.66, ZA)) @ rot_x(-90 * sg))
+            bx = x + (0.5 if ax > 0 else -0.5)
+            box(g, "iron", (bx, sg * 0.71, ZA), (0.10, 0.14, 0.26), 0.02, 2)
+            cyl(g, "iron", (bx + (0.08 if ax > 0 else -0.08), sg * 0.71, ZA), (bx + (0.22 if ax > 0 else -0.22), sg * 0.71, ZA), 0.05, seg=20)
+    for sg in (-1, 1):
+        box(g, "iron", (xb, sg * 0.86, 0.66), (2.6, 0.13, 0.22), 0.04, 3)            # largueros
+        for k in range(8):
+            box(g, "iron", (xb - 1.05 + k * 0.3, sg * 0.86, 0.79), (0.03, 0.13, 0.05), 0.008, 1)
+        for ex in (-1, 1):
+            box(g, "iron", (xb + ex * 1.45, sg * 0.98, 0.46), (0.36, 0.30, 0.14), 0.035, 3)   # brazos rueda guia
+            gx = xb + ex * 1.62
+            revolve(g, "tire", tire_profile(0.19, 0.12, 0.10, (0.0,)), 56, M=Matrix.Translation((gx, sg * 1.08, 0.30)))
+            revolve(g, "steel", [(0.03, -0.07), (0.10, -0.07), (0.10, 0.07), (0.085, 0.08), (0.05, 0.08), (0.03, 0.075)], 40,
+                    M=Matrix.Translation((gx, sg * 1.08, 0.30)))
+            cyl(g, "iron", (gx, sg * 1.08, 0.30), (gx, sg * 1.08, 0.50), 0.035, seg=20)
+            box(g, "iron", (gx, sg * 1.08, 0.50), (0.14, 0.14, 0.06), 0.02, 2)
+            box(g, "iron", (xb + ex * 0.40, sg * 1.18, 0.36), (0.30, 0.06, 0.10), 0.015, 2)   # zapata captadora
+            cyl(g, "white", (xb + ex * 0.40, sg * 1.10, 0.42), (xb + ex * 0.40, sg * 1.10, 0.56), 0.035, seg=16)
+            coil(g, (xb + ex * 0.30, sg * 0.86, 0.77), 0.085, 0.016, 0.24, 6)
+            cyl(g, "iron", (xb + ex * 0.30, sg * 0.86, 0.765), (xb + ex * 0.30, sg * 0.86, 0.785), 0.11, seg=28)
+            cyl(g, "iron", (xb + ex * 0.30, sg * 0.86, 1.005), (xb + ex * 0.30, sg * 0.86, 1.025), 0.11, seg=28)
+        cyl(g, "motor", (xb, sg * 0.98, 0.66), (xb, sg * 0.98, 1.02), 0.035, seg=20)
+        cyl(g, "chrome", (xb, sg * 0.98, 0.86), (xb, sg * 0.98, 1.04), 0.022, seg=16)
+        tube(g, "iron", [(xb, sg * 0.30, 0.98), (xb + 0.55, sg * 0.30, 0.70)], 0.03, 12)
+    tube(g, "iron", [(xb - 1.75, -0.98, 0.40), (xb - 1.75, 0.98, 0.40)], 0.05, 16)
+    tube(g, "iron", [(xb + 1.75, -0.98, 0.40), (xb + 1.75, 0.98, 0.40)], 0.05, 16)
+    box(g, "iron", (xb, 0, 0.66), (0.40, 1.85, 0.26), 0.05, 3)
+    box(g, "iron", (xb, 0, 1.03), (0.55, 2.2, 0.10), 0.04, 3)
+    cyl(g, "steel", (xb, 0, 1.08), (xb, 0, 1.12), 0.26, seg=48)
+    tube(g, "motor", [(xb - 0.15, -0.8, 0.92), (xb + 0.15, 0.8, 0.90)], 0.03, 12)
+    for mx in (-0.52, 0.52):
+        cyl(g, "motor", (xb + mx, -0.34, 0.50), (xb + mx, 0.34, 0.50), 0.19, seg=56)
+        for k in range(14):
+            a = math.radians(k * 360 / 14)
+            cyl(g, "motor", (xb + mx + 0.19 * math.cos(a), -0.30, 0.50 + 0.19 * math.sin(a)),
+                (xb + mx + 0.19 * math.cos(a), 0.30, 0.50 + 0.19 * math.sin(a)), 0.012, seg=8)
+        cyl(g, "iron", (xb + mx, -0.38, 0.50), (xb + mx, 0.38, 0.50), 0.12, seg=40)
+    tube(g, "rubber", [(xb, 0.4, 1.10), (xb + 0.2, 0.8, 0.95), (xb + 0.6, 1.0, 0.7)], 0.02, 10)
+
+def underframe(g):
+    box(g, "skirt", (0, 0, 1.13), (2 * XB, 2.45, 0.05), 0.01, 1)
+    for k, (x, w) in enumerate(((-3.2, 1.3), (-1.6, 1.0), (0.0, 1.5), (1.7, 1.1), (3.3, 1.2))):
+        for sg in (-1, 1):
+            box(g, "iron", (x, sg * 0.62, 0.86), (w, 0.82, 0.48), 0.03, 2)
+            for j in range(int(w / 0.12)):
+                box(g, "skirt", (x - w / 2 + 0.08 + j * 0.12, sg * 1.035, 0.86), (0.05, 0.01, 0.36), 0.003, 1)
+    for sg in (-1, 1):
+        tube(g, "rubber", [(-XB + 0.5, sg * 0.15, 1.08), (-4, sg * 0.2, 1.05), (4, sg * 0.2, 1.05), (XB - 0.5, sg * 0.15, 1.08)], 0.025, 12)
+
+def build_car(kind, dest=("501", "Plaza de Maipú"), num="141"):
+    g = Geo(); texts = []
+    cab = kind == "cab"
+    for sgn in (-1, 1):
+        side_wall(g, sgn, cab)
+    roof(g, -XB, XB)
+    interior(g, cab)
+    underframe(g)
+    for b in BOGIES: bogie(g, b)
+    if cab:
+        cab_interior(g)
+        build_nose(g, texts, dest, num)
+    return g, (-XB, XB, cab), texts
+
+# ================================================================= FUELLE
+def bellows(g, xa, xb):
+    nr, npnts = 64, 48
+    rings = []
+    def ring_at(x, s):
+        r = []
+        for i in range(npnts):
+            th = 2 * math.pi * i / npnts; c, sn = math.cos(th), math.sin(th)
+            r.append((x, 1.0 * s * math.copysign(abs(c) ** 0.45, c), 2.21 + 1.11 * s * math.copysign(abs(sn) ** 0.45, sn)))
+        return r
+    for k in range(nr):
+        t = k / (nr - 1)
+        rip = abs(((t * 8) % 1) - 0.5) * 2
+        taper = min(1.0, t * 10, (1 - t) * 10)
+        rings.append(ring_at(xa + (xb - xa) * t, 1.0 + 0.05 * rip * taper))
+    loft(g, "rubber", rings, close=True)
+    for x, d in ((xa, 1), (xb, -1)):
+        loft(g, "steel", [ring_at(x, 1.0), ring_at(x + d * 0.03, 1.03)], close=True)
+    box(g, "steel", ((xa + xb) / 2, 0, FLOOR - 0.01), (xb - xa + 0.1, 1.44, 0.02), 0.004, 1)
+
+# ================================================================= ESCENA
+def build():
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    make_materials()
+    root = bpy.data.collections.new("NS16_Metro_Santiago"); bpy.context.scene.collection.children.link(root)
+    kinds = ["cab"] + ["mid"] * N_MID + ["cab"]
+    names = ["S"] + ["N", "NP", "R", "N", "N"][:N_MID] + ["S"]
+    cursor = 0.0; total = 0; ends = []
+    for i, k in enumerate(kinds):
+        dest, num = (("501", "Vicente Valdés"), "142") if i == 0 else (("501", "Plaza de Maipú"), "141")
+        g, (xa, xb, cab), texts = build_car(k, dest, num)
+        F = xb + 1.05 if cab else xb
+        if i == 0:
+            X0 = cursor + F; M = Matrix.Translation((X0, 0, 0)) @ Matrix.Rotation(math.pi, 4, 'Z')
+            span = (cursor, cursor + F + XB)
+        else:
+            X0 = cursor + XB; M = Matrix.Translation((X0, 0, 0))
+            span = (cursor, cursor + XB + F)
+        c = bpy.data.collections.new(f"Coche_{i + 1}_{names[i]}_{'cabina' if cab else 'intermedio'}")
+        root.children.link(c)
+        emit(g, f"C{i + 1}", c, M)
+        for k_, (txt, T, size, mat) in enumerate(texts):
+            add_text(f"C{i + 1}_txt{k_}", c, txt, M @ T, size, mat)
+        # letrero lateral de destino (texto)
+        for sg in (-1, 1):
+            R = Matrix.Rotation(math.radians(90), 4, 'X') @ Matrix.Identity(4)
+            Rz = Matrix.Rotation(math.pi if sg > 0 else 0, 4, 'Z')
+            T = Matrix.Translation((0, sg * (HW + 0.026), 3.19)) @ Rz @ R
+            add_text(f"C{i + 1}_lat{sg}", c, "Plaza de Maipú", M @ T, 0.085, "amber")
+        total += g.tris(); ends.append(span)
+        cursor = span[1] + GAP
+        print(f"coche {i + 1} ({names[i]}): {g.tris():,} triangulos", flush=True)
+    gb = Geo()
+    cb = bpy.data.collections.new("Fuelles"); root.children.link(cb)
+    for (a0, a1), (b0, b1) in zip(ends[:-1], ends[1:]):
+        bellows(gb, a1, b0)
+    emit(gb, "Fuelle", cb); total += gb.tris()
+    print(f"TOTAL ~{total:,} triangulos")
+    return ends[0][0], ends[-1][1]
 
 SEAT_P = [(0.045, 0.98), (0.055, 0.90), (0.068, 0.80), (0.082, 0.70), (0.095, 0.61), (0.11, 0.545), (0.135, 0.50),
           (0.175, 0.472), (0.24, 0.46), (0.32, 0.455), (0.40, 0.452), (0.455, 0.45), (0.485, 0.442), (0.50, 0.425), (0.503, 0.405)]
@@ -482,131 +880,6 @@ def seat_shell(g, mat, sgn, x0, x1, wall):
     loft(g, mat, [R(x0, 0.86), R(x0 + 0.006, 0.97), R(x0 + 0.018, 1.0), R(x1 - 0.018, 1.0), R(x1 - 0.006, 0.97), R(x1, 0.86)],
          close=True, caps=True)
 
-def seat_bank(g, sgn, a, b, white_first=False, white_last=False):
-    n = int((b - a) // 0.52)
-    if n < 1: return
-    off = (b - a - n * 0.52) / 2
-    wall = 1.40
-    box(g, "liner", ((a + b) / 2, sgn * (wall - 0.05), FLOOR + 0.20), (n * 0.52 + 0.04, 0.08, 0.40), 0.015, 2)
-    for k in range(n):
-        x0 = a + off + k * 0.52 + 0.02; x1 = x0 + 0.48; xc = (x0 + x1) / 2
-        m = "seat_white" if ((k == 0 and white_first) or (k == n - 1 and white_last)) else "seat"
-        seat_shell(g, m, sgn, x0, x1, wall)
-        # relieve circular
-        cyl(g, "seat_dark" if m == "seat" else "liner", (xc, sgn * (wall - 0.30), FLOOR + 0.4565), (xc, sgn * (wall - 0.30), FLOOR + 0.4595), 0.15, seg=48)
-        nb = Vector((0, -sgn * 0.993, 0.117)); pb = Vector((xc, sgn * (wall - 0.083), FLOOR + 0.72))
-        cyl(g, "seat_dark" if m == "seat" else "liner", pb, pb + nb * 0.003, 0.14, seg=48)
-        # mensula en voladizo
-        if k % 2 == 0:
-            tube(g, "steel", [(x0 + 0.02, sgn * (wall - 0.01), FLOOR + 0.25), (x0 + 0.02, sgn * (wall - 0.22), FLOOR + 0.40), (x0 + 0.02, sgn * (wall - 0.42), FLOOR + 0.425)], 0.016, 12)
-    # extremos: mampara de vidrio + pasamanos en arco
-    for xe in (a + 0.01, b - 0.01):
-        box(g, "glass", (xe, sgn * 1.16, FLOOR + 0.98), (0.012, 0.42, 0.82))
-        tube(g, "steel", [(xe, sgn * 0.96, FLOOR + 0.57), (xe, sgn * 1.37, FLOOR + 0.57)], 0.014, 12)
-        pts = [(xe, sgn * 0.95, FLOOR), (xe, sgn * 0.95, 2.0)]
-        for k in range(1, 19):
-            ph = math.radians(90 * k / 18)
-            pts.append((xe, sgn * (0.95 + 0.42 * (1 - math.cos(ph))), 2.0 + 0.42 * math.sin(ph)))
-        tube(g, "pole", pts, 0.019, 20)
-        cyl(g, "steel", (xe, sgn * 0.95, FLOOR), (xe, sgn * 0.95, FLOOR + 0.02), 0.04, seg=24)
-
-def handles_rails(g, xa, xb, door_xs, w=1.3):
-    def tri_loop():
-        poly = [(0.0, 0.0), (-0.075, -0.14), (0.075, -0.14)]
-        for _ in range(3):
-            q = []
-            for i in range(len(poly)):
-                p0, p1 = poly[i], poly[(i + 1) % len(poly)]
-                q.append((0.75 * p0[0] + 0.25 * p1[0], 0.75 * p0[1] + 0.25 * p1[1]))
-                q.append((0.25 * p0[0] + 0.75 * p1[0], 0.25 * p0[1] + 0.75 * p1[1]))
-            poly = q
-        return poly
-    tri = tri_loop()
-    for sgn in (-1, 1):
-        tube(g, "pole", [(xa, sgn * 0.80, 2.80), (xb, sgn * 0.80, 2.80)], 0.019, 24)
-        x = xa + 1.0
-        while x < xb - 0.5:
-            tube(g, "pole", [(x, sgn * 0.80, 2.80), (x, sgn * 0.80, 3.02)], 0.014, 12)
-            x += 2.0
-        x = xa + 0.6
-        while x < xb - 0.4:
-            if all(abs(x - xd) > w / 2 + 0.15 for xd in door_xs):
-                tube(g, "pole", [(x, sgn * 0.80, 2.80), (x, sgn * 0.80, 2.70)], 0.009, 10)
-                path = [(x, sgn * 0.80 + px, 2.70 + pz) for px, pz in tri]
-                tube(g, "handle", path, 0.011, 12, closed=True)
-            x += 0.62
-    for xd in door_xs:
-        tube(g, "pole", [(xd, 0.0, FLOOR), (xd, 0.0, 3.0)], 0.021, 28)
-        cyl(g, "steel", (xd, 0, FLOOR), (xd, 0, FLOOR + 0.02), 0.045, seg=28)
-        tube(g, "pole", [(xd, -0.80, 2.80), (xd, 0.80, 2.80)], 0.019, 24)
-        for sgn in (-1, 1):
-            for s2 in (-1, 1):
-                xx = xd + s2 * 0.76
-                tube(g, "pole", [(xx, sgn * 1.40, 1.30), (xx, sgn * 1.32, 1.36), (xx, sgn * 1.32, 2.34), (xx, sgn * 1.40, 2.40)], 0.017, 16)
-            box(g, "black", (xd, sgn * 1.37, 2.86), (0.95, 0.03, 0.15), 0.01, 2)
-            for k in range(14):
-                cyl(g, "amber" if k % 5 else "screen", (xd - 0.4 + k * 0.0615, sgn * 1.355, 2.86),
-                    (xd - 0.4 + k * 0.0615, sgn * 1.34, 2.86), 0.012, seg=20)
-
-def ceiling(g, xa, xb):
-    L = xb - xa; xc = (xa + xb) / 2
-    box(g, "ceiling", (xc, 0, 3.03), (L, 1.4, 0.05), 0.012, 2)
-    for sgn in (-1, 1):
-        prof = [(0.70, 3.06), (0.70, 3.0), (1.05, 2.97), (1.42, 2.70), (1.42, 2.76), (1.05, 3.04)]
-        loft(g, "ceiling", [[(xa, sgn * y, z) for y, z in prof], [(xb, sgn * y, z) for y, z in prof]], close=True, caps=True)
-        box(g, "light", (xc, sgn * 0.98, 2.965), (L - 0.3, 0.12, 0.012), 0.004, 1)
-        box(g, "light", (xc, sgn * 1.30, 2.745), (L - 0.3, 0.05, 0.012), 0.004, 1)
-        for k in range(8):                                  # ventilacion
-            x = xa + 1.2 + k * ((L - 2.4) / 7)
-            for m_ in range(4):
-                box(g, "black", (x, sgn * (0.2 + m_ * 0.04), 3.0), (0.4, 0.012, 0.01))
-    for k in range(int(L // 1.0)):                          # juntas de paneles
-        box(g, "groove", (xa + 0.5 + k * 1.0, 0, 3.003), (0.012, 1.4, 0.006))
-
-def underframe(g, xa, xb, bog):
-    box(g, "skirt", ((xa + xb) / 2, 0, 0.985), (xb - xa, 2.9, 0.03), 0.01, 1)
-    # faldones laterales
-    for sgn in (-1, 1):
-        for a, b in ((-4.1, -1.2), (-0.9, 1.8), (2.1, 4.2)):
-            a2, b2 = max(a, xa + 0.1), min(b, xb - 0.1)
-            if b2 - a2 > 0.3:
-                pass
-        # cajas de equipo
-        for k in range(5):
-            x = -3.6 + k * 1.8 + random.uniform(-0.15, 0.15)
-            if xa + 1 < x < xb - 1:
-                box(g, "iron", (x, sgn * 0.6, 0.78), (1.1 + random.uniform(-.2, .2), 0.7, 0.4), 0.03, 2)
-        # cableado
-        tube(g, "rubber", [(xa + 0.5, sgn * 0.15, 0.95), (xa + 2, sgn * 0.2, 0.9), (xb - 2, sgn * 0.2, 0.9), (xb - 0.5, sgn * 0.15, 0.95)], 0.025, 12)
-    box(g, "iron", (0.5, 0, 0.7), (1.6, 0.9, 0.46), 0.04, 2)
-    box(g, "iron", (-2.5, 0, 0.74), (0.8, 0.8, 0.3), 0.03, 2)
-    # compresor
-    cyl(g, "iron", (2.6, -0.3, 0.72), (2.6, 0.3, 0.72), 0.2, seg=48)
-
-def roof_equipment(g, xa, xb):
-    for xc in (-4.4, 3.6):
-        if not (xa + 1.5 < xc < xb - 1.5): continue
-        box(g, "roof", (xc, 0, TOP + 0.1), (2.3, 1.6, 0.25), 0.07, 4)
-        for dx in (-0.55, 0.55):
-            cyl(g, "black", (xc + dx, 0, TOP + 0.226), (xc + dx, 0, TOP + 0.24), 0.34, seg=64)
-            for k in range(7):
-                a = math.radians(k * 360 / 7)
-                M = Matrix.Translation((xc + dx, 0, TOP + 0.243)) @ Matrix.Rotation(a, 4, 'Z')
-                box(g, "steel", (0.14, 0, 0), (0.28, 0.07, 0.006), 0.002, 1, M=M)
-            torus(g, "steel", (0, 0, 0), 0.34, 0.012, 48, 8,
-                  M=Matrix.Translation((xc + dx, 0, TOP + 0.24)) @ rot_x(90))
-        for k in range(10):
-            box(g, "steel", (xc, 0, TOP + 0.2), (0.03, 1.58, 0.012), 0.002, 1, M=Matrix.Translation((-1.0 + k * 0.22, 0, 0)))
-    box(g, "black", ((xa + xb) / 2, 0, TOP + 0.01), (1.0, 0.2, 0.05), 0.012, 2)
-
-def passenger_end(g, x, sgn_dir):
-    """cierre de testero con abertura de intercirculacion"""
-    for s in (-1, 1):
-        box(g, "body", (x, s * 1.1, 2.07), (0.08, 0.64, 2.05), 0.012, 2)
-        box(g, "liner", (x - sgn_dir * 0.05, s * 1.1, 2.07), (0.03, 0.64, 2.05), 0.008, 1)
-    box(g, "body", (x, 0, 2.99), (0.08, 1.56, 0.2), 0.012, 2)
-    box(g, "liner", (x - sgn_dir * 0.05, 0, 2.99), (0.03, 1.56, 0.2), 0.008, 1)
-    box(g, "steel", (x, 0, FLOOR + 0.005), (0.3, 1.6, 0.012))
 
 def tire_profile(R, W, rim, grooves):
     hw = W / 2
@@ -621,7 +894,7 @@ def tire_profile(R, W, rim, grooves):
 def hub(g, M, r=0.29, bolts=10):
     prof = [(0.06, -0.13), (r, -0.13), (r, 0.125), (r - 0.02, 0.135), (0.24, 0.12), (0.20, 0.095), (0.15, 0.09),
             (0.12, 0.12), (0.09, 0.14), (0.06, 0.14)]
-    revolve(g, "steel", prof, 64, M=M)
+    revolve(g, "hubmetal", prof, 64, M=M)
     for k in range(bolts):
         a = 2 * math.pi * k / bolts
         cyl(g, "chrome", (0.17 * math.cos(a), 0.17 * math.sin(a), 0.09), (0.17 * math.cos(a), 0.17 * math.sin(a), 0.115), 0.016, seg=6, M=M)
@@ -632,186 +905,6 @@ def coil(g, c, r, wire, h, turns, mat="iron"):
     pts = [(c[0] + r * math.cos(2 * math.pi * turns * i / N), c[1] + r * math.sin(2 * math.pi * turns * i / N), c[2] + h * i / N) for i in range(N + 1)]
     tube(g, mat, pts, wire, 10)
 
-def bogie(g, xb):
-    """bogie de rodado neumatico (metro de Santiago L2/L5): neumaticos portantes, ruedas de seguridad
-    de acero, ruedas guia horizontales, suspension helicoidal, motores y frenos"""
-    ZA = 0.48
-    for ax in (-0.95, 0.95):
-        x = xb + ax
-        cyl(g, "iron", (x, -1.16, ZA), (x, 1.16, ZA), 0.075, seg=32)
-        box(g, "iron", (x, 0, ZA), (0.30, 0.38, 0.40), 0.06, 3)                       # diferencial
-        for sg in (-1, 1):
-            M = Matrix.Translation((x, sg * 0.99, ZA)) @ rot_x(-90 * sg)
-            revolve(g, "tire", tire_profile(0.48, 0.30, 0.29, (-0.075, 0.0, 0.075)), 80, M=M)
-            hub(g, M)
-            # rueda de seguridad de acero (interior)
-            prof = [(0.10, 0.0), (0.20, 0.0), (0.20, 0.03), (0.36, 0.03), (0.36, 0.0), (0.42, 0.005), (0.452, 0.015),
-                    (0.452, 0.025), (0.42, 0.045), (0.415, 0.11), (0.36, 0.11), (0.36, 0.06), (0.20, 0.06), (0.20, 0.10), (0.10, 0.10)]
-            revolve(g, "wheel", prof, 72, M=Matrix.Translation((x, sg * 0.66, ZA)) @ rot_x(-90 * sg))
-            bx = x + (0.5 if ax > 0 else -0.5)
-            box(g, "iron", (bx, sg * 0.72, ZA), (0.10, 0.14, 0.26), 0.02, 2)           # freno de zapata
-            cyl(g, "iron", (bx + (0.08 if ax > 0 else -0.08), sg * 0.72, ZA), (bx + (0.22 if ax > 0 else -0.22), sg * 0.72, ZA), 0.05, seg=20)
-    # bastidor
-    for sg in (-1, 1):
-        box(g, "iron", (xb, sg * 1.23, 0.60), (2.5, 0.16, 0.22), 0.045, 3)
-        for k in range(8):
-            box(g, "iron", (xb - 1.05 + k * 0.3, sg * 1.23, 0.73), (0.03, 0.16, 0.05), 0.008, 1)
-        for ex in (-1, 1):                                                              # brazos de ruedas guia
-            box(g, "iron", (xb + ex * 1.40, sg * 1.16, 0.46), (0.34, 0.16, 0.14), 0.035, 3)
-            gx = xb + ex * 1.55
-            revolve(g, "tire", tire_profile(0.20, 0.13, 0.11, (0.0,)), 56, M=Matrix.Translation((gx, sg * 1.18, 0.33)))
-            revolve(g, "steel", [(0.03, -0.075), (0.11, -0.075), (0.11, 0.075), (0.09, 0.085), (0.05, 0.085), (0.03, 0.08)], 40,
-                    M=Matrix.Translation((gx, sg * 1.18, 0.33)))
-            cyl(g, "iron", (gx, sg * 1.18, 0.33), (gx, sg * 1.18, 0.50), 0.035, seg=20)
-            box(g, "iron", (gx, sg * 1.18, 0.50), (0.14, 0.14, 0.06), 0.02, 2)
-            # zapata captadora sobre barra guia
-            box(g, "iron", (xb + ex * 0.62, sg * 1.36, 0.36), (0.30, 0.06, 0.10), 0.015, 2)
-            cyl(g, "white", (xb + ex * 0.62, sg * 1.30, 0.42), (xb + ex * 0.62, sg * 1.30, 0.55), 0.035, seg=16)
-            # resortes helicoidales secundarios + amortiguadores
-            coil(g, (xb + ex * 0.36, sg * 1.23, 0.71), 0.085, 0.016, 0.20, 5.5)
-            cyl(g, "iron", (xb + ex * 0.36, sg * 1.23, 0.70), (xb + ex * 0.36, sg * 1.23, 0.72), 0.11, seg=28)
-            cyl(g, "iron", (xb + ex * 0.36, sg * 1.23, 0.91), (xb + ex * 0.36, sg * 1.23, 0.93), 0.11, seg=28)
-            tube(g, "iron", [(xb + ex * 1.62, -1.12, 0.40), (xb + ex * 1.62, 1.12, 0.40)], 0.05, 16) if sg == 1 else None
-        cyl(g, "motor", (xb, sg * 1.33, 0.62), (xb, sg * 1.33, 0.92), 0.035, seg=20)
-        cyl(g, "chrome", (xb, sg * 1.33, 0.80), (xb, sg * 1.33, 0.94), 0.022, seg=16)
-        tube(g, "iron", [(xb, sg * 0.30, 0.86), (xb + 0.55, sg * 0.30, 0.64)], 0.03, 12)  # barra de traccion
-    box(g, "iron", (xb, 0, 0.60), (0.40, 2.40, 0.26), 0.05, 3)                           # travesano
-    box(g, "iron", (xb, 0, 0.88), (0.55, 2.5, 0.12), 0.04, 3)                            # bolster
-    cyl(g, "steel", (xb, 0, 0.94), (xb, 0, 0.98), 0.26, seg=48)                          # pivote
-    tube(g, "motor", [(xb - 0.15, -0.9, 0.80), (xb + 0.15, 0.9, 0.78)], 0.03, 12)         # amortiguador lateral
-    for mx in (-0.55, 0.55):
-        cyl(g, "motor", (xb + mx, -0.36, 0.45), (xb + mx, 0.36, 0.45), 0.19, seg=56)
-        for k in range(14):
-            a = math.radians(k * 360 / 14)
-            cyl(g, "motor", (xb + mx + 0.19 * math.cos(a), -0.32, 0.45 + 0.19 * math.sin(a)),
-                (xb + mx + 0.19 * math.cos(a), 0.32, 0.45 + 0.19 * math.sin(a)), 0.012, seg=8)
-        cyl(g, "iron", (xb + mx, -0.40, 0.45), (xb + mx, 0.40, 0.45), 0.12, seg=40)
-    tube(g, "rubber", [(xb, 0.4, 0.95), (xb + 0.2, 0.8, 0.85), (xb + 0.6, 1.1, 0.6)], 0.02, 10)
-
-def build_car(kind, dest=("501", "Plaza de Maipú"), num="141"):
-    g = Geo(); texts = []
-    cab = kind == "cab"
-    xa, xb = -8.0, (7.0 if cab else 8.0)
-    if cab:
-        doors = [-5.4, -0.2]
-        spans = [(xa, -6.05), (-4.75, -0.85), (0.45, 3.45)]
-        openings = [(d - 0.65, d + 0.65, "door") for d in doors]
-        openings += spans_to_windows(spans)
-        openings += [(5.15, 6.05, "door"), (6.22, 6.62, "cabwin")]
-    else:
-        doors = [-5.4, 0.0, 5.4]
-        spans = [(xa, -6.05), (-4.75, -0.65), (0.65, 4.75), (6.05, xb)]
-        openings = [(d - 0.65, d + 0.65, "door") for d in doors]
-        openings += spans_to_windows(spans)
-    for sgn in (-1, 1):
-        side_pieces(g, sgn, openings, xa, xb)
-        red_band(g, sgn, spans, doors, xa, (5.0 if cab else xb))
-        for d in doors:
-            door_leaves(g, sgn, d, is_open=(sgn == 1))
-    if cab:
-        for sgn in (-1, 1):   # puerta lateral de cabina (cerrada) + asideros + rejilla
-            xc = 5.6
-            box(g, "body", (xc, sgn * 1.475, 2.02), (0.86, 0.04, 1.85), 0.01, 2)
-            gasket(g, sgn, xc, 2.30, 0.30, 0.95, 0.09, 1.495, 0.012, 0.03, border=0.045)
-            for xx in (5.08, 6.12):
-                tube(g, "pole", [(xx, sgn * 1.50, 1.25), (xx, sgn * 1.56, 1.30), (xx, sgn * 1.56, 2.55), (xx, sgn * 1.50, 2.60)], 0.016, 14)
-            for k in range(9):
-                box(g, "black", (3.75 + k * 0.13, sgn * 1.505, 2.83), (0.07, 0.012, 0.18), 0.004, 1)
-                box(g, "body", (3.75 + k * 0.13 + 0.03, sgn * 1.51, 2.83), (0.03, 0.012, 0.18), 0.004, 1)
-            box(g, "red", (6.82, sgn * 1.502, 2.07), (0.36, 0.006, 2.04), 0.0, 1)
-    # logo lateral
-    for sgn in (-1, 1):
-        lx = doors[0] + 0.98
-        cyl(g, "red", (lx, sgn * 1.50, 1.14), (lx, sgn * 1.51, 1.14), 0.075, seg=40)
-        cyl(g, "gloss_black", (lx, sgn * 1.51, 1.14), (lx, sgn * 1.513, 1.14), 0.062, seg=40)
-        for k in (-1, 0, 1):
-            box(g, "red", (0, 0, 0), (0.026, 0.004, 0.026), 0, 1,
-                M=Matrix.Translation((lx + k * 0.035, sgn * 1.515, 1.14)) @ Matrix.Rotation(math.radians(45), 4, 'Y'))
-    # ----- techo
-    N = 44
-    pts = [(HW * math.cos(math.pi * k / N), 3.1 + RH * math.sin(math.pi * k / N)) for k in range(N + 1)] + \
-          [(HW * 0.943 * math.cos(math.pi * k / N), 3.1 + (RH - 0.04) * math.sin(math.pi * k / N)) for k in range(N, -1, -1)]
-    loft(g, "roof", [[(xa, y, z) for y, z in pts], [(xb, y, z) for y, z in pts]], close=True, caps=True)
-    # ----- piso
-    box(g, "floor", ((xa + xb) / 2, 0, FLOOR - 0.025), (xb - xa, 2.9, 0.05), 0.005, 1)
-    # ----- interior
-    for si, (a_, b_) in enumerate(spans):
-        for sgn in (-1, 1):
-            seat_bank(g, sgn, a_ + 0.12, b_ - 0.12, white_first=(si == len(spans) - 1 and not cab), white_last=(si == 0))
-    pax_b = 3.5 if cab else xb
-    handles_rails(g, xa + 0.3, pax_b - 0.1, doors)
-    ceiling(g, xa, pax_b + (0.1 if cab else 0))
-    passenger_end(g, xa + 0.02, -1)
-    if not cab: passenger_end(g, xb - 0.02, 1)
-    roof_equipment(g, xa, xb)
-    underframe(g, xa, xb, None)
-    for xb_ in ((-5.9, 5.9) if not cab else (-5.9, 4.6)):
-        bogie(g, xb_)
-    # ----- cabina
-    if cab:
-        px = 3.5
-        box(g, "desk", (px, 0.9, 2.07), (0.08, 1.2, 2.05), 0.01, 2)
-        box(g, "desk", (px, -1.05, 2.07), (0.08, 0.7, 2.05), 0.01, 2)
-        box(g, "desk", (px, -0.15, 2.65), (0.08, 0.9, 0.9), 0.01, 2)
-        box(g, "glass", (px, -0.15, 2.0), (0.01, 0.62, 0.85))
-        box(g, "ceiling", ((px + 7.0) / 2, 0, 3.03), (7.0 - px, 2.8, 0.04), 0.01, 2)
-        box(g, "light", ((px + 7.0) / 2, 0, 3.0), (2.6, 0.2, 0.02), 0.006, 2)
-        dx = 6.55
-        prof = [(dx - 0.15, 1.05), (dx + 0.45, 1.05), (dx + 0.45, 1.5), (dx + 0.12, 1.66), (dx - 0.1, 1.56), (dx - 0.15, 1.3)]
-        loft(g, "desk", [[(x, -1.05, z) for x, z in prof], [(x, 1.05, z) for x, z in prof]], close=True, caps=True)
-        for yy, ww in ((-0.55, 0.34), (-0.1, 0.34), (0.35, 0.3)):
-            M = Matrix.Translation((dx + 0.15, yy, 1.6)) @ Matrix.Rotation(math.radians(-24), 4, 'Y')
-            box(g, "black", (0, 0, 0), (0.03, ww + 0.04, 0.25), 0.008, 2, M=M)
-            M2 = Matrix.Translation((dx + 0.15 - 0.017, yy, 1.6)) @ Matrix.Rotation(math.radians(-24), 4, 'Y')
-            box(g, "screen", (0, 0, 0), (0.006, ww - 0.02, 0.2), 0.002, 1, M=M2)
-        for r in range(3):
-            for c in range(14):
-                xx = dx - 0.06 + r * 0.06; yy = -0.9 + c * 0.065
-                cyl(g, "amber" if (r * 14 + c) % 7 == 0 else ("headlight" if (r + c) % 9 == 0 else "steel"),
-                    (xx, yy, 1.62 - r * 0.03), (xx + 0.02, yy, 1.62 - r * 0.03 + 0.012), 0.014, seg=24)
-        cyl(g, "black", (dx, 0.82, 1.58), (dx, 0.82, 1.62), 0.05, seg=40)
-        tube(g, "black", [(dx, 0.82, 1.62), (dx - 0.05, 0.82, 1.75)], 0.014, 14)
-        box(g, "black", (0, 0, 0), (0.12, 0.05, 0.06), 0.018, 4, M=Matrix.Translation((dx - 0.05, 0.82, 1.78)))
-        sx, sy = 5.5, 0.0
-        cyl(g, "iron", (sx, sy, FLOOR), (sx, sy, FLOOR + 0.28), 0.06, seg=24)
-        cyl(g, "iron", (sx, sy, FLOOR), (sx, sy, FLOOR + 0.03), 0.26, 0.26, seg=48)
-        box(g, "seat_base", (sx, sy, FLOOR + 0.32), (0.48, 0.5, 0.1), 0.04, 4)
-        M = Matrix.Translation((sx - 0.22, sy, FLOOR + 0.66)) @ Matrix.Rotation(math.radians(10), 4, 'Y')
-        box(g, "seat_base", (0, 0, 0), (0.1, 0.46, 0.62), 0.04, 4, M=M)
-        for s2 in (-1, 1):
-            box(g, "seat_base", (sx, sy + s2 * 0.29, FLOOR + 0.5), (0.34, 0.05, 0.05), 0.015, 2)
-        tube(g, "pole", [(px + 0.05, 0.4, FLOOR), (px + 0.05, 0.4, 2.9)], 0.02, 24)
-        build_nose(g, xb, texts, dest, num)
-    return g, (xa, xb, cab), texts
-
-# ----------------------------------------------------------------- fuelles intercirculacion
-def bellows(g, xa, xb):
-    nr, npnts = 112, 48
-    rings = []
-    for k in range(nr):
-        t = k / (nr - 1)
-        x = xa + (xb - xa) * t
-        taper = min(1.0, t * 12, (1 - t) * 12)
-        rip = abs(((t * 9) % 1) - 0.5) * 2          # onda triangular
-        s = 1.0 + 0.09 * rip * taper
-        ring = []
-        for i in range(npnts):
-            th = 2 * math.pi * i / npnts
-            c, sn = math.cos(th), math.sin(th)
-            y = 0.80 * s * math.copysign(abs(c) ** 0.5, c)
-            z = 2.07 + 1.0 * s * math.copysign(abs(sn) ** 0.5, sn)
-            ring.append((x, y, z))
-        rings.append(ring)
-    loft(g, "rubber", rings, close=True)
-    # marcos de acero en los extremos
-    for x in (xa, xb):
-        r1 = [(x, 0.80 * math.copysign(abs(math.cos(2 * math.pi * i / npnts)) ** 0.5, math.cos(2 * math.pi * i / npnts)),
-               2.07 + 1.0 * math.copysign(abs(math.sin(2 * math.pi * i / npnts)) ** 0.5, math.sin(2 * math.pi * i / npnts)))
-              for i in range(npnts)]
-        r2 = [(x + (0.03 if x == xa else -0.03), y * 1.02, 2.07 + (z - 2.07) * 1.02) for _, y, z in r1]
-        loft(g, "steel", [r1, r2], close=True)
-    # piso pasarela
-    box(g, "steel", ((xa + xb) / 2, 0, FLOOR - 0.01), (xb - xa + 0.1, 1.5, 0.02), 0.004, 1)
 
 # ----------------------------------------------------------------- emision a Blender
 def emit(g, name, coll, M=Matrix.Identity(4), recalc=True):
@@ -845,42 +938,6 @@ def add_text(name, coll, txt, M, size, mat):
     bpy.data.objects.remove(ob); bpy.data.curves.remove(cu)
     me.materials.append(MATS[mat])
     o2 = bpy.data.objects.new(name, me); o2.matrix_world = M; coll.objects.link(o2)
-
-# ----------------------------------------------------------------- escena
-def build():
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    make_materials()
-    root = bpy.data.collections.new("NS16_Metro_Santiago"); bpy.context.scene.collection.children.link(root)
-    kinds = ["cab"] + ["mid"] * N_MID + ["cab"]
-    cursor = 0.0; total_tris = 0; ends = []
-    for i, k in enumerate(kinds):
-        g, (xa, xb, cab), texts = build_car(k, *((("501", "Vicente Valdés"), "142") if i == 0 else (("501", "Plaza de Maipú"), "141")))
-        F = (xb + 0.8) if cab else xb
-        rotated = (i == 0)
-        if rotated:
-            X0 = cursor + F; M = Matrix.Translation((X0, 0, 0)) @ Matrix.Rotation(math.pi, 4, 'Z')
-            span = (cursor, cursor + F + 8.0)
-        else:
-            X0 = cursor + 8.0; M = Matrix.Translation((X0, 0, 0))
-            span = (cursor, cursor + 8.0 + F)
-        c = bpy.data.collections.new(f"Coche_{i + 1}_{'cabina' if cab else 'intermedio'}")
-        root.children.link(c)
-        emit(g, f"C{i + 1}", c, M)
-        for k_, (txt, T, size, mat) in enumerate(texts):
-            add_text(f"C{i + 1}_txt{k_}", c, txt, M @ T, size, mat)
-        total_tris += g.tris(); ends.append(span)
-        cursor = span[1] + 0.9
-        print(f"coche {i + 1}: {g.tris():,} triangulos", flush=True)
-    # fuelles
-    gb = Geo()
-    cb = bpy.data.collections.new("Fuelles"); root.children.link(cb)
-    for (a0, a1), (b0, b1) in zip(ends[:-1], ends[1:]):
-        bellows(gb, a1 + 0.0, b0)
-    emit(gb, "Fuelle", cb); total_tris += gb.tris()
-    print(f"fuelles: {gb.tris():,}")
-    print(f"TOTAL ~{total_tris:,} triangulos (pre-merge)")
-    xmin, xmax = ends[0][0], ends[-1][1]
-    return xmin, xmax
 
 def scene_setup(xmin, xmax):
     sc = bpy.context.scene
